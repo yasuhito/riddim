@@ -1,3 +1,23 @@
 #!/usr/bin/ruby
 
-puts "Usage: riddim <command>"
+if ARGV.first == "peek"
+  unless (2..3).cover?(ARGV.length)
+    warn "Usage: riddim peek <target> [lines]"
+    exit 2
+  end
+
+  lines = ARGV[2] || "40"
+  unless lines.match?(/\A[1-9]\d*\z/)
+    warn "riddim: lines must be a positive integer"
+    exit 2
+  end
+
+  exec "herdr", "agent", "read", ARGV[1], "--source", "recent-unwrapped", "--lines", lines
+end
+
+puts <<~HELP
+  Usage: riddim <command>
+
+  Commands:
+    peek <target> [lines]  Show recent output from a Herdr agent
+HELP
