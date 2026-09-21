@@ -2,6 +2,7 @@
 
 source 'https://rubygems.org'
 
+gem 'cucumber', '~> 11.1', require: false
 gem 'minitest', '~> 6.0'
 gem 'rake', '~> 13.4'
 gem 'rubocop', '~> 1.82', require: false
