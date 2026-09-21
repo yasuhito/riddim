@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - run: git config --global init.defaultBranch main
       - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
