@@ -13,7 +13,7 @@ if ARGV.first == 'send'
     exit 2
   end
 
-  exec 'herdr', 'agent', 'prompt', ARGV[1], '--', message
+  exec 'herdr', 'agent', 'prompt', ARGV[1], message
 end
 
 if ARGV.first == 'peek'

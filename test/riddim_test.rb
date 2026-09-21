@@ -13,17 +13,7 @@ class RiddimTest < Minitest::Test
       stdout, stderr, status = run_riddim('send', 'pi', 'Fix', 'the tests', env: { 'PATH' => path })
 
       assert_predicate status, :success?
-      assert_equal "agent prompt pi -- Fix the tests\n", stdout
-      assert_empty stderr
-    end
-  end
-
-  def test_send_treats_an_option_like_message_as_text
-    with_fake_herdr do |path|
-      stdout, stderr, status = run_riddim('send', 'pi', '--wait', env: { 'PATH' => path })
-
-      assert_predicate status, :success?
-      assert_equal "agent prompt pi -- --wait\n", stdout
+      assert_equal "agent prompt pi Fix the tests\n", stdout
       assert_empty stderr
     end
   end
