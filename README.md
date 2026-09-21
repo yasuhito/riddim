@@ -5,8 +5,9 @@ Riddim is a small command-line tool for working with coding agents in
 the parts of [Firstmate](https://github.com/kunchenguid/firstmate) that are useful
 in a smaller, Herdr-focused tool.
 
-Riddim currently lets you read recent agent output and send an agent a prompt.
-It keeps its runtime small and uses Ruby's standard library.
+Riddim currently lets you inspect agent status, read recent agent output, and
+send an agent a prompt. It keeps its runtime small and uses Ruby's standard
+library.
 
 ## Requirements
 
@@ -21,6 +22,19 @@ Run Riddim without arguments to see its commands:
 
 ```sh
 bin/riddim
+```
+
+### Read agent status
+
+```sh
+bin/riddim status <target>
+```
+
+Riddim reads the agent from Herdr and prints its status as one line.
+
+```sh
+bin/riddim status pi
+# working
 ```
 
 ### Read agent output

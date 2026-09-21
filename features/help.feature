@@ -35,3 +35,21 @@ Feature: Discover available commands
       """
       """
     Then standard error is empty
+
+  Scenario: List the status command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "status <target>"
+
+  Scenario: Exit successfully when showing help for status
+    When I run riddim with:
+      """
+      """
+    Then the command succeeds
+
+  Scenario: Write no error when showing help for status
+    When I run riddim with:
+      """
+      """
+    Then standard error is empty

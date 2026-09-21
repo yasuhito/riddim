@@ -1,15 +1,24 @@
 # frozen_string_literal: true
 
 Given('a fake Herdr executable') do
-  directory = Dir.mktmpdir
-  @temporary_directories << directory
-  herdr = File.join(directory, 'herdr')
-  File.write(herdr, <<~RUBY)
-    #!/usr/bin/ruby
+  install_fake_herdr(<<~RUBY)
     puts ARGV.join(" ")
   RUBY
-  File.chmod(0o755, herdr)
-  @environment = { 'PATH' => "#{directory}:#{ENV.fetch('PATH')}" }
+end
+
+Given('Herdr returns agent JSON:') do |json|
+  install_fake_herdr(<<~RUBY)
+    abort "unexpected arguments: \#{ARGV.join(' ')}" unless ARGV == %w[agent get pi]
+    puts #{json.dump}
+  RUBY
+end
+
+Given('Herdr fails with status {int} and error {string}') do |status, error|
+  install_fake_herdr(<<~RUBY)
+    abort "unexpected arguments: \#{ARGV.join(' ')}" unless ARGV == %w[agent get pi]
+    warn #{error.dump}
+    exit #{status}
+  RUBY
 end
 
 When('I run riddim with:') do |arguments|
@@ -39,10 +48,24 @@ Then('standard output includes {string}') do |text|
   assert_includes @stdout, text
 end
 
+Then('standard output is {string}') do |text|
+  assert_equal "#{text}\n", @stdout
+end
+
 Then('standard error is empty') do
   assert_empty @stderr
 end
 
 Then('standard error is {string}') do |text|
   assert_equal "#{text}\n", @stderr
+end
+
+# Installs a process-level Herdr test double while exercising the public CLI.
+def install_fake_herdr(body)
+  directory = Dir.mktmpdir
+  @temporary_directories << directory
+  herdr = File.join(directory, 'herdr')
+  File.write(herdr, "#!/usr/bin/ruby\n#{body}")
+  File.chmod(0o755, herdr)
+  @environment = { 'PATH' => "#{directory}:#{ENV.fetch('PATH')}" }
 end

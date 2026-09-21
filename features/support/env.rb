@@ -2,6 +2,7 @@
 
 require 'bundler'
 require 'fileutils'
+require 'minitest'
 require 'minitest/assertions'
 require 'open3'
 require 'shellwords'
