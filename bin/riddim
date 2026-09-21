@@ -1,6 +1,21 @@
 #!/usr/bin/ruby
 # frozen_string_literal: true
 
+if ARGV.first == 'send'
+  unless ARGV.length >= 3
+    warn 'Usage: riddim send <target> <message...>'
+    exit 2
+  end
+
+  message = ARGV.drop(2).join(' ')
+  if message.strip.empty?
+    warn 'riddim: message must not be blank'
+    exit 2
+  end
+
+  exec 'herdr', 'agent', 'prompt', ARGV[1], '--', message
+end
+
 if ARGV.first == 'peek'
   unless (2..3).cover?(ARGV.length)
     warn 'Usage: riddim peek <target> [lines]'
@@ -20,5 +35,6 @@ puts <<~HELP
   Usage: riddim <command>
 
   Commands:
-    peek <target> [lines]  Show recent output from a Herdr agent
+    peek <target> [lines]       Show recent output from a Herdr agent
+    send <target> <message...>  Prompt a Herdr agent
 HELP

@@ -8,6 +8,50 @@ require 'tmpdir'
 class RiddimTest < Minitest::Test
   RIDDIM = File.expand_path('../bin/riddim', __dir__)
 
+  def test_send_prompts_the_requested_agent_through_herdr
+    with_fake_herdr do |path|
+      stdout, stderr, status = run_riddim('send', 'pi', 'Fix', 'the tests', env: { 'PATH' => path })
+
+      assert_predicate status, :success?
+      assert_equal "agent prompt pi -- Fix the tests\n", stdout
+      assert_empty stderr
+    end
+  end
+
+  def test_send_treats_an_option_like_message_as_text
+    with_fake_herdr do |path|
+      stdout, stderr, status = run_riddim('send', 'pi', '--wait', env: { 'PATH' => path })
+
+      assert_predicate status, :success?
+      assert_equal "agent prompt pi -- --wait\n", stdout
+      assert_empty stderr
+    end
+  end
+
+  def test_send_requires_a_target_and_message
+    stdout, stderr, status = run_riddim('send')
+
+    assert_equal 2, status.exitstatus
+    assert_empty stdout
+    assert_equal "Usage: riddim send <target> <message...>\n", stderr
+  end
+
+  def test_send_requires_a_message
+    stdout, stderr, status = run_riddim('send', 'pi')
+
+    assert_equal 2, status.exitstatus
+    assert_empty stdout
+    assert_equal "Usage: riddim send <target> <message...>\n", stderr
+  end
+
+  def test_send_rejects_a_blank_message
+    stdout, stderr, status = run_riddim('send', 'pi', " \t ")
+
+    assert_equal 2, status.exitstatus
+    assert_empty stdout
+    assert_equal "riddim: message must not be blank\n", stderr
+  end
+
   def test_peek_reads_the_requested_agent_from_herdr
     with_fake_herdr do |path|
       stdout, stderr, status = run_riddim('peek', 'pi', '5', env: { 'PATH' => path })
@@ -34,6 +78,14 @@ class RiddimTest < Minitest::Test
     assert_equal 2, status.exitstatus
     assert_empty stdout
     assert_equal "riddim: lines must be a positive integer\n", stderr
+  end
+
+  def test_help_lists_send
+    stdout, stderr, status = run_riddim
+
+    assert_predicate status, :success?
+    assert_includes stdout, 'send <target> <message...>'
+    assert_empty stderr
   end
 
   def test_help_lists_peek
