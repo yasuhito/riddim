@@ -5,3 +5,6 @@ plugins:
 AllCops:
   NewCops: enable
   TargetRubyVersion: 3.4
+
+Minitest/MultipleAssertions:
+  Max: 1
