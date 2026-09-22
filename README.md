@@ -50,7 +50,7 @@ agent can never drift to another session's endpoint.
 ### List recorded agents
 
 ```sh
-bin/riddim list
+bin/riddim list [--json]
 ```
 
 Lists validated `state/<name>.meta` records, sorted by name, as tab-separated
@@ -65,10 +65,20 @@ For example:
 worker\triddim\tw9:p1
 ```
 
+`--json` prints a versioned `riddim.list.v1` object from the same validated
+records, with a `records` array sorted by name. Its fields are `name`,
+`session`, and `pane_id`; an empty inventory is `[]` within the object. JSON
+is produced only after every record has been checked, so a failure prints no
+partial object. For example:
+
+```json
+{"schema":"riddim.list.v1","records":[{"name":"worker","session":"riddim","pane_id":"w9:p1"}]}
+```
+
 This is only Firstmate's fleet snapshot ownership inventory. It does not
 provide Firstmate's current crew state, endpoint presence, process liveness,
-backlog, or JSON fleet snapshot. Use `status <name>` for the separate raw
-Herdr registration read, not as proof of process liveness.
+backlog, or full `fm-fleet-snapshot.v1` schema. Use `status <name>` for the
+separate raw Herdr registration read, not as proof of process liveness.
 
 ### Read agent status
 

@@ -8,6 +8,15 @@ module Riddim
   module List
     module_function
 
+    # The primary machine-readable shape. The human view renders these same
+    # validated records; neither view attributes live status to a record.
+    def snapshot
+      records = rows.map do |name, session, pane_id|
+        { name: name, session: session, pane_id: pane_id }
+      end
+      { schema: 'riddim.list.v1', records: records }
+    end
+
     def rows
       record_names.filter_map do |name|
         endpoint = Ownership::Endpoint.resolve(name)

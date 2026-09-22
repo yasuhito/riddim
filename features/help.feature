@@ -4,7 +4,7 @@ Feature: Discover available commands
     When I run riddim with:
       """
       """
-    Then standard output includes "list"
+    Then standard output includes "list [--json]"
 
   Scenario: List the send command
     When I run riddim with:

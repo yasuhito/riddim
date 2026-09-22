@@ -32,6 +32,27 @@ Feature: List recorded agent endpoints
         """
       Then the command succeeds
 
+  Rule: Machine-readable ownership inventory uses a distinct, stable schema
+
+    Background:
+      Given a fake Herdr executable
+      And a published endpoint record for "zeta" in session "secondary" naming pane "w8:p1"
+      And a published endpoint record for "alpha" in session "riddim" naming pane "w9:p1"
+
+    Scenario: Print the versioned JSON records in name order
+      When I run riddim with:
+        """
+        list --json
+        """
+      Then standard output is the versioned ownership snapshot
+
+    Scenario: Produce the JSON view without probing Herdr
+      When I run riddim with:
+        """
+        list --json
+        """
+      Then Herdr receives no invocation
+
   Rule: No records is an empty, successful list
 
     Scenario: An absent state directory prints nothing
@@ -48,6 +69,13 @@ Feature: List recorded agent endpoints
         list
         """
       Then the command succeeds
+
+    Scenario: An absent state directory has a JSON empty inventory
+      When I run riddim with:
+        """
+        list --json
+        """
+      Then standard output is the empty ownership snapshot
 
     Scenario: An unpublished staging file is not ownership
       Given a staged record that was never published
@@ -84,6 +112,13 @@ Feature: List recorded agent endpoints
         list
         """
       Then Herdr receives no invocation
+
+    Scenario: Do not emit partial JSON for a malformed record
+      When I run riddim with:
+        """
+        list --json
+        """
+      Then standard output is empty
 
   Rule: Refuse unsafe record paths
 
@@ -137,5 +172,12 @@ Feature: List recorded agent endpoints
       When I run riddim with:
         """
         list worker
+        """
+      Then the command exits with status 2
+
+    Scenario: Reject an option combined with a selector
+      When I run riddim with:
+        """
+        list --json worker
         """
       Then the command exits with status 2

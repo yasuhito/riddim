@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fileutils'
+require 'json'
 
 Given('a state directory symlink') do
   target = new_temporary_directory
@@ -28,4 +29,16 @@ end
 
 Then('standard output is the sorted endpoint list') do
   assert_equal "alpha\triddim\tw9:p1\nzeta\tsecondary\tw8:p1\n", @stdout
+end
+
+Then('standard output is the versioned ownership snapshot') do
+  expected = { 'schema' => 'riddim.list.v1', 'records' => [
+    { 'name' => 'alpha', 'session' => 'riddim', 'pane_id' => 'w9:p1' },
+    { 'name' => 'zeta', 'session' => 'secondary', 'pane_id' => 'w8:p1' }
+  ] }
+  assert_equal expected, JSON.parse(@stdout)
+end
+
+Then('standard output is the empty ownership snapshot') do
+  assert_equal({ 'schema' => 'riddim.list.v1', 'records' => [] }, JSON.parse(@stdout))
 end
