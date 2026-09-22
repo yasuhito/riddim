@@ -6,6 +6,12 @@ Feature: Discover available commands
       """
     Then standard output includes "process-state <name>"
 
+  Scenario: List the server-state command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "server-state <name>"
+
   Scenario: List the foreground working-directory command
     When I run riddim with:
       """

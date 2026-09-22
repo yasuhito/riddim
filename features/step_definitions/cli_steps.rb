@@ -87,12 +87,34 @@ Then('Herdr is invoked with {string}') do |invocation|
   assert_equal [invocation], herdr_invocations
 end
 
-CLIENT_STATUS_FIXTURE = <<~'RUBY'
+REBIND_RECORD_FIXTURE = <<~RUBY
+  if File.exist?(File.expand_path('rebind-record', __dir__))
+    path = File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta')
+    lock = File.join(ENV.fetch('RIDDIM_STATE_DIR'), '.meta-worker.lock')
+    File.open(lock, File::RDWR | File::CREAT, 0o600) do |file|
+      file.flock(File::LOCK_EX)
+      bytes = File.read(path).sub('spawn_gen=s1767200000.4242.7', 'spawn_gen=s1767200001.4242.8')
+      staging = "\#{path}.replacement"
+      File.write(staging, bytes)
+      File.rename(staging, path)
+    end
+  end
+RUBY
+
+# The canned `status --json` response, or a marker-driven failure. When the
+# fixture file exists this branch logs and exits itself, before the generic
+# invocation logger, so exactly one status line lands in the log.
+CLIENT_STATUS_FIXTURE = <<~RUBY.freeze
   if ARGV == %w[status --json]
     fixture = File.expand_path('client-status.json', __dir__)
     if File.file?(fixture)
       File.open(File.expand_path('invocations', __dir__), 'a') do |file|
-        file.write([*session_argv, *ARGV].join(' ') + "\n")
+        file.write([*session_argv, *ARGV].join(' ') + "\\n")
+      end
+      #{REBIND_RECORD_FIXTURE}
+      if File.exist?(File.expand_path('status-fails', __dir__))
+        warn 'status failed'
+        exit 1
       end
       print File.read(fixture)
     else
@@ -102,7 +124,7 @@ CLIENT_STATUS_FIXTURE = <<~'RUBY'
   end
 RUBY
 
-PROCESS_INFO_FIXTURE = <<~RUBY
+PROCESS_INFO_FIXTURE = <<~RUBY.freeze
   if ARGV[0, 2] == %w[pane process-info]
     require 'json'
     if File.exist?(File.expand_path('bad-process-info', __dir__))
@@ -110,17 +132,7 @@ PROCESS_INFO_FIXTURE = <<~RUBY
       exit 0
     end
     pane = File.exist?(File.expand_path('wrong-process-pane', __dir__)) ? 'w9:p2' : ARGV[3]
-    if File.exist?(File.expand_path('rebind-process', __dir__))
-      path = File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta')
-      lock = File.join(ENV.fetch('RIDDIM_STATE_DIR'), '.meta-worker.lock')
-      File.open(lock, File::RDWR | File::CREAT, 0o600) do |file|
-        file.flock(File::LOCK_EX)
-        bytes = File.read(path).sub('spawn_gen=s1767200000.4242.7', 'spawn_gen=s1767200001.4242.8')
-        staging = "\#{path}.replacement"
-        File.write(staging, bytes)
-        File.rename(staging, path)
-      end
-    end
+    #{REBIND_RECORD_FIXTURE}
     kind = if File.exist?(File.expand_path('other-pi', __dir__))
              'ruby'
            elsif File.exist?(File.expand_path('stale-pi', __dir__))

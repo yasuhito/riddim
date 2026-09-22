@@ -9,7 +9,7 @@ Given('Herdr reports no foreground processes for the recorded pane') do
 end
 
 Given('ownership is rebound while Herdr reads the process view') do
-  File.write(File.join(@herdr_directory, 'rebind-process'), '')
+  File.write(File.join(@herdr_directory, 'rebind-record'), '')
 end
 
 Then('Herdr reads only the exact recorded process view') do

@@ -67,14 +67,7 @@ module Riddim
     end
 
     def stopped_server?(session)
-      stdout, _stderr, status = capture('status', '--json', session: session)
-      return false unless status.success?
-
-      document = JSON.parse(stdout)
-      server = document['server'] if document.is_a?(Hash)
-      server.is_a?(Hash) && server['running'] == false
-    rescue JSON::ParserError
-      false
+      server_running_state(session: session) == :stopped
     end
 
     def response_document(stdout, stderr)

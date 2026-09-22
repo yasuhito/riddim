@@ -12,6 +12,7 @@ require_relative 'herdr/pane_tail'
 require_relative 'herdr/preflight'
 require_relative 'herdr/process_state'
 require_relative 'herdr/prompt'
+require_relative 'herdr/server_state'
 
 module Riddim
   # Owns Riddim's concrete Herdr command-line surface: it resolves the one

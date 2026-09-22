@@ -182,6 +182,22 @@ authorizes closing a pane. Firstmate explicitly refuses to close a
 stale-registration pane as a disposable husk because it may hold a nested
 worktree shell. Neither this output nor `agent-state` proves turn completion.
 
+### Read the recorded session's server state
+
+```sh
+bin/riddim server-state <name>
+```
+
+Reports `running`, `stopped`, or `unknown` from the recorded session's
+`status --json` alone, without touching any pane. This is a smaller subset of
+Firstmate's `fm_backend_herdr_server_running_state`; it tells you whether a
+`missing` from `agent-state` is explained by a server that is not running.
+Herdr preserves pane, tab, and workspace ids across a server restart while
+harness processes and registrations die, so `stopped` means unreachable right
+now: it is **not** evidence an endpoint was destroyed and licenses no
+recovery by itself. Malformed status output and an ownership change during
+the read both stay `unknown`.
+
 ### Read agent status
 
 ```sh

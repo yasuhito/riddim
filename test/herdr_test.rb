@@ -225,3 +225,54 @@ class HerdrPaneTailTest < Minitest::Test
     assert_equal 'final', Riddim::Herdr.tail("earlier\nfinal", 1)
   end
 end
+
+class HerdrServerRunningStateTest < Minitest::Test
+  CaptureStatus = Struct.new(:exitstatus) do
+    def success?
+      exitstatus.zero?
+    end
+  end
+
+  def with_status(stdout, success: true)
+    Riddim::Herdr.singleton_class.send(:define_method, :capture) { |*| [stdout, '', CaptureStatus.new(success ? 0 : 7)] }
+    yield
+  ensure
+    Riddim::Herdr.singleton_class.send(:remove_method, :capture)
+  end
+
+  def test_reports_a_running_server
+    with_status('{"server":{"running":true}}') do
+      assert_equal :running, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+
+  def test_reports_a_stopped_server
+    with_status('{"server":{"running":false}}') do
+      assert_equal :stopped, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+
+  def test_reports_unknown_without_a_server_field
+    with_status('{"client":{"version":"0.9.0"}}') do
+      assert_equal :unknown, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+
+  def test_reports_unknown_for_a_non_boolean_running_value
+    with_status('{"server":{"running":"yes"}}') do
+      assert_equal :unknown, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+
+  def test_reports_unknown_for_malformed_status_json
+    with_status('not JSON') do
+      assert_equal :unknown, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+
+  def test_reports_unknown_for_a_failed_status_read
+    with_status('{"server":{"running":false}}', success: false) do
+      assert_equal :unknown, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+end
