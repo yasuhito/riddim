@@ -372,12 +372,22 @@ class OwnershipPublicationTest < Minitest::Test
 end
 
 class OwnershipRemovalIdentityTest < Minitest::Test
+  include StateDirEnv
+
+  def remove_under_lock(path, spawn_gen)
+    with_state_dir(File.dirname(path)) do
+      Riddim::Ownership.with_lock('worker') do
+        Riddim::Ownership.remove_if_unchanged_under_lock(path, spawn_gen)
+      end
+    end
+  end
+
   def test_removes_a_record_still_owned_by_this_spawn
     Dir.mktmpdir do |dir|
       path = File.join(dir, 'worker.meta')
       File.write(path, OWNERSHIP_BYTES)
 
-      assert Riddim::Ownership.remove_if_unchanged(path, 's1767200000.4242.7')
+      assert remove_under_lock(path, 's1767200000.4242.7')
     end
   end
 
@@ -386,7 +396,7 @@ class OwnershipRemovalIdentityTest < Minitest::Test
       path = File.join(dir, 'worker.meta')
       File.write(path, OWNERSHIP_BYTES)
 
-      refute Riddim::Ownership.remove_if_unchanged(path, 's1767200000.4242.8')
+      refute remove_under_lock(path, 's1767200000.4242.8')
     end
   end
 
@@ -395,7 +405,7 @@ class OwnershipRemovalIdentityTest < Minitest::Test
       path = File.join(dir, 'worker.meta')
       File.write(path, "spawn_gen=s1767200000.4242.7\nnot a record\n")
 
-      refute Riddim::Ownership.remove_if_unchanged(path, 's1767200000.4242.7')
+      refute remove_under_lock(path, 's1767200000.4242.7')
     end
   end
 
@@ -406,7 +416,7 @@ class OwnershipRemovalIdentityTest < Minitest::Test
       path = File.join(dir, 'worker.meta')
       File.symlink(target, path)
 
-      refute Riddim::Ownership.remove_if_unchanged(path, 's1767200000.4242.7')
+      refute remove_under_lock(path, 's1767200000.4242.7')
     end
   end
 
@@ -416,19 +426,19 @@ class OwnershipRemovalIdentityTest < Minitest::Test
       File.write(target, OWNERSHIP_BYTES)
       path = File.join(dir, 'worker.meta')
       File.symlink(target, path)
-      Riddim::Ownership.remove_if_unchanged(path, 's1767200000.4242.7')
+      remove_under_lock(path, 's1767200000.4242.7')
 
       assert_equal OWNERSHIP_BYTES, File.read(target)
     end
   end
 
-  def test_detects_a_record_replaced_after_its_descriptor_was_opened
+  def test_detects_a_record_replaced_before_the_final_identity_check
     Dir.mktmpdir do |dir|
       path = File.join(dir, 'worker.meta')
       File.write(path, OWNERSHIP_BYTES)
       before = File.stat(path)
       incoming = File.join(dir, 'incoming')
-      File.write(incoming, 'replaced mid-check')
+      File.write(incoming, 'replaced before final check')
       File.rename(incoming, path)
 
       refute Riddim::Ownership.same_regular_file?(before, File.stat(path))
@@ -437,7 +447,7 @@ class OwnershipRemovalIdentityTest < Minitest::Test
 
   def test_needs_no_removal_when_no_record_exists
     Dir.mktmpdir do |dir|
-      assert Riddim::Ownership.remove_if_unchanged(File.join(dir, 'worker.meta'), 's1767200000.4242.7')
+      assert remove_under_lock(File.join(dir, 'worker.meta'), 's1767200000.4242.7')
     end
   end
 end

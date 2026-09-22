@@ -109,7 +109,7 @@ module Riddim
     def cleanup_failed_start(name, record_path, workspace, spawn_gen, failure)
       confirmed = Riddim::Herdr.close_pane_confirmed(workspace.root_pane_id)
       report_failed_start(failure)
-      unless confirmed && Ownership.remove_if_unchanged(record_path, spawn_gen)
+      unless confirmed && Ownership.remove_if_unchanged_under_lock(record_path, spawn_gen)
         report_retained_record(name, record_path, workspace, confirmed)
       end
       exit exit_status_of(failure)

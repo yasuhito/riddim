@@ -219,6 +219,15 @@ through the launch result, and refuses any existing record - even a
 malformed or unreadable one - before it invokes Herdr at all. Two concurrent
 starts of the same name serialize on the lock, and the loser refuses.
 
+Like Firstmate, Riddim uses this lock as a cooperative lifecycle-writer
+contract, not as security isolation from other processes running as the same
+Unix user. Every Riddim lifecycle writer for a name must hold its per-name lock
+while it publishes, replaces, or removes that name's record; read-only routing
+uses a validated descriptor snapshot instead. The state directory's `0700`
+mode excludes other users, but a same-user process that deliberately ignores
+the lock is outside this contract. Ruby's pathname-based unlink does not offer
+an atomic compare-and-delete primitive that could make a stronger claim.
+
 #### Confirmed pane cleanup
 
 `start` follows Firstmate's spawn order: create the exact Herdr endpoint,
@@ -234,8 +243,11 @@ performs no rollback of its own; the start flow owns every cleanup decision:
   get`, preserves Herdr's output and exit status unchanged, and removes the
   record only after the pane is confirmed gone and only while the record
   still carries the spawn generation this start minted. Under the same
-  per-name lock, Riddim opens no symbolic links and removes only a regular
-  file whose device and inode still match the bytes just verified.
+  per-name lock, Riddim opens no symbolic links and immediately before the
+  pathname unlink re-checks that a regular file's device and inode still match
+  the descriptor whose bytes it verified. The lock, not that final check,
+  prevents cooperating lifecycle writers from changing the pathname between
+  the check and unlink.
 - If the close fails, the pane's absence cannot be confirmed, or the Herdr
   executable itself becomes unavailable, the record is retained and Riddim
   reports that exactly, naming the record path and the endpoint ids,

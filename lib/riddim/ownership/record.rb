@@ -138,15 +138,17 @@ module Riddim
       nil
     end
 
-    # Removes the record only when the file at <path> is still this spawn's
-    # own record: open never follows a symlink, a non-regular file is never
-    # touched, the bytes must parse, and the spawn generation must still name
-    # this start. The path is re-checked after the descriptor read - same
-    # device, same inode, still a regular file - before deletion. The held
-    # per-name lock serializes every cooperating writer. Returns true when no
-    # record remains at <path>, false when one is retained, so the caller can
-    # report exact retention instead of claiming a cleanup it did not verify.
-    def remove_if_unchanged(path, spawn_gen)
+    # Removes this spawn's record while the caller holds its per-name lock.
+    # That lock is the concurrency contract, matching Firstmate: every Riddim
+    # lifecycle writer for the name must cooperate with it. Open never follows
+    # a symlink, the bytes must parse and name this spawn, and an immediate
+    # pre-unlink lstat must still identify the opened regular file. The lstat
+    # is defense in depth, not an atomic compare-and-delete: a same-user process
+    # that ignores the lock is outside this coordination contract because Ruby
+    # ultimately unlinks by pathname. Returns true when the record was absent
+    # at the initial check or this verified pathname unlink completed; false
+    # when the record was retained.
+    def remove_if_unchanged_under_lock(path, spawn_gen)
       return true unless record_present?(path)
 
       File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
@@ -166,9 +168,9 @@ module Riddim
         same_regular_file?(before, File.lstat(path))
     end
 
-    # The file deleted must be the one whose bytes were verified: same device,
-    # same inode, still a regular file. A record replaced mid-check is
-    # retained, never deleted.
+    # At the final pre-unlink check, the pathname must still identify the
+    # opened regular file. The caller's per-name lock keeps cooperating writers
+    # from changing it after this check.
     def same_regular_file?(before, after)
       before.dev == after.dev && before.ino == after.ino && after.file?
     end
