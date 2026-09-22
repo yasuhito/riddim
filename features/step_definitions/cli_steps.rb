@@ -109,7 +109,18 @@ PROCESS_INFO_FIXTURE = <<~RUBY
       puts 'not JSON'
       exit 0
     end
-    pane = ARGV[3]
+    pane = File.exist?(File.expand_path('wrong-process-pane', __dir__)) ? 'w9:p2' : ARGV[3]
+    if File.exist?(File.expand_path('rebind-process', __dir__))
+      path = File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta')
+      lock = File.join(ENV.fetch('RIDDIM_STATE_DIR'), '.meta-worker.lock')
+      File.open(lock, File::RDWR | File::CREAT, 0o600) do |file|
+        file.flock(File::LOCK_EX)
+        bytes = File.read(path).sub('spawn_gen=s1767200000.4242.7', 'spawn_gen=s1767200001.4242.8')
+        staging = "\#{path}.replacement"
+        File.write(staging, bytes)
+        File.rename(staging, path)
+      end
+    end
     kind = if File.exist?(File.expand_path('other-pi', __dir__))
              'ruby'
            elsif File.exist?(File.expand_path('stale-pi', __dir__))
@@ -118,8 +129,9 @@ PROCESS_INFO_FIXTURE = <<~RUBY
              'pi'
            end
     foreground = { pid: Process.ppid, name: kind, argv0: kind }
+    processes = File.exist?(File.expand_path('empty-foreground', __dir__)) ? [] : [foreground]
     result = { type: 'pane_process_info', process_info: {
-      pane_id: pane, shell_pid: Process.ppid, foreground_processes: [foreground]
+      pane_id: pane, shell_pid: Process.ppid, foreground_processes: processes
     } }
     puts JSON.generate(result: result)
     exit 0

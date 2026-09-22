@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the process-evidence command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "process-state <name>"
+
   Scenario: List the foreground working-directory command
     When I run riddim with:
       """

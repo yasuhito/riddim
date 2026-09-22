@@ -161,6 +161,27 @@ absolute path; it does not start a stopped Herdr server, substitute the pane's
 `cwd` field, or claim the path owns a worktree. A changed
 ownership record also makes the observation `unknown`.
 
+### Inspect pane process evidence
+
+```sh
+bin/riddim process-state <name>
+```
+
+Reports `pi`, `shell`, or `unreadable` from the recorded pane's
+`process-info` and the OS process table, independently of Herdr's agent
+registration. This is a **Pi-only subset** of Firstmate's
+`fm_backend_herdr_pane_process_state`: `pi` requires a verified Pi foreground
+process or Pi descendant; `shell` requires a shell-only foreground with no Pi
+descendant. Unfamiliar foreground processes, missing or mismatched pane
+information, unreadable OS process data, and an ownership change during the
+read all produce `unreadable`. Firstmate additionally distinguishes `other`
+and settles transient foreground helpers; Riddim does not yet claim that state.
+
+This read explains why a registration may be stale, but `shell` **never**
+authorizes closing a pane. Firstmate explicitly refuses to close a
+stale-registration pane as a disposable husk because it may hold a nested
+worktree shell. Neither this output nor `agent-state` proves turn completion.
+
 ### Read agent status
 
 ```sh
