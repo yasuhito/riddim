@@ -198,6 +198,28 @@ now: it is **not** evidence an endpoint was destroyed and licenses no
 recovery by itself. Malformed status output and an ownership change during
 the read both stay `unknown`.
 
+### Classify a pane's composer
+
+```sh
+bin/riddim composer-state <name>
+```
+
+Classifies the recorded pane's input composer as `empty`, `pending`, or
+`unknown` from a styled viewport capture and Herdr's native identity probe -
+the pi separated-pair shape of Firstmate's shared composer classifier,
+reduced to what a Pi-only pane can draw. Any non-empty row inside the
+bottom-most separator pair is proven input; only a live Pi registration
+reporting idle/done proves `empty`, so a working pi stays `unknown` and a
+blocked pi (parked on its own prompt) refuses too. A missing or foreign
+identity, a pair wider than eight inner rows, another shape below the pair,
+failed reads, and an ownership change during the read all refuse.
+
+This read authorizes nothing by itself. It exists as the gate Firstmate's
+`exit` consumes: a composer that is not proven `empty` must never receive a
+submitted command, and `pending` means visibly unsubmitted text is sitting
+in the pane. Unlike Firstmate, Riddim classifies only the pi shape and never
+emits `pending-unproven`.
+
 ### Read agent status
 
 ```sh

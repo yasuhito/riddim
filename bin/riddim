@@ -11,7 +11,7 @@ require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 
-if %w[agent-state busy-state current-path pane-presence process-state server-state].include?(ARGV.first)
+if %w[agent-state busy-state composer-state current-path pane-presence process-state server-state].include?(ARGV.first)
   verb = ARGV.first
   unless ARGV.length == 2
     warn "Usage: riddim #{verb} <name>"
@@ -30,6 +30,7 @@ if %w[agent-state busy-state current-path pane-presence process-state server-sta
     state = case verb
             when 'agent-state' then Riddim::Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
             when 'busy-state' then Riddim::Herdr.busy_state(endpoint.pane_id, session: endpoint.session)
+            when 'composer-state' then Riddim::Herdr.composer_state(endpoint.pane_id, session: endpoint.session)
             when 'current-path' then Riddim::Herdr.current_path(endpoint.pane_id, session: endpoint.session)
             when 'process-state' then Riddim::Herdr.pi_process_state(endpoint.pane_id, session: endpoint.session)
             when 'server-state' then Riddim::Herdr.server_running_state(session: endpoint.session)
@@ -257,6 +258,7 @@ puts <<~HELP
   Commands:
     agent-state <name>          Inspect recorded Pi process (alive/dead/missing/unreadable)
     busy-state <name>           Observe Pi activity (busy/idle/unknown; not completion)
+    composer-state <name>       Classify the composer (empty/pending/unknown; gates future exit)
     current-path <name>         Read the exact pane's foreground cwd (or unknown)
     pane-presence <name>        Read exact pane presence (present/gone/unknown)
     process-state <name>        Inspect Pi/shell process evidence (pi/shell/unreadable)
