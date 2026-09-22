@@ -23,7 +23,10 @@ module Riddim
       return :gone if code == 'pane_not_found'
       return :unknown unless code.nil?
 
-      pane_verdict(pane_id, document.dig('result', 'pane'))
+      result = document['result']
+      return :unknown unless result.is_a?(Hash)
+
+      pane_verdict(pane_id, result['pane'])
     rescue JSON::ParserError
       :unparseable
     end

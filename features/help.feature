@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the process-state command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "agent-state <name>"
+
   Scenario: List the ownership inventory command
     When I run riddim with:
       """

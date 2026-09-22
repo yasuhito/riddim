@@ -11,6 +11,30 @@ require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 
+if ARGV.first == 'agent-state'
+  unless ARGV.length == 2
+    warn 'Usage: riddim agent-state <name>'
+    exit 2
+  end
+
+  name = ARGV[1]
+  unless name.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
+    exit 2
+  end
+
+  begin
+    snapshot = Riddim::Ownership::Endpoint.resolve_snapshot(name)
+    endpoint = snapshot.first
+    state = Riddim::Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
+    puts(Riddim::Ownership::Endpoint.unchanged?(name, snapshot) ? state : 'unreadable')
+  rescue Riddim::Ownership::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'list'
   unless ARGV == ['list'] || ARGV == %w[list --json]
     warn 'Usage: riddim list [--json]'
@@ -217,6 +241,7 @@ puts <<~HELP
   Usage: riddim <command>
 
   Commands:
+    agent-state <name>          Inspect recorded Pi process (alive/dead/missing/unreadable)
     list [--json]               List recorded agents and exact endpoints (not liveness)
     peek <name> [lines]         Show recent output from a started agent's recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape

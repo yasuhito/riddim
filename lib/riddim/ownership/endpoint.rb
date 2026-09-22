@@ -44,13 +44,26 @@ module Riddim
       # Resolves the ownership record of <name> into the exact Herdr endpoint
       # identities it binds.
       def resolve(name)
+        resolve_snapshot(name).first
+      end
+
+      # Capture the endpoint and its incarnation together, so an observer can
+      # discard backend evidence if ownership changes during its read.
+      def resolve_snapshot(name)
         path = Ownership.record_path(name)
         fields = parse_record(name, path)
         validate(name, path, fields)
-        Resolved.new(
+        endpoint = Resolved.new(
           fields.fetch('herdr_session'), fields.fetch('herdr_workspace_id'),
           fields.fetch('herdr_tab_id'), fields.fetch('herdr_pane_id')
         ).freeze
+        [endpoint, fields.fetch('spawn_gen')].freeze
+      end
+
+      def unchanged?(name, snapshot)
+        resolve_snapshot(name) == snapshot
+      rescue Refused
+        false
       end
 
       # Parses the record bytes at <path> with the exact published schema. A

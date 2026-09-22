@@ -3,6 +3,7 @@
 require 'json'
 require 'open3'
 
+require_relative 'herdr/agent_state'
 require_relative 'herdr/cleanup'
 require_relative 'herdr/command_failed'
 require_relative 'herdr/interrupt'

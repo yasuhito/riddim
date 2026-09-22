@@ -80,6 +80,30 @@ provide Firstmate's current crew state, endpoint presence, process liveness,
 backlog, or full `fm-fleet-snapshot.v1` schema. Use `status <name>` for the
 separate raw Herdr registration read, not as proof of process liveness.
 
+### Read an agent's process state
+
+```sh
+bin/riddim agent-state <name>
+```
+
+Reports `alive`, `dead`, `missing`, or `unreadable` for the exact recorded
+session and pane. Unlike `status`, this read corroborates Herdr registration
+with pane presence and the OS process view: `alive` requires a registered Pi
+process, and `dead` requires a present pane with no registered agent or a
+shell-only process view behind a stale Pi registration. A confirmed missing
+pane, or a recorded session whose server is positively stopped, reads
+`missing`. **Missing does not prove the endpoint was destroyed:** a stopped
+server can restore it. Unreadable and unfamiliar process states remain
+`unreadable` rather than being guessed into `dead` or `alive`. If the ownership
+record's `spawn_gen` or exact endpoint changes during observation, Riddim
+returns `unreadable` rather than attributing the old observation to a new
+incarnation.
+
+This read-only feature is narrower than Firstmate's cross-harness recovery
+classifier: another non-shell foreground process is `unreadable` here, not
+`alive`; no server is started for an absence proof. None of these words
+report turn completion or authorize removing a pane or an ownership record.
+
 ### Read agent status
 
 ```sh

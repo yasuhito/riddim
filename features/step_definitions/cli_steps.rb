@@ -110,7 +110,13 @@ PROCESS_INFO_FIXTURE = <<~RUBY
       exit 0
     end
     pane = ARGV[3]
-    kind = File.exist?(File.expand_path('stale-pi', __dir__)) ? 'zsh' : 'pi'
+    kind = if File.exist?(File.expand_path('other-pi', __dir__))
+             'ruby'
+           elsif File.exist?(File.expand_path('stale-pi', __dir__))
+             'zsh'
+           else
+             'pi'
+           end
     foreground = { pid: Process.ppid, name: kind, argv0: kind }
     result = { type: 'pane_process_info', process_info: {
       pane_id: pane, shell_pid: Process.ppid, foreground_processes: [foreground]

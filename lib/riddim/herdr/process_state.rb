@@ -5,26 +5,31 @@ module Riddim
   module Herdr
     module_function
 
-    # Registration is not process liveness. The foreground process group and
-    # descendants of the pane shell must corroborate the registered Pi. Any
-    # unreadable or unfamiliar process state refuses lifecycle input.
-    def pi_process_alive?(pane, session: nil)
+    # A positive Pi, shell-only, or unreadable process verdict. Registration
+    # alone is not process liveness; an unfamiliar foreground is never called
+    # shell-only or assumed to be Pi in this narrower adapter.
+    def pi_process_state(pane, session: nil)
       info = pane_process_info(pane, session: session)
-      return false unless valid_process_info?(info, pane)
+      return :unreadable unless valid_process_info?(info, pane)
 
       rows = process_rows
-      return false unless rows&.key?(info['shell_pid'])
+      return :unreadable unless rows&.key?(info['shell_pid'])
 
-      pi_process_in_snapshot?(info, rows)
+      classify_pi_processes(info, rows)
     rescue JSON::ParserError, TypeError, ArgumentError, SystemCallError
-      false
+      :unreadable
     end
 
-    def pi_process_in_snapshot?(info, rows)
-      foreground = info.fetch('foreground_processes')
-      return true if foreground.any? { |process| pi_foreground?(process, rows) }
+    def pi_process_alive?(pane, session: nil)
+      pi_process_state(pane, session: session) == :pi
+    end
 
-      foreground.all? { |process| shell_foreground?(process) } && descendant_pi?(rows, info.fetch('shell_pid'))
+    def classify_pi_processes(info, rows)
+      foreground = info.fetch('foreground_processes')
+      return :pi if foreground.any? { |process| pi_foreground?(process, rows) }
+      return :unreadable unless foreground.all? { |process| shell_foreground?(process, rows) }
+
+      descendant_pi?(rows, info.fetch('shell_pid')) ? :pi : :shell
     end
 
     def pane_process_info(pane, session:)
@@ -55,8 +60,8 @@ module Riddim
       pi_name?(process['name']) || pi_name?(argv0)
     end
 
-    def shell_foreground?(process)
-      return false unless process.is_a?(Hash)
+    def shell_foreground?(process, rows)
+      return false unless process.is_a?(Hash) && rows.key?(process['pid'])
 
       args = process['argv']
       argv0 = args.is_a?(Array) ? args.first : process['argv0']
