@@ -245,6 +245,16 @@ bin/riddim peek worker
 bin/riddim peek worker 100
 ```
 
+`peek <name> --visible` reads the exact pane's visible viewport instead,
+from Firstmate's `fm_backend_herdr_visible_capture`: one
+`herdr pane read <pane-id> --source visible` with no line count, because the
+viewport itself is the bound and a line count is what triggers Herdr's
+empty-read quirk. The capture is passed through whole, untrimmed.
+
+```sh
+bin/riddim peek worker --visible
+```
+
 The record is the routing authority, and it fails closed before Herdr is
 touched at all: it must be a regular file at `state/<name>.meta` - never a
 symbolic link - it must contain each required ownership field exactly once

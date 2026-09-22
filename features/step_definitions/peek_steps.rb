@@ -27,6 +27,12 @@ Then('standard output is the final {int} lines of the pane read') do |count|
   assert_equal "#{expected.join("\n")}\n", @stdout
 end
 
+Then('standard output is the whole pane read') do
+  expected = (1..250).map { |number| format('pane-%03d', number) }
+
+  assert_equal "#{expected.join("\n")}\n", @stdout
+end
+
 Then('the missing record refusal is explained for {string}') do |name|
   assert_equal "riddim: no endpoint record exists at #{scenario_record_path(name)}\n", @stderr
 end

@@ -179,7 +179,7 @@ end
 
 if ARGV.first == 'peek'
   unless (2..3).cover?(ARGV.length)
-    warn 'Usage: riddim peek <name> [lines]'
+    warn 'Usage: riddim peek <name> [lines|--visible]'
     exit 2
   end
 
@@ -189,11 +189,12 @@ if ARGV.first == 'peek'
     exit 2
   end
 
-  lines = ARGV[2] || '40'
-  unless lines.match?(/\A[1-9]\d*\z/)
+  visible = ARGV.length == 3 && ARGV[2] == '--visible'
+  unless visible || ARGV[2].nil? || ARGV[2].match?(/\A[1-9]\d*\z/)
     warn 'riddim: lines must be a positive integer'
     exit 2
   end
+  lines = visible ? nil : (ARGV[2] || '40')
 
   # The endpoint ownership record is the routing authority: it is resolved
   # and validated first, failing closed before Herdr is touched at all, and
@@ -207,7 +208,11 @@ if ARGV.first == 'peek'
   end
 
   begin
-    print Riddim::Herdr.pane_tail(session: endpoint.session, pane_id: endpoint.pane_id, lines: lines.to_i)
+    if visible
+      print Riddim::Herdr.pane_visible(session: endpoint.session, pane_id: endpoint.pane_id)
+    else
+      print Riddim::Herdr.pane_tail(session: endpoint.session, pane_id: endpoint.pane_id, lines: lines.to_i)
+    end
   rescue Riddim::Herdr::CommandFailed => e
     $stdout.write(e.stdout)
     $stderr.write(e.stderr)
@@ -257,7 +262,8 @@ puts <<~HELP
     process-state <name>        Inspect Pi/shell process evidence (pi/shell/unreadable)
     server-state <name>         Read the recorded session's server state (running/stopped/unknown)
     list [--json]               List recorded agents and exact endpoints (not liveness)
-    peek <name> [lines]         Show recent output from a started agent's recorded pane
+    peek <name> [lines|--visible]
+                            Show recent output or the visible viewport of a recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane
     start <name>                Start a background Pi agent

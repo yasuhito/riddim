@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 module Riddim
-  # The pane-tail read surface of Riddim::Herdr, kept apart from the
+  # The pane-read surface of Riddim::Herdr, kept apart from the
   # agent-and-workspace surface in herdr.rb: Firstmate's Herdr pane capture,
-  # reduced to what Riddim owns. One session-targeted read of one exact
-  # pane's recent output, trimmed locally to the requested tail. It is a
-  # plain pane read - never `agent read`, and never an unwrapped source - and
-  # Herdr's own failure is preserved for the caller.
+  # reduced to what Riddim owns. Two session-targeted reads of one exact
+  # pane - its recent output, trimmed locally to the requested tail, and its
+  # visible viewport, passed through whole. Both are plain pane reads - never
+  # `agent read`, and never an unwrapped source - and Herdr's own failure is
+  # preserved for the caller.
   module Herdr
     # The smallest recent pane read Herdr can be trusted to answer: a bound
     # below the pane's viewport height makes `pane read --lines N` return
@@ -44,6 +45,18 @@ module Riddim
     # and a capture shorter than the bound is passed through whole.
     def tail(output, count)
       output.lines.last(count).join
+    end
+
+    # Firstmate's fm_backend_herdr_visible_capture, reduced to what Riddim
+    # owns: one session-targeted read of one exact pane's visible viewport,
+    # passed through whole. The visible source is bounded by the pane itself,
+    # so no --lines argument is sent: a line count is exactly what triggers
+    # Herdr's small-N empty-read quirk, and viewport-bound reads take none.
+    def pane_visible(session:, pane_id:)
+      stdout, stderr, status = capture('pane', 'read', pane_id, '--source', 'visible', session: session)
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
+
+      stdout
     end
   end
 end

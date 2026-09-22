@@ -82,7 +82,7 @@ Feature: Discover available commands
     When I run riddim with:
       """
       """
-    Then standard output includes "peek <name> [lines]"
+    Then standard output includes "peek <name> [lines|--visible]"
 
   Scenario: Exit successfully when showing help for peek
     When I run riddim with:

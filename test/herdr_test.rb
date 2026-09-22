@@ -226,18 +226,35 @@ class HerdrPaneTailTest < Minitest::Test
   end
 end
 
-class HerdrServerRunningStateTest < Minitest::Test
-  CaptureStatus = Struct.new(:exitstatus) do
-    def success?
-      exitstatus.zero?
-    end
+# One fake capture status for tests that stub Riddim::Herdr.capture.
+HerdrCaptureStatus = Struct.new(:exitstatus) do
+  def success?
+    exitstatus.zero?
   end
 
-  def with_status(stdout, success: true)
-    Riddim::Herdr.singleton_class.send(:define_method, :capture) { |*| [stdout, '', CaptureStatus.new(success ? 0 : 7)] }
+  def termsig
+    nil
+  end
+end
+
+# Replaces Riddim::Herdr.capture with a canned response for one test and
+# restores the real subprocess capture afterwards.
+module HerdrCaptureStub
+  def with_capture(stdout, success: true)
+    Riddim::Herdr.singleton_class.send(:define_method, :capture) do |*|
+      [stdout, '', HerdrCaptureStatus.new(success ? 0 : 7)]
+    end
     yield
   ensure
     Riddim::Herdr.singleton_class.send(:remove_method, :capture)
+  end
+end
+
+class HerdrServerRunningStateTest < Minitest::Test
+  include HerdrCaptureStub
+
+  def with_status(stdout, success: true, &)
+    with_capture(stdout, success: success, &)
   end
 
   def test_reports_a_running_server
@@ -273,6 +290,22 @@ class HerdrServerRunningStateTest < Minitest::Test
   def test_reports_unknown_for_a_failed_status_read
     with_status('{"server":{"running":false}}', success: false) do
       assert_equal :unknown, Riddim::Herdr.server_running_state(session: 'riddim')
+    end
+  end
+end
+
+class HerdrPaneVisibleTest < Minitest::Test
+  include HerdrCaptureStub
+
+  def test_returns_the_visible_capture_whole
+    with_capture("viewport body\n") do
+      assert_equal "viewport body\n", Riddim::Herdr.pane_visible(session: 'riddim', pane_id: 'w9:p1')
+    end
+  end
+
+  def test_raises_command_failed_when_herdr_fails
+    with_capture('', success: false) do
+      assert_raises(Riddim::Herdr::CommandFailed) { Riddim::Herdr.pane_visible(session: 'riddim', pane_id: 'w9:p1') }
     end
   end
 end

@@ -46,6 +46,60 @@ Feature: Read a started agent's recent output
         """
       Then standard error is empty
 
+  Rule: The visible viewport is captured exactly
+
+    Background:
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And a Herdr executable that answers a pane read with 250 lines
+
+    Scenario: Read the visible source without a line count
+      When I run riddim with:
+        """
+        peek worker --visible
+        """
+      Then Herdr is invoked with "--session riddim pane read w9:p1 --source visible"
+
+    Scenario: Pass the visible capture through whole
+      When I run riddim with:
+        """
+        peek worker --visible
+        """
+      Then standard output is the whole pane read
+
+    Scenario: Preserve Herdr's failure for the visible read
+      Given Herdr fails the pane read with status 17 and error "herdr: pane not found"
+      When I run riddim with:
+        """
+        peek worker --visible
+        """
+      Then the command exits with status 17
+
+  Rule: A line count and --visible are mutually exclusive
+
+    Background:
+      Given a fake Herdr executable
+
+    Scenario: Reject a line count after the flag
+      When I run riddim with:
+        """
+        peek worker --visible 5
+        """
+      Then the command exits with status 2
+
+    Scenario: Explain the accepted arguments
+      When I run riddim with:
+        """
+        peek worker --visible 5
+        """
+      Then standard error is "Usage: riddim peek <name> [lines|--visible]"
+
+    Scenario: Read no pane when the flag is misplaced
+      When I run riddim with:
+        """
+        peek --visible worker
+        """
+      Then the command exits with status 2
+
   Rule: Forty lines are read by default
 
     Background:
@@ -241,7 +295,7 @@ Feature: Read a started agent's recent output
         """
         peek
         """
-      Then standard error is "Usage: riddim peek <name> [lines]"
+      Then standard error is "Usage: riddim peek <name> [lines|--visible]"
 
     Scenario: Reject extra arguments
       When I run riddim with:
@@ -255,7 +309,7 @@ Feature: Read a started agent's recent output
         """
         peek worker 5 extra
         """
-      Then standard error is "Usage: riddim peek <name> [lines]"
+      Then standard error is "Usage: riddim peek <name> [lines|--visible]"
 
   Rule: The name must name a started agent
 
