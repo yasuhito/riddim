@@ -242,6 +242,14 @@ Feature: Start a background Pi agent
         """
       Then Herdr never creates a workspace
 
+    Scenario: Refuse a prerelease that does not guarantee the focus fix
+      Given the Herdr client reports version "0.8.0-rc1"
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr never creates a workspace
+
   Rule: An older running Herdr server is refused before endpoint creation
 
     Background:

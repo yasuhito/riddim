@@ -40,9 +40,9 @@ module Riddim
     end
 
     def supported_release?(value)
-      return false unless value.is_a?(String) && value.match?(/\A\d+\.\d+\.\d+(?:[-+].*)?\z/)
+      return false unless value.is_a?(String) && value.match?(/\A\d+\.\d+\.\d+(?:\+[A-Za-z0-9.-]+)?\z/)
 
-      (value.split(/[.\-+]/).first(3).map(&:to_i) <=> [0, 8, 0]) >= 0
+      (value.split(/[.+]/).first(3).map(&:to_i) <=> [0, 8, 0]) >= 0
     end
   end
 end
