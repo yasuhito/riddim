@@ -25,13 +25,26 @@ Given('the Herdr session is {string}') do |session|
   @environment = (@environment || {}).merge('HERDR_SESSION' => session)
 end
 
-When('I run riddim with:') do |arguments|
-  # One resolved session per run: an ambient HERDR_SESSION is stripped so
-  # Riddim targets Herdr's default session unless the scenario names one.
+# Runs bin/riddim once against this scenario's child environment: one
+# resolved session per run (an ambient HERDR_SESSION is stripped so Riddim
+# targets Herdr's default session unless the scenario names one), plus the
+# scenario's own environment values.
+def run_riddim(*)
   environment = { 'HERDR_SESSION' => nil }.merge(@environment || {})
   Bundler.with_unbundled_env do
-    @stdout, @stderr, @status = Open3.capture3(environment, RiddimWorld::RIDDIM, *Shellwords.split(arguments))
+    Open3.capture3(environment, RiddimWorld::RIDDIM, *)
   end
+end
+
+When('I run riddim with:') do |arguments|
+  @stdout, @stderr, @status = run_riddim(*Shellwords.split(arguments))
+end
+
+# Launches two same-name start processes at once, so the per-name lock, not
+# scheduling, decides which one publishes its record.
+When('I run two riddim starts of {string} at the same time') do |name|
+  threads = Array.new(2) { Thread.new { run_riddim('start', name) } }
+  @concurrent_starts = threads.map(&:value)
 end
 
 Then('Herdr receives {string}') do |invocation|

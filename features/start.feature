@@ -267,6 +267,212 @@ Feature: Start a background Pi agent
         """
       Then Herdr creates a workspace and starts the agent in session "lab"
 
+  Rule: A started agent publishes an exact endpoint ownership record
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and starts the agent
+
+    Scenario: Publish the exact ownership record bytes
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" is:
+        """
+        window=default:w9:p1
+        endpoint_task_id=worker
+        harness=pi
+        model=openrouter/z-ai/glm-5.3-flash
+        effort=max
+        spawn_gen=<spawn_gen>
+        backend=herdr
+        herdr_session=default
+        herdr_workspace_id=w9
+        herdr_tab_id=w9:t1
+        herdr_pane_id=w9:p1
+        """
+
+    Scenario: Record the named session's window identity
+      Given the Herdr session is "lab"
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" is:
+        """
+        window=lab:w9:p1
+        endpoint_task_id=worker
+        harness=pi
+        model=openrouter/z-ai/glm-5.3-flash
+        effort=max
+        spawn_gen=<spawn_gen>
+        backend=herdr
+        herdr_session=lab
+        herdr_workspace_id=w9
+        herdr_tab_id=w9:t1
+        herdr_pane_id=w9:p1
+        """
+
+    Scenario: Record a fresh spawn generation
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" records a fresh spawn generation
+
+    Scenario: Keep the state directory owner-only
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the state directory is readable only by its owner
+
+    Scenario: Keep the record owner-only
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" is readable only by its owner
+
+    Scenario: Leave no temporary files beside the record
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then only the record and its per-name lock remain in the state directory
+
+  Rule: An existing endpoint record refuses a duplicate start before Herdr is invoked
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And a Herdr executable that refuses every invocation
+      And an existing endpoint record for "worker" that is not a record
+
+    Scenario: Refuse the duplicate start
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the command exits with status 1
+
+    Scenario: Explain the duplicate refusal
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the duplicate endpoint record refusal is explained for "worker"
+
+    Scenario: Invoke no Herdr command
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Leave the existing record untouched
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" still is:
+        """
+        spawn_gen=s1
+        not a record
+        """
+
+  Rule: The record is published before the agent starts
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and refuses to start an agent before its record exists
+
+    Scenario: Start the agent only after the record is published
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the command succeeds
+
+  Rule: A failed record publication rolls back the created endpoint
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" but another writer claims the record during creation
+
+    Scenario: Refuse with Riddim's own failure status
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the command exits with status 1
+
+    Scenario: Explain the refusal and the confirmed cleanup
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the publication refusal and the confirmed cleanup are reported for "worker"
+
+    Scenario: Close and re-read the created pane without starting an agent
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr creates only the workspace and then closes and re-reads pane "w9:p1"
+
+    Scenario: Leave the other writer's record untouched
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" still is:
+        """
+        claimed by another writer
+        """
+
+  Rule: A failed record publication reports unconfirmed cleanup honestly
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" but another writer claims the record during creation and closes panes with status 7
+
+    Scenario: Refuse with Riddim's own failure status
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the command exits with status 1
+
+    Scenario: Report the unconfirmed cleanup without claiming it
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the publication refusal and the unconfirmed cleanup are reported for "worker"
+
+    Scenario: Read the pane only after a successful close
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr closes the created pane "w9:p1" without a follow-up pane read
+
   Rule: An invalid create response is rejected
 
     Background:
@@ -307,6 +513,17 @@ Feature: Start a background Pi agent
         start worker
         """
       Then Herdr never starts an agent
+
+    Scenario: Publish no record after a malformed response
+      Given Herdr replies to the workspace create with:
+        """
+        not JSON
+        """
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" does not exist
 
     Scenario: Reject a create response without a root pane
       Given Herdr replies to the workspace create with:
@@ -404,7 +621,14 @@ Feature: Start a background Pi agent
         """
       Then Herdr never starts an agent
 
-  Rule: A failed agent start rolls back the created pane
+    Scenario: Publish no record
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" does not exist
+
+  Rule: A failed agent start closes the created pane and removes the record when cleanup is confirmed
 
     Background:
       Given a config directory with agent profile:
@@ -434,25 +658,153 @@ Feature: Start a background Pi agent
         """
       Then standard output is empty
 
-    Scenario: Close only the created root pane
+    Scenario: Close and re-read only the created root pane
       When I run riddim with:
         """
         start worker
         """
-      Then Herdr closes only pane "w9:p1"
+      Then Herdr closes and re-reads only pane "w9:p1"
 
-    Scenario: Close the created pane through a named session
+    Scenario: Re-read the created pane through a named session
       Given the Herdr session is "lab"
       When I run riddim with:
         """
         start worker
         """
-      Then Herdr closes only pane "w9:p1" in session "lab"
+      Then Herdr closes and re-reads only pane "w9:p1" in session "lab"
 
-    Scenario: A failed rollback does not mask the start failure
-      Given Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and closes panes with status 7
+    Scenario: Remove the endpoint record after the confirmed close
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" does not exist
+
+  Rule: A close that fails retains the endpoint record
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and closes panes with status 7
+
+    Scenario: Preserve Herdr's exit status
       When I run riddim with:
         """
         start worker
         """
       Then the command exits with status 19
+
+    Scenario: Preserve Herdr's error
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then standard error includes "herdr: agent not ready"
+
+    Scenario: Report the retained record without masking Herdr's failure
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr's failure and the retained record are reported for "worker"
+
+    Scenario: Retain the endpoint record
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" remains
+
+    Scenario: Issue only the close when it fails
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr closes pane "w9:p1" without a follow-up pane read
+
+  Rule: A pane that survives the close retains the endpoint record
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and leaves the pane present
+
+    Scenario: Retain the record while the pane still exists
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" remains
+
+    Scenario: Read the pane once after the close
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr closes and re-reads only pane "w9:p1"
+
+  Rule: A Herdr executable that vanishes after publication retains the record
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and then disappears
+
+    Scenario: Refuse with Riddim's own failure status
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the command exits with status 1
+
+    Scenario: Retain the endpoint record
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" remains
+
+    Scenario: Report the retained record
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the unlaunchable Herdr failure and the retained record are reported for "worker"
+
+    Scenario: Issue no pane cleanup without a Herdr executable
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr closes no pane without a Herdr executable
+
+  Rule: Two same-name starts serialize on the per-name lock
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and starts the agent
+
+    Scenario: Succeed exactly once
+      When I run two riddim starts of "worker" at the same time
+      Then exactly one of the two starts succeeds
+
+    Scenario: Refuse the losing start as a duplicate
+      When I run two riddim starts of "worker" at the same time
+      Then the losing start refuses the duplicate for "worker"
+
+    Scenario: Create exactly one workspace
+      When I run two riddim starts of "worker" at the same time
+      Then Herdr creates the workspace exactly once
+
+    Scenario: Start exactly one agent
+      When I run two riddim starts of "worker" at the same time
+      Then Herdr starts exactly one agent

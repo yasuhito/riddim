@@ -37,10 +37,24 @@ module RiddimWorld
     value = @environment && @environment['HERDR_SESSION']
     value.is_a?(String) && !value.empty? ? value : 'default'
   end
+
+  # The scenario's isolated state directory, set for every scenario so tests
+  # never read or write the repository's own state/ records.
+  def scenario_state_dir
+    @environment.fetch('RIDDIM_STATE_DIR')
+  end
+
+  # The endpoint ownership record path for one agent name.
+  def scenario_record_path(name)
+    File.join(scenario_state_dir, "#{name}.meta")
+  end
 end
 
 # Appends one line per Herdr invocation to a log beside the fake executable.
-LOG_INVOCATION = "File.open(File.expand_path('invocations', __dir__), 'a') { |file| file.puts ARGV.join(' ') }"
+# One write call per invocation keeps concurrent processes' lines whole.
+LOG_INVOCATION = <<~'RUBY'.strip
+  File.open(File.expand_path('invocations', __dir__), 'a') { |file| file.write(ARGV.join(' ') + "\n") }
+RUBY
 
 # Refuses any invocation that is not session-targeted: HERDR_SESSION must be
 # set in the subprocess environment and an explicit --session argument naming
@@ -60,6 +74,9 @@ World(RiddimWorld)
 
 Before do
   @temporary_directories = []
+  # Every scenario resolves its state in an isolated directory, so no test
+  # ever reads or writes the repository's own state/ records.
+  @environment = { 'RIDDIM_STATE_DIR' => File.join(new_temporary_directory, 'state') }
 end
 
 After do

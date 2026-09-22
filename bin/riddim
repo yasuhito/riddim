@@ -3,6 +3,7 @@
 
 require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/profile'
+require_relative '../lib/riddim/start'
 
 if ARGV.first == 'send'
   # Firstmate has no synchronous turn-wait send, so Riddim does not carry
@@ -114,31 +115,11 @@ if ARGV.first == 'start'
     exit 1
   end
 
-  begin
-    workspace = Riddim::Herdr.create_workspace(cwd: Dir.pwd, label: "riddim-#{name}")
-  rescue Riddim::Herdr::CommandFailed => e
-    $stdout.write(e.stdout)
-    $stderr.write(e.stderr)
-    exit e.exitstatus
-  rescue Riddim::Herdr::InvalidResponse => e
-    warn "riddim: invalid Herdr workspace JSON: #{e.message}"
-    exit 1
-  end
-
-  begin
-    Riddim::Herdr.start_agent(
-      name: name,
-      pane_id: workspace.root_pane_id,
-      model: profile.model,
-      effort: profile.effort
-    )
-  rescue Riddim::Herdr::CommandFailed => e
-    $stdout.write(e.stdout)
-    $stderr.write(e.stderr)
-    exit e.exitstatus
-  end
-
-  puts "started #{name} in #{workspace.root_pane_id}"
+  # Firstmate's spawn sequence, reduced to what Riddim owns: the per-name
+  # record lock from duplicate preflight through launch result, duplicate
+  # refusal before Herdr is touched at all, then create the exact endpoint,
+  # publish the authoritative record, and start the agent.
+  Riddim::Start.run(name, profile)
   exit
 end
 

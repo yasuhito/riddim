@@ -7,7 +7,8 @@ in a smaller, Herdr-focused tool.
 
 Riddim currently lets you inspect Herdr's agent registration status, read recent
 agent output, send an agent a prompt, interrupt a Pi agent with one Escape and
-an honest post-delivery report, and start a background Pi agent. It keeps its
+an honest post-delivery report, and start a background Pi agent whose endpoint
+ownership it records, Firstmate-style, before the agent runs. It keeps its
 runtime small and uses Ruby's standard library.
 
 ## Requirements
@@ -144,9 +145,70 @@ Copy `config/agent-profile.example` to create your own; the real
 `config/agent-profile` is gitignored. Set `RIDDIM_CONFIG_DIR` to read the
 profile from another directory.
 
-The agent is started with `--model <model> --thinking <effort>`. If the start
-fails, Riddim closes the created root pane again and preserves Herdr's failure
-output and exit status.
+The agent is started with `--model <model> --thinking <effort>`.
+
+#### Endpoint ownership record
+
+Before the agent starts, `start` publishes an endpoint ownership record for
+the name, shaped like Firstmate's `state/<id>.meta` task records: plain
+`key=value` lines, not JSON, in Firstmate's field order:
+
+```text
+window=<session>:<pane-id>
+endpoint_task_id=<name>
+harness=pi
+model=<model>
+effort=<effort>
+spawn_gen=<spawn-generation>
+backend=herdr
+herdr_session=<session>
+herdr_workspace_id=<workspace-id>
+herdr_tab_id=<tab-id>
+herdr_pane_id=<pane-id>
+```
+
+`window` and the four `herdr_` fields carry Herdr's exact response-derived
+ids for the created endpoint; a Herdr pane id contains a colon, so
+`window=` splits on the first colon only. The records live in `state/`
+inside the repository, or in the directory named by a nonempty
+`RIDDIM_STATE_DIR`. Riddim creates that directory with owner-only
+permissions and keeps every record the same way: the complete record is
+fully written to a `0600` temp file in the same directory and then linked
+into place - an atomic no-replace operation, so a reader never sees a
+partial record and an existing record is never overwritten, even by a
+writer that ignores the lock. Riddim records only the fields it owns -
+there is no `kind`, `worktree`, or `project` value, because Riddim manages
+none of those.
+
+The record makes the name owned. `start` holds one per-name lock
+(`.meta-<name>.lock` in the state directory) from a duplicate preflight
+through the launch result, and refuses any existing record - even a
+malformed or unreadable one - before it invokes Herdr at all. Two concurrent
+starts of the same name serialize on the lock, and the loser refuses.
+
+#### Confirmed pane cleanup
+
+`start` follows Firstmate's spawn order: create the exact Herdr endpoint,
+publish the authoritative record, then start the agent. `Herdr.start_agent`
+performs no rollback of its own; the start flow owns every cleanup decision:
+
+- If the record cannot be published after the workspace was created, Riddim
+  issues one close of the exact root pane and then a `pane get` of the same
+  pane, and reports the exact session, workspace, tab, and pane ids. Cleanup
+  is claimed only when Herdr's structured `pane_not_found` response confirms
+  the pane is gone.
+- If the agent start fails, Riddim issues the same one close and one `pane
+  get`, preserves Herdr's output and exit status unchanged, and removes the
+  record only after the pane is confirmed gone and only while the record
+  still carries the spawn generation this start minted. Under the same
+  per-name lock, Riddim opens no symbolic links and removes only a regular
+  file whose device and inode still match the bytes just verified.
+- If the close fails, the pane's absence cannot be confirmed, or the Herdr
+  executable itself becomes unavailable, the record is retained and Riddim
+  reports that exactly, naming the record path and the endpoint ids,
+  instead of claiming a cleanup it did not verify.
+
+The cleanup is pane-scoped by construction: Riddim never closes a workspace.
 
 ## Development
 

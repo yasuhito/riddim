@@ -3,6 +3,7 @@
 require 'json'
 require 'open3'
 
+require_relative 'herdr/cleanup'
 require_relative 'herdr/interrupt'
 
 module Riddim
@@ -135,22 +136,16 @@ module Riddim
       tab['workspace_id'] == workspace_id && pane['workspace_id'] == workspace_id && pane['tab_id'] == tab_id
     end
 
+    # Starts the agent in the exact pane and raises CommandFailed on failure.
+    # Performs no rollback of its own: the caller owns the published endpoint
+    # record and the cleanup decisions, so a hidden best-effort close can
+    # never race the record's retention rules.
     def start_agent(name:, pane_id:, model:, effort:)
       stdout, stderr, status = capture(
         'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
         '--', '--model', model, '--thinking', effort
       )
-      return if status.success?
-
-      close_pane(pane_id)
-      raise CommandFailed.new(stdout, stderr, status.exitstatus)
-    end
-
-    # Best-effort rollback: never raises, so it cannot mask the start failure.
-    def close_pane(pane_id)
-      capture('pane', 'close', pane_id)
-    rescue StandardError
-      nil
+      raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
     end
 
     # The non-empty string value of one Herdr response field, or nil.

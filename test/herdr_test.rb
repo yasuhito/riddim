@@ -85,6 +85,38 @@ class HerdrWorkspaceParsingTest < Minitest::Test
   end
 end
 
+class HerdrPanePresenceTest < Minitest::Test
+  PANE_ID = 'w9:p1'
+
+  def test_reads_gone_from_the_structured_pane_not_found_error
+    assert_equal :gone, Riddim::Herdr.pane_presence(PANE_ID, '{"error":{"code":"pane_not_found"}}', '')
+  end
+
+  def test_reads_gone_from_stderr_when_stdout_is_unparseable
+    assert_equal :gone, Riddim::Herdr.pane_presence(PANE_ID, 'noise', '{"error":{"code":"pane_not_found"}}')
+  end
+
+  def test_reads_present_from_a_response_naming_the_pane
+    assert_equal :present, Riddim::Herdr.pane_presence(PANE_ID, '{"result":{"pane":{"pane_id":"w9:p1"}}}', '')
+  end
+
+  def test_reads_unknown_from_another_error_code
+    assert_equal :unknown, Riddim::Herdr.pane_presence(PANE_ID, '{"error":{"code":"server_unavailable"}}', '')
+  end
+
+  def test_reads_unknown_from_a_response_naming_another_pane
+    assert_equal :unknown, Riddim::Herdr.pane_presence(PANE_ID, '{"result":{"pane":{"pane_id":"w8:p2"}}}', '')
+  end
+
+  def test_reads_unknown_when_neither_stream_is_json
+    assert_equal :unknown, Riddim::Herdr.pane_presence(PANE_ID, 'no', 'also no')
+  end
+
+  def test_reports_unparseable_for_a_non_json_body
+    assert_equal :unparseable, Riddim::Herdr.classify_pane_body(PANE_ID, 'not JSON')
+  end
+end
+
 class HerdrInterruptParsingTest < Minitest::Test
   def test_returns_the_exact_pane_of_a_pi_agent
     agent = { 'agent' => 'pi', 'agent_status' => 'working', 'pane_id' => 'w9:p1' }
