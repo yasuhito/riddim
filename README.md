@@ -6,8 +6,9 @@ the parts of [Firstmate](https://github.com/kunchenguid/firstmate) that are usef
 in a smaller, Herdr-focused tool.
 
 Riddim currently lets you inspect agent status, read recent agent output, send
-an agent a prompt, and start a background Pi agent. It keeps its runtime small
-and uses Ruby's standard library.
+an agent a prompt (optionally waiting until the agent is idle, done, or
+blocked), and start a background Pi agent. It keeps its runtime small and uses
+Ruby's standard library.
 
 ## Requirements
 
@@ -63,6 +64,38 @@ agent.
 ```sh
 bin/riddim send pi Fix the failing tests
 ```
+
+### Send a prompt and wait
+
+```sh
+bin/riddim send --wait <target> <message...>
+```
+
+`--wait` is recognized only as the first argument after `send`; a later literal
+`--wait` stays message text. In wait mode Riddim delegates atomically to
+`herdr agent prompt <target> <message> --wait` rather than polling the agent
+itself. A confirmed submit alone proves only that Herdr accepted the text -
+the agent needs a beat to enter activity before its busy state shows, so an
+immediate status poll would race the idle-to-working transition. Delegating
+lets Herdr submit the prompt and observe the agent's state in one process.
+
+The wait follows Herdr's contract exactly: when submission starts from a
+non-working state, Herdr requires an observed `working` or `blocked` state
+after the submission (otherwise it fails with `agent_prompt_stalled`) and then
+finishes on its default terminal match: `idle`, `done`, or `blocked`. Herdr
+does not track turns: if the agent is already `working` when the prompt is
+submitted, the pre-existing active turn's completion may satisfy the wait, so
+`--wait` is not a per-turn completion guarantee.
+
+This keeps Firstmate's distinction between confirmed delivery and reply
+completion: `--wait` confirms delivery plus the agent's next settled state.
+It never confirms a reply - a successful `--wait` does not mean the agent
+produced a semantically valid answer. Read what the agent answered separately,
+for example with `bin/riddim peek`.
+
+Herdr's output and exit status pass through unchanged, including its wait
+failures, such as a submission rejected for an already blocked agent or a
+prompt that stalled before activity was observed.
 
 ### Start a background Pi agent
 

@@ -5,18 +5,36 @@ require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/profile'
 
 if ARGV.first == 'send'
-  unless ARGV.length >= 3
-    warn 'Usage: riddim send <target> <message...>'
+  # --wait is a mode flag only as the first argument after send; a later
+  # --wait stays message text. Wait mode delegates to Herdr's own --wait so
+  # submission and state observation happen in one process: a separate wait
+  # poll would race the idle-to-working transition that follows a confirmed
+  # submit. Herdr's contract: from a non-working state it requires a
+  # post-submission working or blocked observation (agent_prompt_stalled
+  # otherwise), then matches idle, done, or blocked; when the agent is
+  # already working, that active turn's completion may match, so --wait is
+  # not a per-turn completion guarantee. exec preserves Herdr's output and
+  # exit status.
+  wait_mode = ARGV[1] == '--wait'
+  rest = wait_mode ? ARGV.drop(2) : ARGV.drop(1)
+  usage = wait_mode ? 'Usage: riddim send --wait <target> <message...>' : 'Usage: riddim send <target> <message...>'
+
+  unless rest.length >= 2
+    warn usage
     exit 2
   end
 
-  message = ARGV.drop(2).join(' ')
+  message = rest.drop(1).join(' ')
   if message.strip.empty?
     warn 'riddim: message must not be blank'
     exit 2
   end
 
-  exec 'herdr', 'agent', 'prompt', ARGV[1], message
+  if wait_mode
+    exec 'herdr', 'agent', 'prompt', rest[0], message, '--wait'
+  else
+    exec 'herdr', 'agent', 'prompt', rest[0], message
+  end
 end
 
 if ARGV.first == 'status'
@@ -109,6 +127,9 @@ puts <<~HELP
   Commands:
     peek <target> [lines]       Show recent output from a Herdr agent
     send <target> <message...>  Prompt a Herdr agent
+    send --wait <target> <message...>
+                                Prompt a Herdr agent and wait until the
+                                agent is idle, done, or blocked
     start <name>                Start a background Pi agent
     status <target>             Show a Herdr agent's status
 HELP

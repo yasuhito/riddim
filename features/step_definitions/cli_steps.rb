@@ -21,6 +21,14 @@ Given('Herdr fails with status {int} and error {string}') do |status, error|
   RUBY
 end
 
+Given('Herdr fails to prompt with status {int} and error {string}') do |status, error|
+  install_fake_herdr(<<~RUBY)
+    abort "unexpected arguments: \#{ARGV.join(' ')}" unless ARGV[0, 2] == %w[agent prompt]
+    warn #{error.dump}
+    exit #{status}
+  RUBY
+end
+
 When('I run riddim with:') do |arguments|
   environment = @environment || {}
   Bundler.with_unbundled_env do
