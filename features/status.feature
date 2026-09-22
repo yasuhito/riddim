@@ -128,3 +128,28 @@ Feature: Read an agent's status
         status pi
         """
       Then standard error is "riddim: invalid Herdr agent JSON: expected result.agent.agent_status to be idle, working, blocked, done, or unknown"
+
+  Rule: The agent is read in the resolved session
+
+    Scenario: Read the agent through a named session
+      Given the Herdr session is "lab"
+      And Herdr returns agent JSON:
+        """
+        {"id":"cli:agent:get","result":{"type":"agent_info","agent":{"agent":"pi","agent_status":"working"}}}
+        """
+      When I run riddim with:
+        """
+        status pi
+        """
+      Then Herdr is invoked with "--session lab agent get pi"
+
+    Scenario: Read the agent through the default session
+      Given Herdr returns agent JSON:
+        """
+        {"id":"cli:agent:get","result":{"type":"agent_info","agent":{"agent":"pi","agent_status":"working"}}}
+        """
+      When I run riddim with:
+        """
+        status pi
+        """
+      Then Herdr is invoked with "--session default agent get pi"

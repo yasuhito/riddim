@@ -25,6 +25,17 @@ Run Riddim without arguments to see its commands:
 bin/riddim
 ```
 
+### Session targeting
+
+Every Herdr subprocess Riddim launches targets one Herdr session: the
+nonempty `HERDR_SESSION` value from Riddim's environment, otherwise Herdr's
+`default` session. Each subprocess receives that session twice: as its
+`HERDR_SESSION` environment variable and as an explicit `--session <session>`
+global flag placed ahead of the subcommand. The explicit flag routes the call
+exactly, even when another Herdr server is running on the same machine, and
+stays valid ahead of commands such as `agent start`, whose `--` passthrough
+tail must reach the agent's own arguments untouched.
+
 ### Read agent status
 
 ```sh

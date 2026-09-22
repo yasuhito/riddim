@@ -14,7 +14,9 @@ if ARGV.first == 'send'
   # otherwise), then matches idle, done, or blocked; when the agent is
   # already working, that active turn's completion may match, so --wait is
   # not a per-turn completion guarantee. exec preserves Herdr's output and
-  # exit status.
+  # exit status; Riddim::Herdr targets the resolved session on both the
+  # subprocess environment and an explicit --session flag ahead of the
+  # subcommand.
   wait_mode = ARGV[1] == '--wait'
   rest = wait_mode ? ARGV.drop(2) : ARGV.drop(1)
   usage = wait_mode ? 'Usage: riddim send --wait <target> <message...>' : 'Usage: riddim send <target> <message...>'
@@ -31,9 +33,9 @@ if ARGV.first == 'send'
   end
 
   if wait_mode
-    exec 'herdr', 'agent', 'prompt', rest[0], message, '--wait'
+    Riddim::Herdr.exec('agent', 'prompt', rest[0], message, '--wait')
   else
-    exec 'herdr', 'agent', 'prompt', rest[0], message
+    Riddim::Herdr.exec('agent', 'prompt', rest[0], message)
   end
 end
 
@@ -95,7 +97,7 @@ if ARGV.first == 'peek'
     exit 2
   end
 
-  exec 'herdr', 'agent', 'read', ARGV[1], '--source', 'recent-unwrapped', '--lines', lines
+  Riddim::Herdr.exec('agent', 'read', ARGV[1], '--source', 'recent-unwrapped', '--lines', lines)
 end
 
 if ARGV.first == 'start'

@@ -10,7 +10,7 @@ Feature: Send a message to an agent
         """
         send pi Fix the tests
         """
-      Then Herdr receives "agent prompt pi Fix the tests"
+      Then Herdr receives "--session default agent prompt pi Fix the tests"
 
     Scenario: Exit successfully
       When I run riddim with:
@@ -36,7 +36,7 @@ Feature: Send a message to an agent
         """
         send --wait pi Fix the tests
         """
-      Then Herdr receives "agent prompt pi Fix the tests --wait"
+      Then Herdr receives "--session default agent prompt pi Fix the tests --wait"
 
     Scenario: Exit successfully when Herdr reaches a terminal state
       When I run riddim with:
@@ -62,14 +62,34 @@ Feature: Send a message to an agent
         """
         send pi try --wait
         """
-      Then Herdr receives "agent prompt pi try --wait"
+      Then Herdr receives "--session default agent prompt pi try --wait"
 
     Scenario: Keep a later wait flag in a wait-mode message
       When I run riddim with:
         """
         send --wait pi try --wait again
         """
-      Then Herdr receives "agent prompt pi try --wait again --wait"
+      Then Herdr receives "--session default agent prompt pi try --wait again --wait"
+
+  Rule: A nonempty HERDR_SESSION names the session
+
+    Background:
+      Given a fake Herdr executable
+      And the Herdr session is "lab"
+
+    Scenario: Forward the message through the named session
+      When I run riddim with:
+        """
+        send pi Fix the tests
+        """
+      Then Herdr receives "--session lab agent prompt pi Fix the tests"
+
+    Scenario: Wait through the named session
+      When I run riddim with:
+        """
+        send --wait pi Fix the tests
+        """
+      Then Herdr receives "--session lab agent prompt pi Fix the tests --wait"
 
   Rule: A failed wait is preserved
 

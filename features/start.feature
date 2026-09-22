@@ -259,6 +259,14 @@ Feature: Start a background Pi agent
         """
       Then Herdr only creates the workspace and starts the agent
 
+    Scenario: Create and start through a named session
+      Given the Herdr session is "lab"
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr creates a workspace and starts the agent in session "lab"
+
   Rule: An invalid create response is rejected
 
     Background:
@@ -432,6 +440,14 @@ Feature: Start a background Pi agent
         start worker
         """
       Then Herdr closes only pane "w9:p1"
+
+    Scenario: Close the created pane through a named session
+      Given the Herdr session is "lab"
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr closes only pane "w9:p1" in session "lab"
 
     Scenario: A failed rollback does not mask the start failure
       Given Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and closes panes with status 7

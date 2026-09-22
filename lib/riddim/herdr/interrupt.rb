@@ -44,7 +44,7 @@ module Riddim
 
     # Delivers Pi's one-key interrupt: a single Escape, no composer-clear key.
     def send_interrupt_key(pane_id)
-      stdout, stderr, status = Open3.capture3('herdr', 'agent', 'send-keys', pane_id, INTERRUPT_KEY)
+      stdout, stderr, status = capture('agent', 'send-keys', pane_id, INTERRUPT_KEY)
       return if status.success?
 
       raise CommandFailed.new(stdout, stderr, status.exitstatus)

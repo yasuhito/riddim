@@ -10,7 +10,7 @@ Feature: Read recent agent output
         """
         peek pi 5
         """
-      Then Herdr receives "agent read pi --source recent-unwrapped --lines 5"
+      Then Herdr receives "--session default agent read pi --source recent-unwrapped --lines 5"
 
     Scenario: Exit successfully after reading output
       When I run riddim with:
@@ -31,7 +31,7 @@ Feature: Read recent agent output
         """
         peek pi
         """
-      Then Herdr receives "agent read pi --source recent-unwrapped --lines 40"
+      Then Herdr receives "--session default agent read pi --source recent-unwrapped --lines 40"
 
     Scenario: Exit successfully with the default line count
       When I run riddim with:
@@ -46,6 +46,19 @@ Feature: Read recent agent output
         peek pi
         """
       Then standard error is empty
+
+  Rule: A nonempty HERDR_SESSION names the session
+
+    Background:
+      Given a fake Herdr executable
+      And the Herdr session is "lab"
+
+    Scenario: Read through the named session
+      When I run riddim with:
+        """
+        peek pi 5
+        """
+      Then Herdr receives "--session lab agent read pi --source recent-unwrapped --lines 5"
 
   Rule: The line count must be positive
 

@@ -12,7 +12,6 @@ end
 # Resolves the agent by name or pane id and accepts the interrupt key.
 Given('Herdr resolves pi to pane {string} and accepts the interrupt key') do |pane|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get'] then puts #{pi_agent_response(pane_id: pane).dump}
     when ['agent', 'send-keys'] then nil
@@ -23,7 +22,6 @@ end
 
 Given('Herdr resolves pi to pane {string} hosting {string}') do |pane, kind|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get'] then puts #{pi_agent_response(kind: kind, pane_id: pane).dump}
     else abort "unexpected invocation: \#{ARGV.join(' ')}"
@@ -33,7 +31,6 @@ end
 
 Given('Herdr resolves pi without a pane id') do
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get'] then puts #{pi_agent_response(pane_id: nil).dump}
     else abort "unexpected invocation: \#{ARGV.join(' ')}"
@@ -43,7 +40,6 @@ end
 
 Given('Herdr fails to send the interrupt key with status {int} and error {string}') do |status, error|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get'] then puts #{pi_agent_response.dump}
     when ['agent', 'send-keys'] then warn #{error.dump}; exit #{status}
@@ -54,7 +50,6 @@ end
 
 Given('Herdr cannot re-read pane {string} after the key with status {int} and error {string}') do |_pane, status, error|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get']
       if ARGV[2] == 'pi'
@@ -71,7 +66,6 @@ end
 
 Given('Herdr reports pane {string} hosting {string} after the key') do |pane, kind|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get']
       if ARGV[2] == 'pi'
@@ -87,7 +81,6 @@ end
 
 Given('Herdr reports pane {string} in pane {string} after the key') do |_pane, other|
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get']
       if ARGV[2] == 'pi'
@@ -103,7 +96,6 @@ end
 
 Given('Herdr replies to the pane re-read with malformed JSON') do
   install_fake_herdr(<<~RUBY)
-    #{LOG_INVOCATION}
     case ARGV[0, 2]
     when ['agent', 'get']
       if ARGV[2] == 'pi'

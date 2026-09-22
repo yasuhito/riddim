@@ -15,7 +15,15 @@ Feature: Interrupt a Pi agent
         """
         interrupt pi
         """
-      Then Herdr receives "agent get pi" then "agent send-keys w9:p1 esc" then "agent get w9:p1"
+      Then Herdr receives "--session default agent get pi" then "--session default agent send-keys w9:p1 esc" then "--session default agent get w9:p1"
+
+    Scenario: Deliver through a named session
+      Given the Herdr session is "lab"
+      When I run riddim with:
+        """
+        interrupt pi
+        """
+      Then Herdr receives "--session lab agent get pi" then "--session lab agent send-keys w9:p1 esc" then "--session lab agent get w9:p1"
 
     Scenario: Exit successfully after verified delivery
       When I run riddim with:
@@ -48,7 +56,7 @@ Feature: Interrupt a Pi agent
         """
         interrupt w9:p1
         """
-      Then Herdr receives "agent get w9:p1" then "agent send-keys w9:p1 esc" then "agent get w9:p1"
+      Then Herdr receives "--session default agent get w9:p1" then "--session default agent send-keys w9:p1 esc" then "--session default agent get w9:p1"
 
   Rule: Only a Pi agent is interrupted
 

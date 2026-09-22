@@ -6,9 +6,14 @@ require 'open3'
 require_relative 'herdr/interrupt'
 
 module Riddim
-  # Reads and validates Herdr's concrete command-line state representation.
+  # Owns Riddim's concrete Herdr command-line surface: it resolves the one
+  # targeted session, constructs and runs every session-targeted subprocess,
+  # and reads and validates Herdr's responses.
   module Herdr
     AGENT_STATUSES = %w[blocked done idle unknown working].freeze
+
+    # The session Herdr targets when HERDR_SESSION is unset or empty.
+    DEFAULT_SESSION = 'default'
 
     # Preserves a failed Herdr process's observable result for the caller.
     class CommandFailed < StandardError
@@ -29,8 +34,44 @@ module Riddim
 
     module_function
 
+    # The one Herdr session this process targets: a nonempty HERDR_SESSION
+    # value, otherwise Herdr's own default session.
+    def session
+      value = ENV.fetch('HERDR_SESSION', nil)
+      return DEFAULT_SESSION if value.nil? || value.empty?
+
+      value
+    end
+
+    # The environment of one session-targeted Herdr subprocess.
+    def environment
+      { 'HERDR_SESSION' => session }
+    end
+
+    # The argv of one session-targeted Herdr subprocess: Herdr's explicit
+    # --session global flag first, then the operation. The flag routes the
+    # call exactly even when another Herdr server is already running, where
+    # HERDR_SESSION alone is not honored reliably by every client, and it
+    # stays globally valid ahead of subcommands with an inner -- separator,
+    # such as agent start, whose passthrough tail must reach the agent
+    # untouched.
+    def command(*arguments)
+      ['--session', session, *arguments]
+    end
+
+    # One captured session-targeted Herdr invocation.
+    def capture(*)
+      Open3.capture3(environment, 'herdr', *command(*))
+    end
+
+    # Replaces this process with one session-targeted Herdr invocation,
+    # preserving Herdr's streaming output and exit status.
+    def exec(*)
+      Kernel.exec(environment, 'herdr', *command(*))
+    end
+
     def agent(target)
-      stdout, stderr, status = Open3.capture3('herdr', 'agent', 'get', target)
+      stdout, stderr, status = capture('agent', 'get', target)
       raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
 
       parse_agent(stdout)
@@ -49,9 +90,7 @@ module Riddim
     end
 
     def create_workspace(cwd:, label:)
-      stdout, stderr, status = Open3.capture3(
-        'herdr', 'workspace', 'create', '--cwd', cwd, '--label', label, '--no-focus'
-      )
+      stdout, stderr, status = capture('workspace', 'create', '--cwd', cwd, '--label', label, '--no-focus')
       raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
 
       parse_workspace(stdout)
@@ -97,8 +136,8 @@ module Riddim
     end
 
     def start_agent(name:, pane_id:, model:, effort:)
-      stdout, stderr, status = Open3.capture3(
-        'herdr', 'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
+      stdout, stderr, status = capture(
+        'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
         '--', '--model', model, '--thinking', effort
       )
       return if status.success?
@@ -109,7 +148,7 @@ module Riddim
 
     # Best-effort rollback: never raises, so it cannot mask the start failure.
     def close_pane(pane_id)
-      Open3.capture3('herdr', 'pane', 'close', pane_id)
+      capture('pane', 'close', pane_id)
     rescue StandardError
       nil
     end
