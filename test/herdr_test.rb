@@ -92,8 +92,12 @@ class HerdrPanePresenceTest < Minitest::Test
     assert_equal :gone, Riddim::Herdr.pane_presence(PANE_ID, '{"error":{"code":"pane_not_found"}}', '')
   end
 
-  def test_reads_gone_from_stderr_when_stdout_is_unparseable
-    assert_equal :gone, Riddim::Herdr.pane_presence(PANE_ID, 'noise', '{"error":{"code":"pane_not_found"}}')
+  def test_does_not_ignore_unparseable_stdout_to_claim_stderr_proved_absence
+    assert_equal :unknown, Riddim::Herdr.pane_presence(PANE_ID, 'noise', '{"error":{"code":"pane_not_found"}}')
+  end
+
+  def test_reads_gone_from_stderr_when_stdout_is_empty
+    assert_equal :gone, Riddim::Herdr.pane_presence(PANE_ID, '', '{"error":{"code":"pane_not_found"}}')
   end
 
   def test_reads_present_from_a_response_naming_the_pane

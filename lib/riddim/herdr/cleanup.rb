@@ -46,16 +46,23 @@ module Riddim
       :unknown
     end
 
-    # The presence of one exact pane from a captured pane get: the stdout body
-    # first, then stderr, because the structured not-found error may arrive on
-    # either stream. Anything unreadable on both streams is :unknown, which
-    # never proves a pane gone.
+    # The presence of one exact pane from a captured pane get. Herdr may put a
+    # structured not-found response on stderr when stdout is empty. A nonempty
+    # but invalid stdout is ambiguous, not permission to trust a second stream
+    # as proof of absence (the same single-body caution as Firstmate's probe).
     def pane_presence(pane_id, stdout, stderr)
-      [stdout, stderr].each do |body|
-        verdict = classify_pane_body(pane_id, body)
-        return verdict unless verdict == :unparseable
-      end
+      body = stdout.strip.empty? ? stderr : stdout
+      verdict = classify_pane_body(pane_id, body)
+      verdict == :unparseable ? :unknown : verdict
+    end
 
+    # Read-only exact pane presence; a failed call or unreachable server is
+    # unknown, never gone. Unlike agent-state, there is no stopped-server
+    # shortcut: only pane_not_found confirms absence of this endpoint.
+    def pane_presence_state(pane_id, session:)
+      stdout, stderr, _status = capture('pane', 'get', pane_id, session: session)
+      pane_presence(pane_id, stdout, stderr)
+    rescue SystemCallError
       :unknown
     end
 

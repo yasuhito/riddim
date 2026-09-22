@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the exact-pane presence command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "pane-presence <name>"
+
   Scenario: List the native-activity command
     When I run riddim with:
       """
