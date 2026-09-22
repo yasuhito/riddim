@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the native-activity command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "busy-state <name>"
+
   Scenario: List the process-state command
     When I run riddim with:
       """

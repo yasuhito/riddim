@@ -11,9 +11,10 @@ require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 
-if ARGV.first == 'agent-state'
+if %w[agent-state busy-state].include?(ARGV.first)
+  verb = ARGV.first
   unless ARGV.length == 2
-    warn 'Usage: riddim agent-state <name>'
+    warn "Usage: riddim #{verb} <name>"
     exit 2
   end
 
@@ -26,8 +27,13 @@ if ARGV.first == 'agent-state'
   begin
     snapshot = Riddim::Ownership::Endpoint.resolve_snapshot(name)
     endpoint = snapshot.first
-    state = Riddim::Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
-    puts(Riddim::Ownership::Endpoint.unchanged?(name, snapshot) ? state : 'unreadable')
+    state = if verb == 'agent-state'
+              Riddim::Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
+            else
+              Riddim::Herdr.busy_state(endpoint.pane_id, session: endpoint.session)
+            end
+    changed_state = verb == 'agent-state' ? 'unreadable' : 'unknown'
+    puts(Riddim::Ownership::Endpoint.unchanged?(name, snapshot) ? state : changed_state)
   rescue Riddim::Ownership::Error => e
     warn "riddim: #{e.message}"
     exit 1
@@ -242,6 +248,7 @@ puts <<~HELP
 
   Commands:
     agent-state <name>          Inspect recorded Pi process (alive/dead/missing/unreadable)
+    busy-state <name>           Observe Pi activity (busy/idle/unknown; not completion)
     list [--json]               List recorded agents and exact endpoints (not liveness)
     peek <name> [lines]         Show recent output from a started agent's recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape

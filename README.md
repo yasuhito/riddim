@@ -104,6 +104,26 @@ classifier: another non-shell foreground process is `unreadable` here, not
 `alive`; no server is started for an absence proof. None of these words
 report turn completion or authorize removing a pane or an ownership record.
 
+### Observe native Pi activity
+
+```sh
+bin/riddim busy-state <name>
+```
+
+Reports `busy`, `idle`, or `unknown` for the recorded session and pane.
+Firstmate's Herdr busy classifier maps `working` to `busy`, and `idle`,
+`done`, and `blocked` to `idle`. Riddim exposes a **smaller Pi-only subset**:
+it reports either verdict only when a matching Pi registration and the real
+Pi process corroborate the exact pane. Missing, stale, foreign, or unreadable
+observations, and an ownership change during the read, return `unknown`.
+Unlike Firstmate's watcher, Riddim does not fall back to a harness-specific
+pane signature when native state is unknown.
+
+`idle` is only the native activity observation. It does **not** mean a turn or
+foreground tool finished, a reply was delivered, or the agent stopped. Use
+`agent-state` to distinguish a dead agent from an unreadable one, not `idle`
+to infer that a `send` completed.
+
 ### Read agent status
 
 ```sh
