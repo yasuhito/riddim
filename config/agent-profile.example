@@ -1,5 +1,6 @@
 # Example agent launch profile for `riddim start`.
 # Copy this file to config/agent-profile (gitignored) and adjust it.
-# One line in the Firstmate-compatible format: <harness> <model> <effort>.
-# This first version supports exactly the pi harness.
+# One line in the <harness> <model> <effort> token order of Firstmate's
+# config/secondmate-harness. Pi-only: exactly the pi harness is supported, and
+# unlike Firstmate's secondmate-harness, all three tokens are required.
 pi openrouter/z-ai/glm-5.3-flash max

@@ -5,24 +5,20 @@ require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/profile'
 
 if ARGV.first == 'send'
-  # --wait is a mode flag only as the first argument after send; a later
-  # --wait stays message text. Wait mode delegates to Herdr's own --wait so
-  # submission and state observation happen in one process: a separate wait
-  # poll would race the idle-to-working transition that follows a confirmed
-  # submit. Herdr's contract: from a non-working state it requires a
-  # post-submission working or blocked observation (agent_prompt_stalled
-  # otherwise), then matches idle, done, or blocked; when the agent is
-  # already working, that active turn's completion may match, so --wait is
-  # not a per-turn completion guarantee. exec preserves Herdr's output and
-  # exit status; Riddim::Herdr targets the resolved session on both the
-  # subprocess environment and an explicit --session flag ahead of the
-  # subcommand.
-  wait_mode = ARGV[1] == '--wait'
-  rest = wait_mode ? ARGV.drop(2) : ARGV.drop(1)
-  usage = wait_mode ? 'Usage: riddim send --wait <target> <message...>' : 'Usage: riddim send <target> <message...>'
+  # Firstmate has no synchronous turn-wait send, so Riddim does not carry
+  # one. A leading --wait is rejected before Herdr is ever invoked, so it
+  # cannot be misparsed as a target; a later --wait stays message text.
+  # exec preserves Herdr's output and exit status; Riddim::Herdr targets the
+  # resolved session on both the subprocess environment and an explicit
+  # --session flag ahead of the subcommand.
+  if ARGV[1] == '--wait'
+    warn 'riddim: send --wait is unsupported; use riddim send <target> <message...>'
+    exit 2
+  end
 
+  rest = ARGV.drop(1)
   unless rest.length >= 2
-    warn usage
+    warn 'Usage: riddim send <target> <message...>'
     exit 2
   end
 
@@ -32,11 +28,7 @@ if ARGV.first == 'send'
     exit 2
   end
 
-  if wait_mode
-    Riddim::Herdr.exec('agent', 'prompt', rest[0], message, '--wait')
-  else
-    Riddim::Herdr.exec('agent', 'prompt', rest[0], message)
-  end
+  Riddim::Herdr.exec('agent', 'prompt', rest[0], message)
 end
 
 if ARGV.first == 'interrupt'
@@ -56,13 +48,13 @@ if ARGV.first == 'interrupt'
     exit 1
   rescue Riddim::Herdr::InterruptUnverified => e
     key = Riddim::Herdr::INTERRUPT_KEY
-    warn "riddim: #{key} may have been delivered to pane #{e.pane_id}, but the pane could not be " \
-         "re-verified as a Pi endpoint: #{e.message}"
+    warn "riddim: #{key} may have been delivered to pane #{e.pane_id}, but the re-read could not " \
+         "confirm Herdr still registers that pane as a Pi agent: #{e.message}"
     warn 'riddim: do not retry blindly; inspect the agent with riddim status or riddim peek first'
     exit 1
   end
 
-  puts "interrupt delivered to pane #{pane} (endpoint verified; cancellation unconfirmed)"
+  puts "interrupt delivered to pane #{pane} (Pi registration re-read; process liveness and cancellation unconfirmed)"
   exit
 end
 
@@ -157,9 +149,6 @@ puts <<~HELP
     peek <target> [lines]       Show recent output from a Herdr agent
     interrupt <target>          Interrupt a Herdr Pi agent with one Escape
     send <target> <message...>  Prompt a Herdr agent
-    send --wait <target> <message...>
-                                Prompt a Herdr agent and wait until the
-                                agent is idle, done, or blocked
     start <name>                Start a background Pi agent
-    status <target>             Show a Herdr agent's status
+    status <target>             Show Herdr's registered agent status
 HELP

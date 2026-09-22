@@ -5,10 +5,10 @@ Riddim is a small command-line tool for working with coding agents in
 the parts of [Firstmate](https://github.com/kunchenguid/firstmate) that are useful
 in a smaller, Herdr-focused tool.
 
-Riddim currently lets you inspect agent status, read recent agent output, send
-an agent a prompt (optionally waiting until the agent is idle, done, or
-blocked), interrupt a Pi agent with one verified Escape, and start a background
-Pi agent. It keeps its runtime small and uses Ruby's standard library.
+Riddim currently lets you inspect Herdr's agent registration status, read recent
+agent output, send an agent a prompt, interrupt a Pi agent with one Escape and
+an honest post-delivery report, and start a background Pi agent. It keeps its
+runtime small and uses Ruby's standard library.
 
 ## Requirements
 
@@ -42,7 +42,11 @@ tail must reach the agent's own arguments untouched.
 bin/riddim status <target>
 ```
 
-Riddim reads the agent from Herdr and prints its status as one line.
+Riddim reads the agent from Herdr and prints its status as one line. The value
+is Herdr's own agent registration status, passed through raw. It does not prove
+the agent's process is alive or what the agent is doing right now: Herdr keeps
+a registration, with its last `agent_status`, even after the registered process
+has exited.
 
 ```sh
 bin/riddim status pi
@@ -70,28 +74,31 @@ bin/riddim interrupt <target>
 ```
 
 `target` is a Herdr agent name or pane ID. Riddim resolves the target once,
-requires the pane to hold a Pi agent, and delivers exactly one Escape with
+requires Herdr to register the pane as a Pi agent, and delivers exactly one
+Escape with
 `herdr agent send-keys <pane-id> esc`: Pi cancels its running turn on a single
 Escape and needs no composer-clear key afterwards. Interrupt is a lifecycle
 control command, separate from `riddim send`, which sends conversational text;
 there is deliberately no way to send arbitrary keys through Riddim.
 
-Delivery is verified honestly. After Herdr accepts the key, Riddim re-reads
-that exact pane and requires it to still identify a Pi endpoint, then prints
-one line naming the pane:
+Delivery is reported honestly. After Herdr accepts the key, Riddim re-reads
+Herdr's agent registration for that exact pane and requires it to still
+register a Pi agent, then prints one line naming the pane:
 
 ```sh
-interrupt delivered to pane w9:p1 (endpoint verified; cancellation unconfirmed)
+interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)
 ```
 
-The line never claims cancellation was observed.
+The line claims only the registration re-read: it never claims the agent's
+process is alive - a Herdr registration can outlive the process it names - and
+it never claims cancellation was observed.
 
 If the target does not resolve to a Pi agent, or a response is malformed,
 Riddim refuses before delivering anything. If Herdr fails to deliver the key,
-Herdr's output and exit status pass through unchanged. If the pane cannot be
-re-read after delivery, or no longer proves the same Pi endpoint, Riddim
-reports that the key may have been delivered and says not to retry blindly;
-inspect the agent with `riddim status` or `riddim peek` first.
+Herdr's output and exit status pass through unchanged. If the registration
+re-read after delivery fails, or no longer registers that pane as a Pi agent,
+Riddim reports that the key may have been delivered and says not to retry
+blindly; inspect the agent with `riddim status` or `riddim peek` first.
 
 ### Send a prompt
 
@@ -106,37 +113,10 @@ agent.
 bin/riddim send pi Fix the failing tests
 ```
 
-### Send a prompt and wait
-
-```sh
-bin/riddim send --wait <target> <message...>
-```
-
-`--wait` is recognized only as the first argument after `send`; a later literal
-`--wait` stays message text. In wait mode Riddim delegates atomically to
-`herdr agent prompt <target> <message> --wait` rather than polling the agent
-itself. A confirmed submit alone proves only that Herdr accepted the text -
-the agent needs a beat to enter activity before its busy state shows, so an
-immediate status poll would race the idle-to-working transition. Delegating
-lets Herdr submit the prompt and observe the agent's state in one process.
-
-The wait follows Herdr's contract exactly: when submission starts from a
-non-working state, Herdr requires an observed `working` or `blocked` state
-after the submission (otherwise it fails with `agent_prompt_stalled`) and then
-finishes on its default terminal match: `idle`, `done`, or `blocked`. Herdr
-does not track turns: if the agent is already `working` when the prompt is
-submitted, the pre-existing active turn's completion may satisfy the wait, so
-`--wait` is not a per-turn completion guarantee.
-
-This keeps Firstmate's distinction between confirmed delivery and reply
-completion: `--wait` confirms delivery plus the agent's next settled state.
-It never confirms a reply - a successful `--wait` does not mean the agent
-produced a semantically valid answer. Read what the agent answered separately,
-for example with `bin/riddim peek`.
-
-Herdr's output and exit status pass through unchanged, including its wait
-failures, such as a submission rejected for an already blocked agent or a
-prompt that stalled before activity was observed.
+Ordinary send is a direct Herdr native prompt (`herdr agent prompt`), not
+Firstmate's send: it records no durable inbox entry and tracks no reply, so a
+confirmed submit proves only that Herdr accepted the text. Read what the agent
+answered separately, for example with `bin/riddim peek`.
 
 ### Start a background Pi agent
 
@@ -150,8 +130,11 @@ in the workspace's root pane. It never splits a pane or steals focus. `name`
 must match Herdr's agent-name rule `[a-z][a-z0-9_-]{0,31}`.
 
 The launch profile is read from `config/agent-profile`, one line in the
-Firstmate-compatible `<harness> <model> <effort>` format. This first version
-supports exactly the `pi` harness:
+`<harness> <model> <effort>` token order of Firstmate's
+`config/secondmate-harness`. It is a Pi-only profile: this first version
+supports exactly the `pi` harness, and unlike Firstmate's secondmate-harness,
+which allows omitting the model and effort tokens, Riddim requires all three
+tokens:
 
 ```sh
 pi openrouter/z-ai/glm-5.3-flash max

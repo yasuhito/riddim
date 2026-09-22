@@ -2,15 +2,18 @@
 
 # The lifecycle control plane of Riddim::Herdr, kept apart from the
 # read-and-create surface in herdr.rb: one allowlisted operation that delivers
-# Pi's interrupt key to an exact pane and verifies the endpoint afterwards.
-# There is deliberately no arbitrary raw-key entry point here.
+# Pi's interrupt key to an exact pane and re-reads Herdr's agent registration
+# for that pane afterwards. The re-read proves the registration only; it is
+# not a process-liveness or cancellation proof. There is deliberately no
+# arbitrary raw-key entry point here.
 module Riddim
   # The interrupt lifecycle control plane of Riddim::Herdr's agent surface.
   module Herdr
     # The one allowlisted lifecycle key: a single Escape, no composer-clear key.
     INTERRUPT_KEY = 'esc'
 
-    # An accepted interrupt key whose pane no longer proves a Pi endpoint.
+    # An accepted interrupt key whose pane Herdr no longer registers as a
+    # Pi agent on the post-delivery re-read.
     class InterruptUnverified < StandardError
       attr_reader :pane_id
 
@@ -22,8 +25,9 @@ module Riddim
 
     module_function
 
-    # Delivers the interrupt key to the exact pane of the Pi agent at <target>
-    # and verifies that pane still identifies a Pi endpoint afterwards.
+    # Delivers the interrupt key to the exact pane of the agent registered
+    # as Pi at <target> and re-reads Herdr's registration for that pane
+    # afterwards. The re-read never proves the agent's process or its turn.
     def interrupt(target)
       pane = interrupt_pane(agent(target))
       send_interrupt_key(pane)
@@ -50,8 +54,9 @@ module Riddim
       raise CommandFailed.new(stdout, stderr, status.exitstatus)
     end
 
-    # The one postcondition of an interrupt: the exact pane still identifies
-    # a Pi agent after the key was accepted for delivery.
+    # The one postcondition of an interrupt: Herdr still registers the exact
+    # pane as a Pi agent after the key was accepted for delivery. This is a
+    # registration claim only - never a process-identity or liveness claim.
     def verify_interrupt_endpoint(pane)
       after = interrupt_pane(agent(pane))
       return if after == pane

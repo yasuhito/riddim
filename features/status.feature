@@ -1,5 +1,8 @@
 Feature: Read an agent's status
 
+  The printed value is Herdr's raw agent registration status. It does not
+  prove the agent's process is alive or its current task state.
+
   Rule: Status is read from Herdr
 
     Scenario: Print the agent status

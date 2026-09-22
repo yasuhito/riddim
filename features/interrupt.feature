@@ -2,8 +2,8 @@ Feature: Interrupt a Pi agent
 
   Interrupt is lifecycle control, separate from the conversational send: one
   allowlisted operation that resolves the target once, delivers exactly one
-  Escape to the agent's exact pane, and verifies the same Pi endpoint
-  afterwards. It never sends arbitrary keys.
+  Escape to the agent's exact pane, and re-reads Herdr's registration for the
+  same pane afterwards. It never sends arbitrary keys.
 
   Rule: One Escape is delivered to the resolved pane
 
@@ -32,12 +32,12 @@ Feature: Interrupt a Pi agent
         """
       Then the command succeeds
 
-    Scenario: Name the pane with the endpoint verified and cancellation unconfirmed
+    Scenario: Name the pane with the registration re-read and unconfirmed liveness
       When I run riddim with:
         """
         interrupt pi
         """
-      Then standard output is "interrupt delivered to pane w9:p1 (endpoint verified; cancellation unconfirmed)"
+      Then standard output is "interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)"
 
     Scenario: Write no error after verified delivery
       When I run riddim with:
