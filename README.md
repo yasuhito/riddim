@@ -5,16 +5,18 @@ Riddim is a small command-line tool for working with coding agents in
 the parts of [Firstmate](https://github.com/kunchenguid/firstmate) that are useful
 in a smaller, Herdr-focused tool.
 
-Riddim currently lets you inspect Herdr's agent registration status, read recent
-agent output, send an agent a prompt, interrupt a Pi agent with one Escape and
-an honest post-delivery report, and start a background Pi agent whose endpoint
-ownership it records, Firstmate-style, before the agent runs. It keeps its
-runtime small and uses Ruby's standard library.
+Riddim currently lets you inspect Herdr's agent registration status, read a
+started agent's recent output from the exact pane its ownership record binds,
+send an agent a prompt, interrupt a Pi agent with one Escape and an honest
+post-delivery report, and start a background Pi agent whose endpoint ownership
+it records, Firstmate-style, before the agent runs. It keeps its runtime small
+and uses Ruby's standard library.
 
 ## Requirements
 
 - Ruby
-- Herdr with a running session; status, peek, and send also need a named agent
+- Herdr with a running session; status and send also need a Herdr-registered
+  agent, and peek needs an agent started with `riddim start`
 
 Development uses Ruby 3.4.10, as configured in `mise.toml`.
 
@@ -37,6 +39,11 @@ exactly, even when another Herdr server is running on the same machine, and
 stays valid ahead of commands such as `agent start`, whose `--` passthrough
 tail must reach the agent's own arguments untouched.
 
+`peek` is the exception: its capture targets the session recorded in the
+agent's endpoint ownership record, which overrides the ambient
+`HERDR_SESSION` value on both routing surfaces, so a peek of one recorded
+agent can never drift to another session's endpoint.
+
 ### Read agent status
 
 ```sh
@@ -54,19 +61,36 @@ bin/riddim status pi
 # working
 ```
 
-### Read agent output
+### Read a started agent's output
 
 ```sh
-bin/riddim peek <target> [lines]
+bin/riddim peek <name> [lines]
 ```
 
-`target` is a Herdr agent name or pane ID. Riddim prints the most recent 40
-unwrapped lines by default.
+`name` is the name of an agent started with `riddim start`. Riddim resolves
+the endpoint ownership record `state/<name>.meta` - in the directory named by
+a nonempty `RIDDIM_STATE_DIR`, otherwise the repository's own `state/` - and
+captures the exact Herdr pane the record binds, in the session the record
+names, with Firstmate's Herdr capture: it reads
+`herdr pane read <pane-id> --source recent --lines <fetch>`, where the fetch
+is the requested count never below 200 lines, and trims the capture locally
+to the final requested lines. The most recent 40 lines are printed by
+default.
 
 ```sh
-bin/riddim peek pi
-bin/riddim peek pi 100
+bin/riddim peek worker
+bin/riddim peek worker 100
 ```
+
+The record is the routing authority, and it fails closed before Herdr is
+touched at all: it must be a regular file at `state/<name>.meta` - never a
+symbolic link - it must parse as exactly the record `start` published, it
+must bind `endpoint_task_id` equal to the requested name on the `pi` harness
+and the `herdr` backend, and its `window` must be exactly
+`<herdr_session>:<herdr_pane_id>`. A missing, symlinked, malformed, or
+inconsistent record is refused with Riddim's own status 1, and no Herdr
+command is ever constructed from labels or inference. If the pane read
+fails, Herdr's stdout, stderr, and exit status pass through unchanged.
 
 ### Interrupt a Pi agent
 

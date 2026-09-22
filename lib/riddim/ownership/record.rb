@@ -30,15 +30,6 @@ module Riddim
       "s#{Time.now.to_i}.#{Process.pid}.#{SecureRandom.random_number(32_768)}"
     end
 
-    # Builds the Firstmate fields Riddim owns for one exact Herdr endpoint.
-    def endpoint_fields(name:, profile:, spawn_gen:, session:, workspace:)
-      pane = workspace.root_pane_id
-      { 'window' => "#{session}:#{pane}", 'endpoint_task_id' => name, 'harness' => profile.harness,
-        'model' => profile.model, 'effort' => profile.effort, 'spawn_gen' => spawn_gen, 'backend' => 'herdr',
-        'herdr_session' => session, 'herdr_workspace_id' => workspace.workspace_id,
-        'herdr_tab_id' => workspace.tab_id, 'herdr_pane_id' => pane }
-    end
-
     # Renders one record's exact bytes: Firstmate-style key=value lines in
     # Firstmate's field order. Every value must be one nonempty line, so no
     # value can inject or forge another record line.

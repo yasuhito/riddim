@@ -174,3 +174,25 @@ class HerdrCommandFailureReasonTest < Minitest::Test
     assert_equal 'Herdr exited with status 7', Riddim::Herdr.command_failure_reason(failure)
   end
 end
+
+class HerdrPaneTailTest < Minitest::Test
+  def test_fetches_the_requested_tail_above_the_minimum
+    assert_equal 250, Riddim::Herdr.fetch_lines(250)
+  end
+
+  def test_fetches_the_minimum_for_a_smaller_tail
+    assert_equal 200, Riddim::Herdr.fetch_lines(5)
+  end
+
+  def test_trims_a_capture_to_its_final_requested_lines
+    assert_equal "pane-248\npane-249\npane-250\n", Riddim::Herdr.tail("pane-001\npane-248\npane-249\npane-250\n", 3)
+  end
+
+  def test_passes_a_capture_shorter_than_the_tail_through_whole
+    assert_equal "only line\n", Riddim::Herdr.tail("only line\n", 40)
+  end
+
+  def test_keeps_a_final_line_that_has_no_newline
+    assert_equal 'final', Riddim::Herdr.tail("earlier\nfinal", 1)
+  end
+end

@@ -88,3 +88,4 @@ module Riddim
 end
 
 require_relative 'ownership/record'
+require_relative 'ownership/endpoint'

@@ -65,7 +65,7 @@ module Riddim
     # nonempty line is a publication failure like any other.
     def publish_record(name, profile, record_path, workspace)
       spawn_gen = Ownership.fresh_spawn_gen
-      fields = Ownership.endpoint_fields(
+      fields = Ownership::Endpoint.fields(
         name: name, profile: profile, spawn_gen: spawn_gen, session: Riddim::Herdr.session, workspace: workspace
       )
       Ownership.publish(record_path, Ownership.serialize(fields))

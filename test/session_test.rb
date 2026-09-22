@@ -45,38 +45,56 @@ class SessionCommandConstructionTest < Minitest::Test
     '--', '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max'
   ].freeze
 
-  def test_prepends_the_resolved_session_as_the_explicit_flag
+  def test_prepends_a_supplied_session_as_the_explicit_flag
+    argv = Riddim::Herdr.command('agent', 'get', 'pi', session: 'lab')
+
+    assert_equal ['--session', 'lab', 'agent', 'get', 'pi'], argv
+  end
+
+  def test_prepends_the_ambient_session_when_none_is_supplied
     with_herdr_session('lab') do
       assert_equal ['--session', 'lab', 'agent', 'get', 'pi'], Riddim::Herdr.command('agent', 'get', 'pi')
     end
   end
 
-  def test_prepends_the_default_session_without_the_environment_variable
-    with_herdr_session(nil) do
-      assert_equal ['--session', 'default', 'agent', 'get', 'pi'], Riddim::Herdr.command('agent', 'get', 'pi')
-    end
-  end
-
-  def test_keeps_the_session_ahead_of_agent_start_and_the_pi_passthrough_tail_intact
-    argv = with_herdr_session('lab') do
-      Riddim::Herdr.command(
-        'agent', 'start', 'worker', '--kind', 'pi', '--pane', 'w9:p1',
-        '--', '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max'
-      )
-    end
+  def test_leads_agent_start_with_the_supplied_session_and_keeps_the_pi_tail_intact
+    argv = Riddim::Herdr.command(
+      'agent', 'start', 'worker', '--kind', 'pi', '--pane', 'w9:p1',
+      '--', '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max', session: 'lab'
+    )
 
     assert_equal AGENT_START_ARGV, argv
   end
 
-  def test_names_the_resolved_session_in_the_environment
+  def test_names_the_supplied_session_in_the_environment
+    assert_equal({ 'HERDR_SESSION' => 'lab' }, Riddim::Herdr.environment('lab'))
+  end
+
+  def test_names_the_ambient_session_when_none_is_supplied
     with_herdr_session('lab') do
       assert_equal({ 'HERDR_SESSION' => 'lab' }, Riddim::Herdr.environment)
     end
   end
+end
 
-  def test_names_the_default_session_in_the_environment
+class TargetedSessionResolutionTest < Minitest::Test
+  include HerdrSessionEnv
+
+  def test_targets_the_supplied_session_over_the_ambient_one
+    with_herdr_session('ambient') do
+      assert_equal 'recorded', Riddim::Herdr.targeted_session('recorded')
+    end
+  end
+
+  def test_falls_back_to_the_ambient_session_without_a_supplied_session
+    with_herdr_session('ambient') do
+      assert_equal 'ambient', Riddim::Herdr.targeted_session(nil)
+    end
+  end
+
+  def test_falls_back_to_herdr_default_session_without_a_supplied_or_ambient_session
     with_herdr_session(nil) do
-      assert_equal({ 'HERDR_SESSION' => 'default' }, Riddim::Herdr.environment)
+      assert_equal 'default', Riddim::Herdr.targeted_session(nil)
     end
   end
 end

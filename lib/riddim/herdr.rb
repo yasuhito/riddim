@@ -5,6 +5,7 @@ require 'open3'
 
 require_relative 'herdr/cleanup'
 require_relative 'herdr/interrupt'
+require_relative 'herdr/pane_tail'
 
 module Riddim
   # Owns Riddim's concrete Herdr command-line surface: it resolves the one
@@ -35,8 +36,8 @@ module Riddim
 
     module_function
 
-    # The one Herdr session this process targets: a nonempty HERDR_SESSION
-    # value, otherwise Herdr's own default session.
+    # The Herdr session this process targets when the caller supplies none: a
+    # nonempty HERDR_SESSION value, otherwise Herdr's own default session.
     def session
       value = ENV.fetch('HERDR_SESSION', nil)
       return DEFAULT_SESSION if value.nil? || value.empty?
@@ -44,31 +45,46 @@ module Riddim
       value
     end
 
-    # The environment of one session-targeted Herdr subprocess.
-    def environment
-      { 'HERDR_SESSION' => session }
+    # The session one Herdr subprocess targets: the session its caller
+    # supplies - such as the session recorded in an endpoint ownership
+    # record - or, without one, the ambient resolution above. Supplying a
+    # session overrides the ambient one on both routing surfaces: the
+    # subprocess environment and the leading --session flag name it.
+    def targeted_session(supplied = nil)
+      supplied || session
     end
 
-    # The argv of one session-targeted Herdr subprocess: Herdr's explicit
+    # The environment of one Herdr subprocess targeting the supplied session,
+    # or the ambient/default session when its caller supplies none.
+    def environment(target = session)
+      { 'HERDR_SESSION' => target }
+    end
+
+    # The argv of one Herdr subprocess targeting <session>: Herdr's explicit
     # --session global flag first, then the operation. The flag routes the
     # call exactly even when another Herdr server is already running, where
     # HERDR_SESSION alone is not honored reliably by every client, and it
     # stays globally valid ahead of subcommands with an inner -- separator,
     # such as agent start, whose passthrough tail must reach the agent
     # untouched.
-    def command(*arguments)
+    def command(*arguments, session: self.session)
       ['--session', session, *arguments]
     end
 
-    # One captured session-targeted Herdr invocation.
-    def capture(*)
-      Open3.capture3(environment, 'herdr', *command(*))
+    # One captured Herdr invocation targeting <session>, or the ambient
+    # session when the caller supplies none, so every existing call keeps its
+    # ambient or default routing.
+    def capture(*, session: nil)
+      target = targeted_session(session)
+      Open3.capture3(environment(target), 'herdr', *command(*, session: target))
     end
 
-    # Replaces this process with one session-targeted Herdr invocation,
-    # preserving Herdr's streaming output and exit status.
-    def exec(*)
-      Kernel.exec(environment, 'herdr', *command(*))
+    # Replaces this process with one Herdr invocation targeting <session>, or
+    # the ambient session when the caller supplies none, preserving Herdr's
+    # streaming output and exit status.
+    def exec(*, session: nil)
+      target = targeted_session(session)
+      Kernel.exec(environment(target), 'herdr', *command(*, session: target))
     end
 
     def agent(target)
