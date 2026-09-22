@@ -67,5 +67,6 @@ def install_fake_herdr(body)
   herdr = File.join(directory, 'herdr')
   File.write(herdr, "#!/usr/bin/ruby\n#{body}")
   File.chmod(0o755, herdr)
-  @environment = { 'PATH' => "#{directory}:#{ENV.fetch('PATH')}" }
+  @herdr_directory = directory
+  @environment = (@environment || {}).merge('PATH' => "#{directory}:#{ENV.fetch('PATH')}")
 end

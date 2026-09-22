@@ -1,0 +1,5 @@
+# Example agent launch profile for `riddim start`.
+# Copy this file to config/agent-profile (gitignored) and adjust it.
+# One line in the Firstmate-compatible format: <harness> <model> <effort>.
+# This first version supports exactly the pi harness.
+pi openrouter/z-ai/glm-5.3-flash max

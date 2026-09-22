@@ -17,6 +17,13 @@ module RiddimWorld
   def assertions
     @assertions ||= 0
   end
+
+  # A fresh temporary directory that is removed after the scenario.
+  def new_temporary_directory
+    directory = Dir.mktmpdir
+    @temporary_directories << directory
+    directory
+  end
 end
 
 World(RiddimWorld)

@@ -5,14 +5,14 @@ Riddim is a small command-line tool for working with coding agents in
 the parts of [Firstmate](https://github.com/kunchenguid/firstmate) that are useful
 in a smaller, Herdr-focused tool.
 
-Riddim currently lets you inspect agent status, read recent agent output, and
-send an agent a prompt. It keeps its runtime small and uses Ruby's standard
-library.
+Riddim currently lets you inspect agent status, read recent agent output, send
+an agent a prompt, and start a background Pi agent. It keeps its runtime small
+and uses Ruby's standard library.
 
 ## Requirements
 
 - Ruby
-- Herdr with a running session and a named agent
+- Herdr with a running session; status, peek, and send also need a named agent
 
 Development uses Ruby 3.4.10, as configured in `mise.toml`.
 
@@ -63,6 +63,33 @@ agent.
 ```sh
 bin/riddim send pi Fix the failing tests
 ```
+
+### Start a background Pi agent
+
+```sh
+bin/riddim start <name>
+```
+
+Riddim creates a Herdr workspace labeled `riddim-<name>` for the current
+directory without focusing it, then starts a background Pi agent named `name`
+in the workspace's root pane. It never splits a pane or steals focus. `name`
+must match Herdr's agent-name rule `[a-z][a-z0-9_-]{0,31}`.
+
+The launch profile is read from `config/agent-profile`, one line in the
+Firstmate-compatible `<harness> <model> <effort>` format. This first version
+supports exactly the `pi` harness:
+
+```sh
+pi openrouter/z-ai/glm-5.3-flash max
+```
+
+Copy `config/agent-profile.example` to create your own; the real
+`config/agent-profile` is gitignored. Set `RIDDIM_CONFIG_DIR` to read the
+profile from another directory.
+
+The agent is started with `--model <model> --thinking <effort>`. If the start
+fails, Riddim closes the created root pane again and preserves Herdr's failure
+output and exit status.
 
 ## Development
 

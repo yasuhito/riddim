@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require_relative '../lib/riddim/herdr'
+require_relative '../lib/riddim/profile'
 
 if ARGV.first == 'send'
   unless ARGV.length >= 3
@@ -52,11 +53,62 @@ if ARGV.first == 'peek'
   exec 'herdr', 'agent', 'read', ARGV[1], '--source', 'recent-unwrapped', '--lines', lines
 end
 
+if ARGV.first == 'start'
+  unless ARGV.length == 2
+    warn 'Usage: riddim start <name>'
+    exit 2
+  end
+
+  name = ARGV[1]
+  unless name.match?(/\A[a-z][a-z0-9_-]{0,31}\z/)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
+    exit 2
+  end
+
+  config_dir = ENV.fetch('RIDDIM_CONFIG_DIR', nil)
+  config_dir = File.expand_path('../config', __dir__) if config_dir.nil? || config_dir.empty?
+
+  begin
+    profile = Riddim::AgentProfile.load(config_dir: config_dir)
+  rescue Riddim::AgentProfile::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+
+  begin
+    workspace = Riddim::Herdr.create_workspace(cwd: Dir.pwd, label: "riddim-#{name}")
+  rescue Riddim::Herdr::CommandFailed => e
+    $stdout.write(e.stdout)
+    $stderr.write(e.stderr)
+    exit e.exitstatus
+  rescue Riddim::Herdr::InvalidResponse => e
+    warn "riddim: invalid Herdr workspace JSON: #{e.message}"
+    exit 1
+  end
+
+  begin
+    Riddim::Herdr.start_agent(
+      name: name,
+      pane_id: workspace.root_pane_id,
+      model: profile.model,
+      effort: profile.effort
+    )
+  rescue Riddim::Herdr::CommandFailed => e
+    $stdout.write(e.stdout)
+    $stderr.write(e.stderr)
+    exit e.exitstatus
+  end
+
+  puts "started #{name} in #{workspace.root_pane_id}"
+  exit
+end
+
 puts <<~HELP
   Usage: riddim <command>
 
   Commands:
     peek <target> [lines]       Show recent output from a Herdr agent
     send <target> <message...>  Prompt a Herdr agent
+    start <name>                Start a background Pi agent
     status <target>             Show a Herdr agent's status
 HELP

@@ -18,6 +18,24 @@ Feature: Discover available commands
       """
     Then standard error is empty
 
+  Scenario: List the start command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "start <name>"
+
+  Scenario: Exit successfully when showing help for start
+    When I run riddim with:
+      """
+      """
+    Then the command succeeds
+
+  Scenario: Write no error when showing help for start
+    When I run riddim with:
+      """
+      """
+    Then standard error is empty
+
   Scenario: List the peek command
     When I run riddim with:
       """
