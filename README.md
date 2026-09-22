@@ -15,8 +15,9 @@ and uses Ruby's standard library.
 ## Requirements
 
 - Ruby
-- Herdr with a running session; send needs a Herdr-registered agent, and status
-  and peek need an agent started with `riddim start`
+- Herdr with a running session; `status`, `peek`, and `send` require an agent
+  started with `riddim start`, while `interrupt` accepts a Herdr-registered Pi
+  target
 
 Development uses Ruby 3.4.10, as configured in `mise.toml`.
 
@@ -39,10 +40,10 @@ exactly, even when another Herdr server is running on the same machine, and
 stays valid ahead of commands such as `agent start`, whose `--` passthrough
 tail must reach the agent's own arguments untouched.
 
-`status` and `peek` are the exceptions: their reads target the session recorded
-in the agent's endpoint ownership record, which overrides the ambient
-`HERDR_SESSION` value on both routing surfaces, so a read of one recorded agent
-can never drift to another session's endpoint.
+`status`, `peek`, and `send` are the exceptions: they target the session
+recorded in the agent's endpoint ownership record, which overrides the ambient
+`HERDR_SESSION` value on both routing surfaces, so an operation on one recorded
+agent can never drift to another session's endpoint.
 
 ### Read agent status
 
@@ -137,20 +138,30 @@ blindly; inspect the agent with `riddim status` or `riddim peek` first.
 ### Send a prompt
 
 ```sh
-bin/riddim send <target> <message...>
+bin/riddim send <name> <message...>
 ```
 
-The remaining arguments are joined into one prompt and submitted to the Herdr
-agent.
+`name` is the name of an agent started with `riddim start`. The remaining
+arguments are joined into one prompt. Riddim validates the endpoint ownership
+record, acquires the per-name lock, validates the record again, and lets the
+Herdr process inherit that lock descriptor across `exec`, keeping the lock
+until Herdr exits even if it receives a signal. It submits the prompt to the
+exact recorded pane in
+the exact recorded session, so a cooperating lifecycle writer cannot rebind
+the name during delivery.
 
 ```sh
-bin/riddim send pi Fix the failing tests
+bin/riddim send worker Fix the failing tests
 ```
 
-Ordinary send is a direct Herdr native prompt (`herdr agent prompt`), not
-Firstmate's send: it records no durable inbox entry and tracks no reply, so a
-confirmed submit proves only that Herdr accepted the text. Read what the agent
-answered separately, for example with `bin/riddim peek`.
+This remains deliberately smaller than Firstmate's send. It is a direct Herdr
+native prompt (`herdr agent prompt`), not a durable steering inbox: Riddim
+records no sequenced inbox entry, rings no retryable doorbell, tracks no reply,
+and provides no acknowledgement or idempotent retry contract. A successful
+command proves only that Herdr accepted the prompt. Read what the agent
+answered separately with `bin/riddim peek worker`; after an ambiguous failure,
+inspect the pane before retrying so the same instruction is not delivered
+twice.
 
 ### Start a background Pi agent
 

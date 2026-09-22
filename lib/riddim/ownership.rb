@@ -73,12 +73,15 @@ module Riddim
     # one name serialize and only the winner publishes its record. The lock
     # file is opened with O_NOFOLLOW - a symlinked lock path refuses instead
     # of being followed - and its owner-only permissions are forced after
-    # creation, so a 0777 umask cannot leave the lock unusable.
-    def with_lock(name)
+    # creation, so a 0777 umask cannot leave the lock unusable. A caller that
+    # replaces itself with the protected operation may explicitly inherit the
+    # descriptor across exec, keeping the flock until that operation exits.
+    def with_lock(name, inherit_on_exec: false)
       path = lock_path(name)
       File.open(path, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
         file.chmod(0o600)
         file.flock(File::LOCK_EX)
+        file.close_on_exec = false if inherit_on_exec
         yield
       end
     rescue Errno::ELOOP

@@ -4,23 +4,27 @@
 require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
+require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 
 if ARGV.first == 'send'
   # Firstmate has no synchronous turn-wait send, so Riddim does not carry
   # one. A leading --wait is rejected before Herdr is ever invoked, so it
-  # cannot be misparsed as a target; a later --wait stays message text.
-  # exec preserves Herdr's output and exit status; Riddim::Herdr targets the
-  # resolved session on both the subprocess environment and an explicit
-  # --session flag ahead of the subcommand.
+  # cannot be misparsed as a name; a later --wait stays message text.
   if ARGV[1] == '--wait'
-    warn 'riddim: send --wait is unsupported; use riddim send <target> <message...>'
+    warn 'riddim: send --wait is unsupported; use riddim send <name> <message...>'
     exit 2
   end
 
   rest = ARGV.drop(1)
   unless rest.length >= 2
-    warn 'Usage: riddim send <target> <message...>'
+    warn 'Usage: riddim send <name> <message...>'
+    exit 2
+  end
+
+  name = rest[0]
+  unless name.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
     exit 2
   end
 
@@ -30,7 +34,17 @@ if ARGV.first == 'send'
     exit 2
   end
 
-  Riddim::Herdr.exec('agent', 'prompt', rest[0], message)
+  begin
+    # Resolve once without creating a lock for a missing record, then acquire
+    # the per-name lock and re-resolve while holding it. The second snapshot is
+    # the routing authority, and the lock stays held until Herdr returns, so a
+    # cooperating lifecycle writer cannot rebind the name during delivery.
+    Riddim::Send.run(name, message)
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
 end
 
 if ARGV.first == 'interrupt'
@@ -167,7 +181,7 @@ puts <<~HELP
   Commands:
     peek <name> [lines]         Show recent output from a started agent's recorded pane
     interrupt <target>          Interrupt a Herdr Pi agent with one Escape
-    send <target> <message...>  Prompt a Herdr agent
+    send <name> <message...>    Prompt a started agent's recorded pane
     start <name>                Start a background Pi agent
     status <name>               Show a started agent's registered Herdr status
 HELP

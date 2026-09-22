@@ -94,6 +94,10 @@ module Riddim
       parse_agent(stdout)
     end
 
+    def prompt(target, message, session: nil)
+      exec('agent', 'prompt', target, message, session: session)
+    end
+
     def parse_agent(json)
       document = JSON.parse(json)
       result = document['result'] if document.is_a?(Hash)

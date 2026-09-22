@@ -1,0 +1,44 @@
+# frozen_string_literal: true
+
+Given('the recorded prompt observes whether the lock for {string} is held') do |name|
+  install_fake_herdr(<<~RUBY)
+    lock_path = File.join(ENV.fetch('RIDDIM_STATE_DIR'), ".meta-#{name}.lock")
+    File.open(lock_path, File::RDWR) do |lock|
+      abort 'per-name lock was not held during prompt' if lock.flock(File::LOCK_EX | File::LOCK_NB)
+    end
+    puts 'prompt observed held lock'
+  RUBY
+end
+
+Given('the recorded prompt terminates from signal {string}') do |signal|
+  install_fake_herdr(<<~RUBY)
+    Process.kill(#{signal.dump}, Process.pid)
+    sleep
+  RUBY
+end
+
+Given('no Herdr executable is available') do
+  directory = new_temporary_directory
+  @herdr_directory = directory
+  @environment = (@environment || {}).merge('PATH' => directory)
+end
+
+Given('the recorded prompt fails with status {int}, output {string}, and error {string}') do |status, output, error|
+  install_fake_herdr(<<~RUBY)
+    abort "unexpected arguments: \#{ARGV.join(' ')}" unless ARGV == ['agent', 'prompt', 'w9:p1', 'Fix the tests']
+    puts #{output.dump}
+    warn #{error.dump}
+    exit #{status}
+  RUBY
+end
+
+Then('the command is terminated by signal {string}') do |signal|
+  assert_equal Signal.list.fetch(signal), @status.termsig
+end
+
+Then('the per-name lock for {string} is available') do |name|
+  path = File.join(scenario_state_dir, ".meta-#{name}.lock")
+  available = File.open(path, File::RDWR) { |file| file.flock(File::LOCK_EX | File::LOCK_NB) }
+
+  assert available
+end
