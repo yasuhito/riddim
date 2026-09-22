@@ -3,10 +3,27 @@
 
 require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/interrupt'
+require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
+
+if ARGV.first == 'list'
+  unless ARGV.length == 1
+    warn 'Usage: riddim list'
+    exit 2
+  end
+
+  begin
+    rows = Riddim::List.rows
+    rows.each { |name, session, pane| puts "#{name}\t#{session}\t#{pane}" }
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
 
 if ARGV.first == 'send'
   # Firstmate has no synchronous turn-wait send, so Riddim does not carry
@@ -194,6 +211,7 @@ puts <<~HELP
   Usage: riddim <command>
 
   Commands:
+    list                        List recorded agents and exact endpoints (not liveness)
     peek <name> [lines]         Show recent output from a started agent's recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane

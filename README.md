@@ -47,6 +47,29 @@ session recorded in the agent's endpoint ownership record, which overrides the a
 `HERDR_SESSION` value on both routing surfaces, so an operation on one recorded
 agent can never drift to another session's endpoint.
 
+### List recorded agents
+
+```sh
+bin/riddim list
+```
+
+Lists validated `state/<name>.meta` records, sorted by name, as tab-separated
+`name`, recorded Herdr session, and exact pane ID. An absent or empty state
+directory produces no rows. A still-present malformed record fails the entire
+read without printing a partial list; a record removed during enumeration is
+omitted. The command does not invoke Herdr, read mutable labels, or modify
+state. These are **owned endpoint records, not necessarily running agents**.
+For example:
+
+```text
+worker\triddim\tw9:p1
+```
+
+This is only Firstmate's fleet snapshot ownership inventory. It does not
+provide Firstmate's current crew state, endpoint presence, process liveness,
+backlog, or JSON fleet snapshot. Use `status <name>` for the separate raw
+Herdr registration read, not as proof of process liveness.
+
 ### Read agent status
 
 ```sh

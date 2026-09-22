@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the ownership inventory command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "list"
+
   Scenario: List the send command
     When I run riddim with:
       """
