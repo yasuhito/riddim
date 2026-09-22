@@ -2,9 +2,9 @@
 
 # The lifecycle control plane of Riddim::Herdr, kept apart from the
 # read-and-create surface in herdr.rb: one allowlisted operation that delivers
-# Pi's interrupt key to an exact pane and re-reads Herdr's agent registration
-# for that pane afterwards. The re-read proves the registration only; it is
-# not a process-liveness or cancellation proof. There is deliberately no
+# Pi's interrupt key to an exact pane and checks both Herdr registration and
+# the OS process view before and after delivery. Neither check proves turn
+# cancellation. There is deliberately no
 # arbitrary raw-key entry point here.
 module Riddim
   # The interrupt lifecycle control plane of Riddim::Herdr's agent surface.
@@ -25,20 +25,26 @@ module Riddim
 
     module_function
 
-    # Delivers the interrupt key to one exact recorded pane after requiring
-    # Herdr's registration at that pane to identify the same pane and a Pi
-    # agent. It then re-reads that registration. Neither read proves the
-    # agent's process or its turn.
+    # Delivers one key only if registration and the process view both identify
+    # Pi at the recorded pane, then checks both again. This does not prove
+    # that Pi cancelled the turn.
     def interrupt(pane, session: nil)
       registered_pane = interrupt_pane(agent(pane, session: session))
       unless registered_pane == pane
         raise InvalidResponse, "expected result.agent.pane_id to equal recorded pane #{pane.dump}, " \
                                "got #{registered_pane.dump}"
       end
+      verify_interrupt_process!(pane, session: session)
 
       send_interrupt_key(pane, session: session)
       verify_interrupt_endpoint(pane, session: session)
       pane
+    end
+
+    def verify_interrupt_process!(pane, session:)
+      return if pi_process_alive?(pane, session: session)
+
+      raise InvalidResponse, 'registered Pi has no verifiable live process'
     end
 
     # The exact pane id of the Pi agent in one status-validated response.
@@ -60,17 +66,16 @@ module Riddim
       raise CommandFailed.new(stdout, stderr, status)
     end
 
-    # The one postcondition of an interrupt: Herdr still registers the exact
-    # pane as a Pi agent after the key was accepted for delivery. This is a
-    # registration claim only - never a process-identity or liveness claim.
+    # The postcondition requires a Pi registration and a corroborating process
+    # view after key delivery. Cancellation remains unconfirmed.
     def verify_interrupt_endpoint(pane, session: nil)
       after = interrupt_pane(agent(pane, session: session))
-      return if after == pane
+      return if after == pane && pi_process_alive?(pane, session: session)
 
-      raise InterruptUnverified.new(pane, "the pane now reports pane_id #{after.dump}")
+      raise InterruptUnverified.new(pane, 'the recorded pane no longer has a verifiable live Pi process')
     rescue CommandFailed => e
       raise InterruptUnverified.new(pane, command_failure_reason(e))
-    rescue InvalidResponse => e
+    rescue InvalidResponse, SystemCallError => e
       raise InterruptUnverified.new(pane, e.message)
     end
 

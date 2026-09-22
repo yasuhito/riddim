@@ -44,6 +44,14 @@ Feature: Send a direct prompt to a started agent
         """
       Then standard output is "prompt observed held lock"
 
+    Scenario: Keep the lock in Herdr after the controller is killed
+      Given Herdr retains the send lock after the controller dies for "worker"
+      When I run riddim with:
+        """
+        send worker Fix the tests
+        """
+      Then the Herdr send child retained the lock after controller death
+
     Scenario: Release the lock after a successful prompt
       Given a fake Herdr executable
       When I run riddim with:
@@ -185,25 +193,32 @@ Feature: Send a direct prompt to a started agent
         """
       Then the command exits with status 1
 
-  Rule: Herdr command failures are preserved
+  Rule: Herdr prompt failure is completion-unknown, not proof of non-delivery
 
     Background:
       Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
       And the recorded prompt fails with status 17, output "partial prompt response", and error "herdr: agent not found"
 
-    Scenario: Propagate Herdr's failure status
+    Scenario: Return a distinct completion-unknown status
       When I run riddim with:
         """
         send worker Fix the tests
         """
-      Then the command exits with status 17
+      Then the command exits with status 3
 
     Scenario: Preserve Herdr's error
       When I run riddim with:
         """
         send worker Fix the tests
         """
-      Then standard error is "herdr: agent not found"
+      Then standard error includes "herdr: agent not found"
+
+    Scenario: Warn against a blind retry after a failed prompt
+      When I run riddim with:
+        """
+        send worker Fix the tests
+        """
+      Then standard error includes "prompt delivery is unconfirmed; inspect the pane before retrying"
 
     Scenario: Preserve Herdr's partial output
       When I run riddim with:
@@ -226,6 +241,14 @@ Feature: Send a direct prompt to a started agent
 
     Scenario: Propagate a terminating signal
       Given the recorded prompt terminates from signal "TERM"
+      When I run riddim with:
+        """
+        send worker Fix the tests
+        """
+      Then the command is terminated by signal "TERM"
+
+    Scenario: Forward controller termination to Herdr and preserve its signal
+      Given the recorded prompt sends signal "TERM" to its controller
       When I run riddim with:
         """
         send worker Fix the tests

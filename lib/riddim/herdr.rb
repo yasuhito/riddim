@@ -7,6 +7,9 @@ require_relative 'herdr/cleanup'
 require_relative 'herdr/command_failed'
 require_relative 'herdr/interrupt'
 require_relative 'herdr/pane_tail'
+require_relative 'herdr/preflight'
+require_relative 'herdr/process_state'
+require_relative 'herdr/prompt'
 
 module Riddim
   # Owns Riddim's concrete Herdr command-line surface: it resolves the one
@@ -81,10 +84,6 @@ module Riddim
       raise CommandFailed.new(stdout, stderr, status) unless status.success?
 
       parse_agent(stdout)
-    end
-
-    def prompt(target, message, session: nil)
-      exec('agent', 'prompt', target, message, session: session)
     end
 
     def parse_agent(json)

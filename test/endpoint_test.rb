@@ -54,6 +54,14 @@ class OwnershipEndpointResolutionTest < Minitest::Test
       assert_equal Riddim::Ownership::Endpoint::Resolved.new('lab', 'w9', 'w9:t1', 'w9:p2'), resolved
     end
   end
+
+  def test_accepts_an_extended_record_without_changing_ownership
+    with_started_record do |path|
+      File.open(path, 'a') { |file| file.write("kind=ship\n") }
+
+      assert_equal 'w9:p2', Riddim::Ownership::Endpoint.resolve('worker').pane_id
+    end
+  end
 end
 
 class OwnershipEndpointRefusalTest < Minitest::Test

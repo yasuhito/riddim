@@ -10,6 +10,39 @@ Given('the recorded prompt observes whether the lock for {string} is held') do |
   RUBY
 end
 
+Given('Herdr retains the send lock after the controller dies for {string}') do |name|
+  install_fake_herdr(<<~RUBY)
+    controller = Process.ppid
+    Process.kill('KILL', controller)
+    100.times do
+      break if Process.ppid != controller
+      sleep 0.01
+    end
+    abort 'controller did not exit' if Process.ppid == controller
+    path = File.join(ENV.fetch('RIDDIM_STATE_DIR'), ".meta-#{name}.lock")
+    held = File.open(path, File::RDWR) { |lock| !lock.flock(File::LOCK_EX | File::LOCK_NB) }
+    abort 'Herdr lost ownership lock' unless held
+    File.write(File.expand_path('inherited-send-lock', __dir__), 'yes')
+  RUBY
+end
+
+Then('the Herdr send child retained the lock after controller death') do
+  marker = File.join(@herdr_directory, 'inherited-send-lock')
+  observed = 100.times.any? do
+    found = File.exist?(marker)
+    sleep 0.01 unless found
+    found
+  end
+  assert observed
+end
+
+Given('the recorded prompt sends signal {string} to its controller') do |signal|
+  install_fake_herdr(<<~RUBY)
+    Process.kill(#{signal.dump}, Process.ppid)
+    sleep 2
+  RUBY
+end
+
 Given('the recorded prompt terminates from signal {string}') do |signal|
   install_fake_herdr(<<~RUBY)
     Process.kill(#{signal.dump}, Process.pid)

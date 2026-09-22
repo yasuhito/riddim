@@ -189,8 +189,14 @@ class OwnershipParsingTest < Minitest::Test
     assert_raises(Riddim::Ownership::InvalidRecord) { Riddim::Ownership.parse(OWNERSHIP_BYTES.chomp) }
   end
 
-  def test_rejects_an_unknown_field_line
+  def test_retains_an_additional_well_formed_field
     bytes = OWNERSHIP_BYTES.sub("endpoint_task_id=worker\n", "endpoint_task_id=worker\nkind=ship\n")
+
+    assert_equal 'ship', Riddim::Ownership.parse(bytes).fetch('kind')
+  end
+
+  def test_rejects_a_duplicate_additional_field
+    bytes = "#{OWNERSHIP_BYTES}kind=ship\nkind=scout\n"
 
     assert_raises(Riddim::Ownership::InvalidRecord) { Riddim::Ownership.parse(bytes) }
   end

@@ -87,6 +87,39 @@ Then('Herdr is invoked with {string}') do |invocation|
   assert_equal [invocation], herdr_invocations
 end
 
+CLIENT_STATUS_FIXTURE = <<~'RUBY'
+  if ARGV == %w[status --json]
+    fixture = File.expand_path('client-status.json', __dir__)
+    if File.file?(fixture)
+      File.open(File.expand_path('invocations', __dir__), 'a') do |file|
+        file.write([*session_argv, *ARGV].join(' ') + "\n")
+      end
+      print File.read(fixture)
+    else
+      puts '{"client":{"protocol":22,"version":"0.9.0"},"server":{"running":false}}'
+    end
+    exit 0
+  end
+RUBY
+
+PROCESS_INFO_FIXTURE = <<~RUBY
+  if ARGV[0, 2] == %w[pane process-info]
+    require 'json'
+    if File.exist?(File.expand_path('bad-process-info', __dir__))
+      puts 'not JSON'
+      exit 0
+    end
+    pane = ARGV[3]
+    kind = File.exist?(File.expand_path('stale-pi', __dir__)) ? 'zsh' : 'pi'
+    foreground = { pid: Process.ppid, name: kind, argv0: kind }
+    result = { type: 'pane_process_info', process_info: {
+      pane_id: pane, shell_pid: Process.ppid, foreground_processes: [foreground]
+    } }
+    puts JSON.generate(result: result)
+    exit 0
+  end
+RUBY
+
 # Installs a process-level Herdr test double while exercising the public CLI.
 # Every invocation is logged beside the fake, and every invocation must be
 # session-targeted: HERDR_SESSION set in the subprocess environment and an
@@ -98,8 +131,10 @@ def install_fake_herdr(body)
   herdr = File.join(directory, 'herdr')
   File.write(herdr, <<~RUBY)
     #!/usr/bin/ruby
-    #{LOG_INVOCATION}
     #{SESSION_GUARD}
+    #{CLIENT_STATUS_FIXTURE}
+    #{LOG_INVOCATION.sub('ARGV.join', '[*session_argv, *ARGV].join')}
+    #{PROCESS_INFO_FIXTURE}
     #{body}
   RUBY
   File.chmod(0o755, herdr)

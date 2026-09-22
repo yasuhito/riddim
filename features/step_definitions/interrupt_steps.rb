@@ -20,6 +20,14 @@ Given('Herdr registers pane {string} as Pi and accepts its interrupt key') do |p
   RUBY
 end
 
+Given('the Pi process view is unreadable') do
+  File.write(File.join(@herdr_directory, 'bad-process-info'), '')
+end
+
+Given('the Pi registration is stale over a shell-only pane') do
+  File.write(File.join(@herdr_directory, 'stale-pi'), '')
+end
+
 Given('Herdr registers pane {string} as {string}') do |pane, kind|
   install_fake_herdr(<<~RUBY)
     case ARGV[0, 2]
@@ -95,6 +103,17 @@ Given('Herdr fails to send the recorded interrupt key with status {int} and erro
   RUBY
 end
 
+Given('Herdr disappears after accepting the interrupt key') do
+  install_fake_herdr(<<~RUBY)
+    case ARGV[0, 2]
+    when ['agent', 'get'] then puts #{pi_agent_response.dump}
+    when ['pane', 'send-keys'] then File.unlink(File.expand_path('herdr', __dir__))
+    else abort "unexpected invocation: \#{ARGV.join(' ')}"
+    end
+  RUBY
+  @environment['PATH'] = "#{@herdr_directory}:/usr/bin:/bin"
+end
+
 Given('Herdr cannot re-read the recorded pane after the key with status {int} and error {string}') do |status, error|
   install_fake_herdr(<<~RUBY)
     case ARGV[0, 2]
@@ -118,6 +137,16 @@ Given('Herdr reports the recorded pane hosting {string} after the key') do |kind
       first = File.readlines(File.expand_path('invocations', __dir__)).length == 1
       puts(first ? #{pi_agent_response.dump} : #{pi_agent_response(kind: kind).dump})
     when ['pane', 'send-keys'] then nil
+    else abort "unexpected invocation: \#{ARGV.join(' ')}"
+    end
+  RUBY
+end
+
+Given('the Pi process exits immediately after the interrupt key') do
+  install_fake_herdr(<<~RUBY)
+    case ARGV[0, 2]
+    when ['agent', 'get'] then puts #{pi_agent_response.dump}
+    when ['pane', 'send-keys'] then File.write(File.expand_path('stale-pi', __dir__), '')
     else abort "unexpected invocation: \#{ARGV.join(' ')}"
     end
   RUBY
@@ -189,8 +218,14 @@ Given('Herdr verifies the per-name lock while interrupting {string}') do |name|
   RUBY
 end
 
-Then('Herdr receives {string} then {string} then {string}') do |first, second, third|
-  assert_equal [first, second, third], herdr_invocations
+Then('every Herdr call targets session {string}') do |session|
+  assert(herdr_invocations.all? { |invocation| invocation.start_with?("--session #{session} ") })
+end
+
+Then('Herdr reads the process before and after one exact interrupt key') do
+  expected = %w[agent:get pane:process-info pane:send-keys agent:get pane:process-info]
+  actual = herdr_invocations.map { |invocation| invocation.split[2, 2].join(':') }
+  assert_equal expected, actual
 end
 
 Then('the command preserves signal {string}, output {string}, and error {string}') do |signal, output, error|

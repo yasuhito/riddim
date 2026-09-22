@@ -2,8 +2,8 @@ Feature: Interrupt a started Pi agent
 
   Interrupt is lifecycle control, separate from conversational send. It accepts
   only a Riddim-owned name, locks and re-resolves that name, delivers exactly
-  one Escape to the exact recorded pane and session, and re-reads that pane's
-  Herdr registration afterwards. It never exposes arbitrary keys.
+  one Escape to the exact recorded pane and session only when the Pi process
+  is live, then re-checks registration and process. It never exposes arbitrary keys.
 
   Rule: One Escape is delivered to the exact recorded endpoint
 
@@ -16,7 +16,7 @@ Feature: Interrupt a started Pi agent
         """
         interrupt worker
         """
-      Then Herdr receives "--session riddim agent get w9:p1" then "--session riddim pane send-keys w9:p1 escape" then "--session riddim agent get w9:p1"
+      Then Herdr reads the process before and after one exact interrupt key
 
     Scenario: Exit successfully after verified delivery
       When I run riddim with:
@@ -25,12 +25,12 @@ Feature: Interrupt a started Pi agent
         """
       Then the command succeeds
 
-    Scenario: Name the pane with the registration re-read and unconfirmed liveness
+    Scenario: Name the pane with the process re-check and unconfirmed cancellation
       When I run riddim with:
         """
         interrupt worker
         """
-      Then standard output is "interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)"
+      Then standard output is "interrupt delivered to pane w9:p1 (Pi process checked before and after; cancellation unconfirmed)"
 
     Scenario: Write no error after verified delivery
       When I run riddim with:
@@ -38,6 +38,28 @@ Feature: Interrupt a started Pi agent
         interrupt worker
         """
       Then standard error is empty
+
+  Rule: A stale registration is not a running Pi process
+
+    Background:
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr registers pane "w9:p1" as Pi and accepts its interrupt key
+      And the Pi registration is stale over a shell-only pane
+
+    Scenario: Refuse an unreadable process view before Escape
+      Given the Pi process view is unreadable
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr never sends an interrupt key
+
+    Scenario: Refuse to send Escape into a shell-only pane
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr never sends an interrupt key
 
   Rule: The recorded session overrides the ambient session
 
@@ -51,7 +73,7 @@ Feature: Interrupt a started Pi agent
         """
         interrupt worker
         """
-      Then Herdr receives "--session riddim agent get w9:p1" then "--session riddim pane send-keys w9:p1 escape" then "--session riddim agent get w9:p1"
+      Then every Herdr call targets session "riddim"
 
   Rule: The per-name lock covers delivery and verification
 
@@ -372,6 +394,19 @@ Feature: Interrupt a started Pi agent
         """
       Then the per-name lock for "worker" is available
 
+  Rule: Losing the Herdr executable after delivery is ambiguous
+
+    Background:
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr disappears after accepting the interrupt key
+
+    Scenario: Tell the user not to retry blindly after the executable disappears
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then standard error includes "may have been delivered to pane w9:p1"
+
   Rule: A changed post-delivery registration is reported honestly
 
     Background:
@@ -387,6 +422,14 @@ Feature: Interrupt a started Pi agent
 
     Scenario: Refuse a pane id that changed
       Given Herdr reports pane "w9:p2" for the recorded pane after the key
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then standard error includes "may have been delivered to pane w9:p1"
+
+    Scenario: Report uncertainty when Pi exits after Escape but registration remains
+      Given the Pi process exits immediately after the interrupt key
       When I run riddim with:
         """
         interrupt worker

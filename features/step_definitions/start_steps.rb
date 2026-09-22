@@ -1,5 +1,24 @@
 # frozen_string_literal: true
 
+Then('Herdr never creates a workspace') do
+  assert_empty herdr_invocations.grep(/workspace create/)
+end
+
+Given('the Herdr client reports protocol {int}') do |protocol|
+  status = JSON.generate(client: { protocol: protocol, version: '0.9.0' }, server: { running: false })
+  File.write(File.join(@herdr_directory, 'client-status.json'), status)
+end
+
+Given('the running Herdr server reports version {string}') do |version|
+  status = JSON.generate(client: { protocol: 22, version: '0.9.0' }, server: { running: true, version: version })
+  File.write(File.join(@herdr_directory, 'client-status.json'), status)
+end
+
+Given('the Herdr client reports version {string}') do |version|
+  status = JSON.generate(client: { protocol: 15, version: version }, server: { running: false })
+  File.write(File.join(@herdr_directory, 'client-status.json'), status)
+end
+
 require 'json'
 
 # The canned Herdr workspace-create response shared by the start fakes.

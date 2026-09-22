@@ -35,6 +35,10 @@ class AgentProfileParsingTest < Minitest::Test
     assert_raises(Riddim::AgentProfile::Error) { Riddim::AgentProfile.parse("claude opus high\n") }
   end
 
+  def test_rejects_effort_outside_firstmate_profile_vocabulary
+    assert_raises(Riddim::AgentProfile::Error) { Riddim::AgentProfile.parse("pi model minimal\n") }
+  end
+
   def test_rejects_an_unsupported_effort
     assert_raises(Riddim::AgentProfile::Error) { Riddim::AgentProfile.parse("pi model ultra\n") }
   end

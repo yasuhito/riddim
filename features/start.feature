@@ -182,7 +182,7 @@ Feature: Start a background Pi agent
         """
         start worker
         """
-      Then standard error is "riddim: unsupported effort \"ultra\": expected one of off, minimal, low, medium, high, xhigh, max"
+      Then standard error is "riddim: unsupported effort \"ultra\": expected one of low, medium, high, xhigh, max"
 
     Scenario: Reject a second profile line
       Given a config directory with agent profile:
@@ -207,6 +207,57 @@ Feature: Start a background Pi agent
         start worker
         """
       Then standard error is "riddim: expected one profile line in agent-profile, found 2"
+
+  Rule: Unsupported Herdr clients are refused before endpoint creation
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and starts the agent
+      And the Herdr client reports protocol 13
+
+    Scenario: Reject a client below Firstmate's protocol floor
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr never creates a workspace
+
+  Rule: Herdr below the focus-safe release is refused before endpoint creation
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and starts the agent
+      And the Herdr client reports version "0.7.5"
+
+    Scenario: Reject a release whose emptying-close can steal focus
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr never creates a workspace
+
+  Rule: An older running Herdr server is refused before endpoint creation
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" and starts the agent
+      And the running Herdr server reports version "0.7.5"
+
+    Scenario: Reject a focus-unsafe server even with a supported client
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then Herdr never creates a workspace
 
   Rule: A valid profile creates an unfocused workspace and starts the agent in its root pane
 

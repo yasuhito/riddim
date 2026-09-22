@@ -49,9 +49,9 @@ module Riddim
       raise InvalidValue, "record field #{key.inspect} must be one nonempty line: got #{value.inspect}"
     end
 
-    # Parses record bytes back into fields. Every line must be one known
-    # key=value field, present exactly once, so a malformed, truncated, or
-    # extended record never reads back as ownership evidence.
+    # Parses record bytes back into fields. Required ownership keys must be
+    # present exactly once. Other well-formed keys are retained so later
+    # Firstmate-style metadata extensions do not invalidate older readers.
     def parse(bytes)
       text = record_text(bytes)
       raise InvalidRecord, 'an endpoint record must not be empty' if text.empty?
@@ -81,7 +81,7 @@ module Riddim
     end
 
     def readable_field?(key, value)
-      FIELD_ORDER.include?(key) && !value.empty? && !value.match?(/[[:cntrl:]]/)
+      key.match?(/\A[a-z][a-z0-9_]*\z/) && !value.empty? && !value.match?(/[[:cntrl:]]/)
     end
 
     # Publishes the complete record bytes at <path>: the bytes are fully

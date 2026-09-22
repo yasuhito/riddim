@@ -40,7 +40,12 @@ if ARGV.first == 'send'
     # the per-name lock and re-resolve while holding it. The second snapshot is
     # the routing authority, and the lock stays held until Herdr returns, so a
     # cooperating lifecycle writer cannot rebind the name during delivery.
-    Riddim::Send.run(name, message)
+    result = Riddim::Send.run(name, message)
+    if result.respond_to?(:success?) && !result.success?
+      warn 'riddim: prompt delivery is unconfirmed; inspect the pane before retrying'
+      Riddim::Herdr.terminate_like(Riddim::Herdr::CommandFailed.new('', '', result)) if result.signaled?
+      exit 3
+    end
   rescue Riddim::Ownership::Error, SystemCallError => e
     warn "riddim: #{e.message}"
     exit 1
@@ -80,7 +85,7 @@ if ARGV.first == 'interrupt'
     exit 1
   end
 
-  puts "interrupt delivered to pane #{pane} (Pi registration re-read; process liveness and cancellation unconfirmed)"
+  puts "interrupt delivered to pane #{pane} (Pi process checked before and after; cancellation unconfirmed)"
   exit
 end
 

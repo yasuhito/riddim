@@ -5,7 +5,7 @@ module Riddim
   class AgentProfile
     FILENAME = 'agent-profile'
     SUPPORTED_HARNESS = 'pi'
-    SUPPORTED_EFFORTS = %w[off minimal low medium high xhigh max].freeze
+    SUPPORTED_EFFORTS = %w[low medium high xhigh max].freeze
     MALFORMED_MESSAGE = 'malformed profile line: expected "<harness> <model> <effort>"'
 
     class Error < StandardError; end

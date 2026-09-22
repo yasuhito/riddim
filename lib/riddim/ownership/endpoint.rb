@@ -9,8 +9,9 @@ module Riddim
     # refusal happens here, before any Herdr command is constructed. The
     # record is read the way Ownership removes one - opened with O_NOFOLLOW,
     # required to be a regular file - and parsed against the exact published
-    # schema, so a missing, symlinked, unreadable, malformed, duplicated, or
-    # inconsistent record is refused, never reinterpreted. Nothing is inferred
+    # ownership fields, so a missing, symlinked, unreadable, malformed,
+    # duplicated, or inconsistent record is refused. Additional well-formed
+    # metadata is preserved without becoming routing authority. Nothing is inferred
     # from labels: only the record's own endpoint_task_id, harness, backend,
     # window, and herdr_ fields decide.
     module Endpoint
@@ -53,8 +54,8 @@ module Riddim
       end
 
       # Parses the record bytes at <path> with the exact published schema. A
-      # record that is unreadable, truncated, extended, or duplicated never
-      # reads back as ownership evidence.
+      # record that is unreadable, truncated, or duplicated never reads back
+      # as ownership evidence; unrelated metadata may be added safely.
       def parse_record(name, path)
         Ownership.parse(read_bytes(path))
       rescue Ownership::InvalidRecord => e

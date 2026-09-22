@@ -48,11 +48,13 @@ module Riddim
 
     # The exact endpoint of this start: one unfocused workspace, one root pane.
     def create_endpoint(name)
+      Riddim::Herdr.verify_client!
       Riddim::Herdr.create_workspace(cwd: Dir.pwd, label: "riddim-#{name}")
     rescue Riddim::Herdr::CommandFailed => e
-      $stdout.write(e.stdout)
-      $stderr.write(e.stderr)
+      [[$stdout, e.stdout], [$stderr, e.stderr]].each { |stream, text| stream.write(text) }
       Riddim::Herdr.terminate_like(e)
+    rescue Riddim::Herdr::IncompatibleClient => e
+      exit_on_error(e)
     rescue Riddim::Herdr::InvalidResponse => e
       warn "riddim: invalid Herdr workspace JSON: #{e.message}"
       exit 1

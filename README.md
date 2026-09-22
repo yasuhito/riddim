@@ -15,6 +15,9 @@ and uses Ruby's standard library.
 ## Requirements
 
 - Ruby
+- Herdr client and running server version 0.8.0 or newer for `start`;
+  Riddim intentionally requires Firstmate's focus-safe emptying-close release
+  rather than supporting older versions with its more elaborate close plan
 - Herdr with a running session; `status`, `peek`, `send`, and `interrupt`
   require an agent started with `riddim start`
 
@@ -93,8 +96,10 @@ bin/riddim peek worker 100
 
 The record is the routing authority, and it fails closed before Herdr is
 touched at all: it must be a regular file at `state/<name>.meta` - never a
-symbolic link - it must parse as exactly the record `start` published, it
-must bind `endpoint_task_id` equal to the requested name on the `pi` harness
+symbolic link - it must contain each required ownership field exactly once
+(additional well-formed metadata fields are permitted), it must bind
+`endpoint_task_id`
+equal to the requested name on the `pi` harness
 and the `herdr` backend, and its `window` must be exactly
 `<herdr_session>:<herdr_pane_id>`. A missing, symlinked, malformed, or
 inconsistent record is refused with Riddim's own status 1, and no Herdr
@@ -113,9 +118,11 @@ Riddim validates the endpoint ownership record, acquires the per-name lock,
 validates the record again, and keeps the lock through delivery and its
 postcondition. Each Herdr subprocess inherits the lock descriptor, so even an
 abrupt Riddim exit cannot release the name while that subprocess is still
-finishing. Riddim first requires Herdr to register a Pi agent whose reported
-pane ID equals the exact recorded pane, then delivers exactly one Escape to
-that pane in the recorded session with
+finishing. Riddim requires Herdr to register Pi at the exact recorded pane
+and checks `pane process-info` against the OS process table: a Pi process
+must be in the foreground or descend from the pane shell. An unreadable,
+stale, or shell-only process view refuses before delivery. It then sends one
+Escape to that pane in the recorded session with
 `herdr pane send-keys <pane-id> escape`. Pi cancels its running turn on a
 single Escape and needs no composer-clear key afterwards. Interrupt is a
 lifecycle control command, separate from `riddim send`, which sends
@@ -123,16 +130,15 @@ conversational text; there is deliberately no way to send arbitrary keys
 through Riddim.
 
 Delivery is reported honestly. After Herdr accepts the key, Riddim re-reads
-Herdr's agent registration for that exact pane and requires it to still
-register a Pi agent at the same pane, then prints one line naming the pane:
+Herdr's agent registration and process view for that exact pane, then prints
+one line naming the pane only when both still corroborate the Pi process:
 
 ```sh
-interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)
+interrupt delivered to pane w9:p1 (Pi process checked before and after; cancellation unconfirmed)
 ```
 
-The line claims only the registration re-read: it never claims the agent's
-process is alive - a Herdr registration can outlive the process it names - and
-it never claims cancellation was observed.
+The line claims the checked process view, not that cancellation was observed.
+A registration alone is never liveness evidence.
 
 If the record is invalid, the registration does not identify Pi at the exact
 recorded pane, or a response is malformed, Riddim refuses before delivering
@@ -143,12 +149,12 @@ been delivered and says not to retry blindly; inspect the agent with
 `riddim status` or `riddim peek` first.
 
 This is deliberately smaller than Firstmate's interrupt control plane.
-Firstmate uses a recovery-grade classifier to prove the agent process is alive
-before and after delivery and reports the strongest adapter-owned cancellation
-acknowledgement available. Riddim currently verifies only Herdr's Pi
-registration before and after the key. It does not prove process liveness,
-turn cancellation, or task-state transition, and never rewrites status as
-proof of interruption.
+Firstmate's cross-harness recovery classifier also treats a non-shell
+foreground process as live after a bounded settle, checks pane presence, and
+reports the strongest adapter-owned cancellation acknowledgement. Riddim's
+Pi-only check requires a positively identifiable Pi process instead and
+refuses an unfamiliar foreground. It does not prove turn cancellation or a
+task-state transition, and never rewrites status as proof of interruption.
 
 ### Send a prompt
 
@@ -159,10 +165,10 @@ bin/riddim send <name> <message...>
 `name` is the name of an agent started with `riddim start`. The remaining
 arguments are joined into one prompt. Riddim validates the endpoint ownership
 record, acquires the per-name lock, validates the record again, and lets the
-Herdr process inherit that lock descriptor across `exec`, keeping the lock
-until Herdr exits even if it receives a signal. It submits the prompt to the
-exact recorded pane in
-the exact recorded session, so a cooperating lifecycle writer cannot rebind
+Herdr child process inherit that lock descriptor across `exec`, keeping the
+lock until Herdr exits even if the Riddim controller dies. It submits the
+prompt to the exact recorded pane in the exact recorded session, so a
+cooperating lifecycle writer cannot rebind
 the name during delivery.
 
 ```sh
@@ -173,10 +179,12 @@ This remains deliberately smaller than Firstmate's send. It is a direct Herdr
 native prompt (`herdr agent prompt`), not a durable steering inbox: Riddim
 records no sequenced inbox entry, rings no retryable doorbell, tracks no reply,
 and provides no acknowledgement or idempotent retry contract. A successful
-command proves only that Herdr accepted the prompt. Read what the agent
-answered separately with `bin/riddim peek worker`; after an ambiguous failure,
-inspect the pane before retrying so the same instruction is not delivered
-twice.
+command proves only that Herdr accepted the prompt. A failed Herdr prompt
+returns status 3 and a delivery-unconfirmed warning rather than
+claiming no delivery; a child killed by a signal retains signal termination
+with the same warning. No retry is automatically safe because an instruction
+might already have reached the pane. Read what the agent answered separately
+with `bin/riddim peek worker`, and inspect the pane before any retry.
 
 ### Start a background Pi agent
 
@@ -279,7 +287,12 @@ performs no rollback of its own; the start flow owns every cleanup decision:
   reports that exactly, naming the record path and the endpoint ids,
   instead of claiming a cleanup it did not verify.
 
-The cleanup is pane-scoped by construction: Riddim never closes a workspace.
+The cleanup is pane-scoped by construction: Riddim never calls `workspace close`.
+Its dedicated workspace can become empty when that pane closes. Before creating
+one, `start` checks the client and any running server are at least Herdr 0.8.0,
+where Firstmate verifies an emptying close no longer steals focus. This is a
+smaller supported-release subset than Firstmate, which also supports older
+Herdr versions using session-level focus-safe cleanup.
 
 ## Development
 
