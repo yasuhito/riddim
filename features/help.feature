@@ -1,5 +1,11 @@
 Feature: Discover available commands
 
+  Scenario: List the foreground working-directory command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "current-path <name>"
+
   Scenario: List the exact-pane presence command
     When I run riddim with:
       """

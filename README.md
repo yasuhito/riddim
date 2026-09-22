@@ -144,6 +144,23 @@ It never closes a pane or removes an ownership record. Even `gone` is a
 point-in-time observation, not permission to clean up a record without a
 separate locked, exact-endpoint verification.
 
+### Read the foreground working directory
+
+```sh
+bin/riddim current-path <name>
+```
+
+Prints the recorded exact pane's `foreground_cwd`, or `unknown` when it cannot
+be verified. Firstmate's Herdr `current_path` probe reads that live field
+instead of `cwd`, which can describe the pane shell rather than a foreground
+subshell. On Herdr 0.9.0, a live subshell in `/` left the pane's `cwd` at
+`/tmp` while `foreground_cwd` and `current-path` both read `/`. This is a
+smaller read-only subset: Riddim
+requires a successful, matching structured pane response and a legible
+absolute path; it does not start a stopped Herdr server, substitute the pane's
+`cwd` field, or claim the path owns a worktree. A changed
+ownership record also makes the observation `unknown`.
+
 ### Read agent status
 
 ```sh

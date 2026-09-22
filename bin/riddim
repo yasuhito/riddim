@@ -11,7 +11,7 @@ require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 
-if %w[agent-state busy-state pane-presence].include?(ARGV.first)
+if %w[agent-state busy-state current-path pane-presence].include?(ARGV.first)
   verb = ARGV.first
   unless ARGV.length == 2
     warn "Usage: riddim #{verb} <name>"
@@ -30,6 +30,7 @@ if %w[agent-state busy-state pane-presence].include?(ARGV.first)
     state = case verb
             when 'agent-state' then Riddim::Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
             when 'busy-state' then Riddim::Herdr.busy_state(endpoint.pane_id, session: endpoint.session)
+            when 'current-path' then Riddim::Herdr.current_path(endpoint.pane_id, session: endpoint.session)
             else Riddim::Herdr.pane_presence_state(endpoint.pane_id, session: endpoint.session)
             end
     changed_state = verb == 'agent-state' ? 'unreadable' : 'unknown'
@@ -249,6 +250,7 @@ puts <<~HELP
   Commands:
     agent-state <name>          Inspect recorded Pi process (alive/dead/missing/unreadable)
     busy-state <name>           Observe Pi activity (busy/idle/unknown; not completion)
+    current-path <name>         Read the exact pane's foreground cwd (or unknown)
     pane-presence <name>        Read exact pane presence (present/gone/unknown)
     list [--json]               List recorded agents and exact endpoints (not liveness)
     peek <name> [lines]         Show recent output from a started agent's recorded pane
