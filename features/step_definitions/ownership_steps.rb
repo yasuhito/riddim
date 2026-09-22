@@ -55,6 +55,13 @@ Then('the invalid UTF-8 record refusal is explained for {string}') do |name|
   assert_equal expected, @stderr
 end
 
+Then('the per-name lock for {string} is available') do |name|
+  path = File.join(scenario_state_dir, ".meta-#{name}.lock")
+  available = File.open(path, File::RDWR) { |file| file.flock(File::LOCK_EX | File::LOCK_NB) }
+
+  assert available
+end
+
 Given('a symlinked endpoint record for {string} that points elsewhere') do |name|
   FileUtils.mkdir_p(scenario_state_dir)
   target = File.join(new_temporary_directory, 'elsewhere.meta')

@@ -161,6 +161,31 @@ class HerdrInterruptParsingTest < Minitest::Test
   end
 end
 
+class HerdrSignalTerminationTest < Minitest::Test
+  FakeStatus = Struct.new(:exitstatus, :termsig)
+
+  def test_uses_a_conventional_status_for_a_ruby_reserved_signal
+    assert_fallback_status('SEGV')
+  end
+
+  def test_uses_a_conventional_status_for_a_ruby_ignored_signal
+    assert_fallback_status('PIPE')
+  end
+
+  private
+
+  def assert_fallback_status(name)
+    signal = Signal.list.fetch(name)
+    child = fork do
+      failure = Riddim::Herdr::CommandFailed.new('', '', FakeStatus.new(nil, signal))
+      Riddim::Herdr.terminate_like(failure)
+    end
+    _, status = Process.wait2(child)
+
+    assert_equal 128 + signal, status.exitstatus
+  end
+end
+
 class HerdrCommandFailureReasonTest < Minitest::Test
   def test_appends_herdr_error_to_the_exit_status
     failure = Riddim::Herdr::CommandFailed.new('', "herdr: pane not found\n", 7)

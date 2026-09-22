@@ -7,17 +7,16 @@ in a smaller, Herdr-focused tool.
 
 Riddim currently lets you inspect Herdr's agent registration status, read a
 started agent's recent output from the exact pane its ownership record binds,
-send an agent a prompt, interrupt a Pi agent with one Escape and an honest
-post-delivery report, and start a background Pi agent whose endpoint ownership
-it records, Firstmate-style, before the agent runs. It keeps its runtime small
+send a started agent a prompt, interrupt a started Pi agent with one Escape
+and an honest post-delivery report, and start a background Pi agent whose
+endpoint ownership it records, Firstmate-style, before the agent runs. It keeps its runtime small
 and uses Ruby's standard library.
 
 ## Requirements
 
 - Ruby
-- Herdr with a running session; `status`, `peek`, and `send` require an agent
-  started with `riddim start`, while `interrupt` accepts a Herdr-registered Pi
-  target
+- Herdr with a running session; `status`, `peek`, `send`, and `interrupt`
+  require an agent started with `riddim start`
 
 Development uses Ruby 3.4.10, as configured in `mise.toml`.
 
@@ -40,8 +39,8 @@ exactly, even when another Herdr server is running on the same machine, and
 stays valid ahead of commands such as `agent start`, whose `--` passthrough
 tail must reach the agent's own arguments untouched.
 
-`status`, `peek`, and `send` are the exceptions: they target the session
-recorded in the agent's endpoint ownership record, which overrides the ambient
+`status`, `peek`, `send`, and `interrupt` are the exceptions: they target the
+session recorded in the agent's endpoint ownership record, which overrides the ambient
 `HERDR_SESSION` value on both routing surfaces, so an operation on one recorded
 agent can never drift to another session's endpoint.
 
@@ -102,23 +101,30 @@ inconsistent record is refused with Riddim's own status 1, and no Herdr
 command is ever constructed from labels or inference. If the pane read
 fails, Herdr's stdout, stderr, and exit status pass through unchanged.
 
-### Interrupt a Pi agent
+### Interrupt a started Pi agent
 
 ```sh
-bin/riddim interrupt <target>
+bin/riddim interrupt <name>
 ```
 
-`target` is a Herdr agent name or pane ID. Riddim resolves the target once,
-requires Herdr to register the pane as a Pi agent, and delivers exactly one
-Escape with
-`herdr agent send-keys <pane-id> esc`: Pi cancels its running turn on a single
-Escape and needs no composer-clear key afterwards. Interrupt is a lifecycle
-control command, separate from `riddim send`, which sends conversational text;
-there is deliberately no way to send arbitrary keys through Riddim.
+`name` is the name of an agent started with `riddim start`; explicit pane IDs,
+Herdr agent names without Riddim ownership, and mutable labels are refused.
+Riddim validates the endpoint ownership record, acquires the per-name lock,
+validates the record again, and keeps the lock through delivery and its
+postcondition. Each Herdr subprocess inherits the lock descriptor, so even an
+abrupt Riddim exit cannot release the name while that subprocess is still
+finishing. Riddim first requires Herdr to register a Pi agent whose reported
+pane ID equals the exact recorded pane, then delivers exactly one Escape to
+that pane in the recorded session with
+`herdr pane send-keys <pane-id> escape`. Pi cancels its running turn on a
+single Escape and needs no composer-clear key afterwards. Interrupt is a
+lifecycle control command, separate from `riddim send`, which sends
+conversational text; there is deliberately no way to send arbitrary keys
+through Riddim.
 
 Delivery is reported honestly. After Herdr accepts the key, Riddim re-reads
 Herdr's agent registration for that exact pane and requires it to still
-register a Pi agent, then prints one line naming the pane:
+register a Pi agent at the same pane, then prints one line naming the pane:
 
 ```sh
 interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)
@@ -128,12 +134,21 @@ The line claims only the registration re-read: it never claims the agent's
 process is alive - a Herdr registration can outlive the process it names - and
 it never claims cancellation was observed.
 
-If the target does not resolve to a Pi agent, or a response is malformed,
-Riddim refuses before delivering anything. If Herdr fails to deliver the key,
-Herdr's output and exit status pass through unchanged. If the registration
-re-read after delivery fails, or no longer registers that pane as a Pi agent,
-Riddim reports that the key may have been delivered and says not to retry
-blindly; inspect the agent with `riddim status` or `riddim peek` first.
+If the record is invalid, the registration does not identify Pi at the exact
+recorded pane, or a response is malformed, Riddim refuses before delivering
+anything. If Herdr fails to deliver the key, Herdr's output and exit status
+pass through unchanged. If the registration re-read after delivery fails, or
+no longer registers Pi at the same pane, Riddim reports that the key may have
+been delivered and says not to retry blindly; inspect the agent with
+`riddim status` or `riddim peek` first.
+
+This is deliberately smaller than Firstmate's interrupt control plane.
+Firstmate uses a recovery-grade classifier to prove the agent process is alive
+before and after delivery and reports the strongest adapter-owned cancellation
+acknowledgement available. Riddim currently verifies only Herdr's Pi
+registration before and after the key. It does not prove process liveness,
+turn cancellation, or task-state transition, and never rewrites status as
+proof of interruption.
 
 ### Send a prompt
 

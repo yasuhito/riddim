@@ -35,10 +35,3 @@ end
 Then('the command is terminated by signal {string}') do |signal|
   assert_equal Signal.list.fetch(signal), @status.termsig
 end
-
-Then('the per-name lock for {string} is available') do |name|
-  path = File.join(scenario_state_dir, ".meta-#{name}.lock")
-  available = File.open(path, File::RDWR) { |file| file.flock(File::LOCK_EX | File::LOCK_NB) }
-
-  assert available
-end

@@ -4,6 +4,7 @@ require 'json'
 require 'open3'
 
 require_relative 'herdr/cleanup'
+require_relative 'herdr/command_failed'
 require_relative 'herdr/interrupt'
 require_relative 'herdr/pane_tail'
 
@@ -16,18 +17,6 @@ module Riddim
 
     # The session Herdr targets when HERDR_SESSION is unset or empty.
     DEFAULT_SESSION = 'default'
-
-    # Preserves a failed Herdr process's observable result for the caller.
-    class CommandFailed < StandardError
-      attr_reader :stdout, :stderr, :exitstatus
-
-      def initialize(stdout, stderr, exitstatus)
-        super("Herdr exited with status #{exitstatus}")
-        @stdout = stdout
-        @stderr = stderr
-        @exitstatus = exitstatus
-      end
-    end
 
     class InvalidResponse < StandardError; end
 
@@ -89,7 +78,7 @@ module Riddim
 
     def agent(target, session: nil)
       stdout, stderr, status = capture('agent', 'get', target, session: session)
-      raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
 
       parse_agent(stdout)
     end
@@ -112,7 +101,7 @@ module Riddim
 
     def create_workspace(cwd:, label:)
       stdout, stderr, status = capture('workspace', 'create', '--cwd', cwd, '--label', label, '--no-focus')
-      raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
 
       parse_workspace(stdout)
     end
@@ -165,7 +154,7 @@ module Riddim
         'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
         '--', '--model', model, '--thinking', effort
       )
-      raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
     end
 
     # The non-empty string value of one Herdr response field, or nil.

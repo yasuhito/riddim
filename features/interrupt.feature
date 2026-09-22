@@ -1,319 +1,439 @@
-Feature: Interrupt a Pi agent
+Feature: Interrupt a started Pi agent
 
-  Interrupt is lifecycle control, separate from the conversational send: one
-  allowlisted operation that resolves the target once, delivers exactly one
-  Escape to the agent's exact pane, and re-reads Herdr's registration for the
-  same pane afterwards. It never sends arbitrary keys.
+  Interrupt is lifecycle control, separate from conversational send. It accepts
+  only a Riddim-owned name, locks and re-resolves that name, delivers exactly
+  one Escape to the exact recorded pane and session, and re-reads that pane's
+  Herdr registration afterwards. It never exposes arbitrary keys.
 
-  Rule: One Escape is delivered to the resolved pane
+  Rule: One Escape is delivered to the exact recorded endpoint
 
     Background:
-      Given Herdr resolves pi to pane "w9:p1" and accepts the interrupt key
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr registers pane "w9:p1" as Pi and accepts its interrupt key
 
-    Scenario: Resolve the agent then send one Escape and re-verify it
+    Scenario: Read, interrupt, and re-read the exact pane
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
-      Then Herdr receives "--session default agent get pi" then "--session default agent send-keys w9:p1 esc" then "--session default agent get w9:p1"
-
-    Scenario: Deliver through a named session
-      Given the Herdr session is "lab"
-      When I run riddim with:
-        """
-        interrupt pi
-        """
-      Then Herdr receives "--session lab agent get pi" then "--session lab agent send-keys w9:p1 esc" then "--session lab agent get w9:p1"
+      Then Herdr receives "--session riddim agent get w9:p1" then "--session riddim pane send-keys w9:p1 escape" then "--session riddim agent get w9:p1"
 
     Scenario: Exit successfully after verified delivery
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then the command succeeds
 
     Scenario: Name the pane with the registration re-read and unconfirmed liveness
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard output is "interrupt delivered to pane w9:p1 (Pi registration re-read; process liveness and cancellation unconfirmed)"
 
     Scenario: Write no error after verified delivery
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error is empty
 
-  Rule: A target may be a pane id
+  Rule: The recorded session overrides the ambient session
 
     Background:
-      Given Herdr resolves pi to pane "w9:p1" and accepts the interrupt key
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr registers pane "w9:p1" as Pi and accepts its interrupt key
+      And the Herdr session is "ambient"
 
-    Scenario: Send the Escape to the same pane
+    Scenario: Use only the recorded session
       When I run riddim with:
         """
-        interrupt w9:p1
+        interrupt worker
         """
-      Then Herdr receives "--session default agent get w9:p1" then "--session default agent send-keys w9:p1 esc" then "--session default agent get w9:p1"
+      Then Herdr receives "--session riddim agent get w9:p1" then "--session riddim pane send-keys w9:p1 escape" then "--session riddim agent get w9:p1"
 
-  Rule: Only a Pi agent is interrupted
+  Rule: The per-name lock covers delivery and verification
 
     Background:
-      Given Herdr resolves pi to pane "w9:p1" hosting "codex"
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
 
-    Scenario: Refuse a non-Pi target
+    Scenario: Keep lifecycle writers serialized while delivering the key
+      Given Herdr verifies the per-name lock while interrupting "worker"
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
+        """
+      Then the command succeeds
+
+    Scenario: Release the lock after success
+      Given Herdr registers pane "w9:p1" as Pi and accepts its interrupt key
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the per-name lock for "worker" is available
+
+    Scenario: Let the Herdr child retain the lock after an abrupt controller exit
+      Given Herdr verifies inherited ownership of the lock after killing the interrupt controller for "worker"
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the Herdr child retained the per-name lock after its controller exited
+
+    Scenario: Release the inherited lock when the Herdr child exits
+      Given Herdr verifies inherited ownership of the lock after killing the interrupt controller for "worker"
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the inherited per-name lock for "worker" eventually becomes available
+
+  Rule: Missing ownership is refused before Herdr
+
+    Background:
+      Given a fake Herdr executable
+
+    Scenario: Invoke no Herdr command
+      When I run riddim with:
+        """
+        interrupt ghost
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Exit with Riddim's refusal status
+      When I run riddim with:
+        """
+        interrupt ghost
         """
       Then the command exits with status 1
 
-    Scenario: Explain the non-Pi refusal
+    Scenario: Name the missing record
       When I run riddim with:
         """
-        interrupt pi
+        interrupt ghost
+        """
+      Then the missing record refusal is explained for "ghost"
+
+  Rule: Invalid ownership is refused before Herdr
+
+    Background:
+      Given a fake Herdr executable
+
+    Scenario: Refuse a malformed record
+      Given an existing endpoint record for "worker" that is not a record
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Refuse a symlinked record
+      Given a symlinked endpoint record for "worker" that points elsewhere
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Refuse inconsistent endpoint fields
+      Given an endpoint record for "worker" whose window names another pane
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Refuse malformed endpoint atoms
+      Given an endpoint record for "worker" with a malformed Herdr session
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr receives no invocation
+
+    Scenario: Refuse invalid UTF-8
+      Given an endpoint record for "worker" that is not valid UTF-8
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then Herdr receives no invocation
+
+  Rule: Only Pi at the exact recorded pane is interrupted
+
+    Background:
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+
+    Scenario: Refuse a non-Pi registration
+      Given Herdr registers pane "w9:p1" as "codex"
+      When I run riddim with:
+        """
+        interrupt worker
         """
       Then standard error is "riddim: invalid Herdr agent JSON: expected result.agent.agent to be \"pi\", got \"codex\""
 
-    Scenario: Send no key to a non-Pi agent
+    Scenario: Send no key to a non-Pi registration
+      Given Herdr registers pane "w9:p1" as "codex"
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then Herdr never sends an interrupt key
 
-  Rule: The Pi response must carry a pane id
-
-    Background:
-      Given Herdr resolves pi without a pane id
-
-    Scenario: Reject a response without a pane id
+    Scenario: Refuse a registration without a pane id
+      Given Herdr registers Pi at pane "w9:p1" without a pane id
       When I run riddim with:
         """
-        interrupt pi
-        """
-      Then the command exits with status 1
-
-    Scenario: Explain the missing pane id
-      When I run riddim with:
-        """
-        interrupt pi
+        interrupt worker
         """
       Then standard error is "riddim: invalid Herdr agent JSON: expected result.agent.pane_id to be a nonempty string"
 
-    Scenario: Send no key without a pane id
+    Scenario: Refuse a registration that redirects to another pane
+      Given Herdr registration at pane "w9:p1" names pane "w9:p2"
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
+        """
+      Then standard error is "riddim: invalid Herdr agent JSON: expected result.agent.pane_id to equal recorded pane \"w9:p1\", got \"w9:p2\""
+
+    Scenario: Send no key when registration redirects to another pane
+      Given Herdr registration at pane "w9:p1" names pane "w9:p2"
+      When I run riddim with:
+        """
+        interrupt worker
         """
       Then Herdr never sends an interrupt key
 
-  Rule: A failed resolution is preserved
+  Rule: Herdr signal termination is preserved
 
     Background:
-      Given Herdr fails with status 17 and error "herdr: agent not found"
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+
+    Scenario: Propagate a pre-delivery read signal
+      Given Herdr terminates from signal "TERM" while reading the recorded pane
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the command is terminated by signal "TERM"
+
+    Scenario: Preserve captured streams while propagating a signal
+      Given Herdr writes captured output then terminates from signal "TERM" while reading the recorded pane
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the command preserves signal "TERM", output "partial read", and error "herdr interrupted"
+
+    Scenario: Propagate a delivery signal
+      Given Herdr terminates from signal "TERM" while sending the recorded interrupt key
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the command is terminated by signal "TERM"
+
+    Scenario: Release the lock after signaled delivery
+      Given Herdr terminates from signal "TERM" while sending the recorded interrupt key
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the per-name lock for "worker" is available
+
+  Rule: A failed pre-delivery read is preserved
+
+    Background:
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr fails to read the recorded pane with status 17 and error "herdr: agent not found"
 
     Scenario: Propagate Herdr's failure status
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then the command exits with status 17
 
     Scenario: Propagate Herdr's error
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error is "herdr: agent not found"
 
-    Scenario: Send no key without a resolved agent
+    Scenario: Send no key without a verified registration
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then Herdr never sends an interrupt key
 
   Rule: A failed delivery is preserved
 
     Background:
-      Given Herdr fails to send the interrupt key with status 7 and error "herdr: pane not found"
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr fails to send the recorded interrupt key with status 7 and error "herdr: pane not found"
 
     Scenario: Propagate Herdr's failure status
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then the command exits with status 7
 
     Scenario: Propagate Herdr's error
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error is "herdr: pane not found"
 
     Scenario: Write no output when delivery fails
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard output is empty
 
-  Rule: Malformed responses are refused
+    Scenario: Release the lock after failed delivery
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the per-name lock for "worker" is available
+
+  Rule: A malformed pre-delivery response is refused
 
     Background:
-      Given Herdr returns agent JSON:
-        """
-        not JSON
-        """
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr returns malformed JSON when reading the recorded pane
 
     Scenario: Reject malformed JSON
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then the command exits with status 1
 
     Scenario: Explain malformed JSON
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error is "riddim: invalid Herdr agent JSON: malformed JSON"
 
-    Scenario: Send no key to a malformed response
+    Scenario: Send no key after malformed JSON
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then Herdr never sends an interrupt key
 
   Rule: A delivery that cannot be re-verified is reported honestly
 
     Background:
-      Given Herdr cannot re-read pane "w9:p1" after the key with status 5 and error "herdr: pane not found"
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
+      And Herdr cannot re-read the recorded pane after the key with status 5 and error "herdr: pane not found"
 
     Scenario: Fail after an unprovable delivery
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then the command exits with status 1
 
     Scenario: Report that the key may have been delivered
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "may have been delivered to pane w9:p1"
 
     Scenario: Tell the user not to retry blindly
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "do not retry blindly"
 
     Scenario: Preserve Herdr's re-read failure in the report
       When I run riddim with:
         """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "herdr: pane not found"
 
-  Rule: A pane that changed kind is reported honestly
+    Scenario: Release the lock after an unverified delivery
+      When I run riddim with:
+        """
+        interrupt worker
+        """
+      Then the per-name lock for "worker" is available
+
+  Rule: A changed post-delivery registration is reported honestly
 
     Background:
-      Given Herdr reports pane "w9:p1" hosting "codex" after the key
+      Given a published endpoint record for "worker" in session "riddim" naming pane "w9:p1"
 
-    Scenario: Fail when the endpoint no longer holds a Pi agent
+    Scenario: Refuse a pane that changed agent kind
+      Given Herdr reports the recorded pane hosting "codex" after the key
       When I run riddim with:
         """
-        interrupt pi
-        """
-      Then the command exits with status 1
-
-    Scenario: Report that the key may have been delivered
-      When I run riddim with:
-        """
-        interrupt pi
-        """
-      Then standard error includes "may have been delivered to pane w9:p1"
-
-    Scenario: Report the changed kind
-      When I run riddim with:
-        """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "got \"codex\""
 
-  Rule: A pane id that no longer matches is reported honestly
-
-    Background:
-      Given Herdr reports pane "w9:p1" in pane "w9:p2" after the key
-
-    Scenario: Fail when the pane id changed
+    Scenario: Refuse a pane id that changed
+      Given Herdr reports pane "w9:p2" for the recorded pane after the key
       When I run riddim with:
         """
-        interrupt pi
-        """
-      Then the command exits with status 1
-
-    Scenario: Report that the key may have been delivered
-      When I run riddim with:
-        """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "may have been delivered to pane w9:p1"
 
-  Rule: A malformed re-read is reported honestly
-
-    Background:
-      Given Herdr replies to the pane re-read with malformed JSON
-
-    Scenario: Fail after a malformed re-read
+    Scenario: Refuse a malformed re-read
+      Given Herdr replies to the recorded pane re-read with malformed JSON
       When I run riddim with:
         """
-        interrupt pi
-        """
-      Then the command exits with status 1
-
-    Scenario: Report that the key may have been delivered
-      When I run riddim with:
-        """
-        interrupt pi
+        interrupt worker
         """
       Then standard error includes "may have been delivered to pane w9:p1"
 
-  Rule: Exactly one target is accepted
+  Rule: Exactly one valid owned name is accepted
 
-    Scenario: Reject a missing target
+    Scenario: Reject a missing name
       When I run riddim with:
         """
         interrupt
         """
-      Then the command exits with status 2
-
-    Scenario: Explain how to provide a target
-      When I run riddim with:
-        """
-        interrupt
-        """
-      Then standard error is "Usage: riddim interrupt <target>"
+      Then standard error is "Usage: riddim interrupt <name>"
 
     Scenario: Reject extra arguments
       When I run riddim with:
         """
-        interrupt pi extra
+        interrupt worker extra
         """
       Then the command exits with status 2
 
     Scenario: Explain the accepted arguments
       When I run riddim with:
         """
-        interrupt pi extra
+        interrupt worker extra
         """
-      Then standard error is "Usage: riddim interrupt <target>"
+      Then standard error is "Usage: riddim interrupt <name>"
+
+    Scenario: Reject an explicit pane id
+      When I run riddim with:
+        """
+        interrupt w9:p1
+        """
+      Then the command exits with status 2
+
+    Scenario: Explain the owned-name requirement
+      When I run riddim with:
+        """
+        interrupt Worker
+        """
+      Then standard error is "riddim: name must match [a-z][a-z0-9_-]{0,31}"

@@ -10,7 +10,7 @@ module Riddim
   # The interrupt lifecycle control plane of Riddim::Herdr's agent surface.
   module Herdr
     # The one allowlisted lifecycle key: a single Escape, no composer-clear key.
-    INTERRUPT_KEY = 'esc'
+    INTERRUPT_KEY = 'escape'
 
     # An accepted interrupt key whose pane Herdr no longer registers as a
     # Pi agent on the post-delivery re-read.
@@ -25,13 +25,19 @@ module Riddim
 
     module_function
 
-    # Delivers the interrupt key to the exact pane of the agent registered
-    # as Pi at <target> and re-reads Herdr's registration for that pane
-    # afterwards. The re-read never proves the agent's process or its turn.
-    def interrupt(target)
-      pane = interrupt_pane(agent(target))
-      send_interrupt_key(pane)
-      verify_interrupt_endpoint(pane)
+    # Delivers the interrupt key to one exact recorded pane after requiring
+    # Herdr's registration at that pane to identify the same pane and a Pi
+    # agent. It then re-reads that registration. Neither read proves the
+    # agent's process or its turn.
+    def interrupt(pane, session: nil)
+      registered_pane = interrupt_pane(agent(pane, session: session))
+      unless registered_pane == pane
+        raise InvalidResponse, "expected result.agent.pane_id to equal recorded pane #{pane.dump}, " \
+                               "got #{registered_pane.dump}"
+      end
+
+      send_interrupt_key(pane, session: session)
+      verify_interrupt_endpoint(pane, session: session)
       pane
     end
 
@@ -47,18 +53,18 @@ module Riddim
     end
 
     # Delivers Pi's one-key interrupt: a single Escape, no composer-clear key.
-    def send_interrupt_key(pane_id)
-      stdout, stderr, status = capture('agent', 'send-keys', pane_id, INTERRUPT_KEY)
+    def send_interrupt_key(pane_id, session: nil)
+      stdout, stderr, status = capture('pane', 'send-keys', pane_id, INTERRUPT_KEY, session: session)
       return if status.success?
 
-      raise CommandFailed.new(stdout, stderr, status.exitstatus)
+      raise CommandFailed.new(stdout, stderr, status)
     end
 
     # The one postcondition of an interrupt: Herdr still registers the exact
     # pane as a Pi agent after the key was accepted for delivery. This is a
     # registration claim only - never a process-identity or liveness claim.
-    def verify_interrupt_endpoint(pane)
-      after = interrupt_pane(agent(pane))
+    def verify_interrupt_endpoint(pane, session: nil)
+      after = interrupt_pane(agent(pane, session: session))
       return if after == pane
 
       raise InterruptUnverified.new(pane, "the pane now reports pane_id #{after.dump}")

@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require_relative '../lib/riddim/herdr'
+require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/send'
@@ -49,16 +50,25 @@ end
 
 if ARGV.first == 'interrupt'
   unless ARGV.length == 2
-    warn 'Usage: riddim interrupt <target>'
+    warn 'Usage: riddim interrupt <name>'
+    exit 2
+  end
+
+  name = ARGV[1]
+  unless name.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
     exit 2
   end
 
   begin
-    pane = Riddim::Herdr.interrupt(ARGV[1])
+    pane = Riddim::Interrupt.run(name)
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
   rescue Riddim::Herdr::CommandFailed => e
     $stdout.write(e.stdout)
     $stderr.write(e.stderr)
-    exit e.exitstatus
+    Riddim::Herdr.terminate_like(e)
   rescue Riddim::Herdr::InvalidResponse => e
     warn "riddim: invalid Herdr agent JSON: #{e.message}"
     exit 1
@@ -98,7 +108,7 @@ if ARGV.first == 'status'
   rescue Riddim::Herdr::CommandFailed => e
     $stdout.write(e.stdout)
     $stderr.write(e.stderr)
-    exit e.exitstatus
+    Riddim::Herdr.terminate_like(e)
   rescue Riddim::Herdr::InvalidResponse => e
     warn "riddim: invalid Herdr agent JSON: #{e.message}"
     exit 1
@@ -140,7 +150,7 @@ if ARGV.first == 'peek'
   rescue Riddim::Herdr::CommandFailed => e
     $stdout.write(e.stdout)
     $stderr.write(e.stderr)
-    exit e.exitstatus
+    Riddim::Herdr.terminate_like(e)
   end
   exit
 end
@@ -180,7 +190,7 @@ puts <<~HELP
 
   Commands:
     peek <name> [lines]         Show recent output from a started agent's recorded pane
-    interrupt <target>          Interrupt a Herdr Pi agent with one Escape
+    interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane
     start <name>                Start a background Pi agent
     status <name>               Show a started agent's registered Herdr status

@@ -28,7 +28,7 @@ module Riddim
         'pane', 'read', pane_id, '--source', 'recent', '--lines', fetch_lines(lines).to_s,
         session: session
       )
-      raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
 
       tail(stdout, lines)
     end

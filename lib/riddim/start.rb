@@ -52,7 +52,7 @@ module Riddim
     rescue Riddim::Herdr::CommandFailed => e
       $stdout.write(e.stdout)
       $stderr.write(e.stderr)
-      exit e.exitstatus
+      Riddim::Herdr.terminate_like(e)
     rescue Riddim::Herdr::InvalidResponse => e
       warn "riddim: invalid Herdr workspace JSON: #{e.message}"
       exit 1
@@ -112,7 +112,8 @@ module Riddim
       unless confirmed && Ownership.remove_if_unchanged_under_lock(record_path, spawn_gen)
         report_retained_record(name, record_path, workspace, confirmed)
       end
-      exit exit_status_of(failure)
+      Riddim::Herdr.terminate_like(failure) if failure.is_a?(Riddim::Herdr::CommandFailed)
+      exit 1
     end
 
     # Herdr's own failure output passes through unchanged; a Herdr executable
@@ -124,10 +125,6 @@ module Riddim
       else
         warn "riddim: #{failure.message}"
       end
-    end
-
-    def exit_status_of(failure)
-      failure.is_a?(Riddim::Herdr::CommandFailed) ? failure.exitstatus : 1
     end
 
     def report_retained_record(name, record_path, workspace, confirmed)
