@@ -3,6 +3,8 @@
 require 'json'
 require 'open3'
 
+require_relative 'herdr/interrupt'
+
 module Riddim
   # Reads and validates Herdr's concrete command-line state representation.
   module Herdr

@@ -89,3 +89,21 @@ Feature: Discover available commands
       """
       """
     Then standard error is empty
+
+  Scenario: List the interrupt command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "interrupt <target>"
+
+  Scenario: Exit successfully when showing help for interrupt
+    When I run riddim with:
+      """
+      """
+    Then the command succeeds
+
+  Scenario: Write no error when showing help for interrupt
+    When I run riddim with:
+      """
+      """
+    Then standard error is empty

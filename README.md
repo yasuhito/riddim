@@ -7,8 +7,8 @@ in a smaller, Herdr-focused tool.
 
 Riddim currently lets you inspect agent status, read recent agent output, send
 an agent a prompt (optionally waiting until the agent is idle, done, or
-blocked), and start a background Pi agent. It keeps its runtime small and uses
-Ruby's standard library.
+blocked), interrupt a Pi agent with one verified Escape, and start a background
+Pi agent. It keeps its runtime small and uses Ruby's standard library.
 
 ## Requirements
 
@@ -51,6 +51,36 @@ unwrapped lines by default.
 bin/riddim peek pi
 bin/riddim peek pi 100
 ```
+
+### Interrupt a Pi agent
+
+```sh
+bin/riddim interrupt <target>
+```
+
+`target` is a Herdr agent name or pane ID. Riddim resolves the target once,
+requires the pane to hold a Pi agent, and delivers exactly one Escape with
+`herdr agent send-keys <pane-id> esc`: Pi cancels its running turn on a single
+Escape and needs no composer-clear key afterwards. Interrupt is a lifecycle
+control command, separate from `riddim send`, which sends conversational text;
+there is deliberately no way to send arbitrary keys through Riddim.
+
+Delivery is verified honestly. After Herdr accepts the key, Riddim re-reads
+that exact pane and requires it to still identify a Pi endpoint, then prints
+one line naming the pane:
+
+```sh
+interrupt delivered to pane w9:p1 (endpoint verified; cancellation unconfirmed)
+```
+
+The line never claims cancellation was observed.
+
+If the target does not resolve to a Pi agent, or a response is malformed,
+Riddim refuses before delivering anything. If Herdr fails to deliver the key,
+Herdr's output and exit status pass through unchanged. If the pane cannot be
+re-read after delivery, or no longer proves the same Pi endpoint, Riddim
+reports that the key may have been delivered and says not to retry blindly;
+inspect the agent with `riddim status` or `riddim peek` first.
 
 ### Send a prompt
 

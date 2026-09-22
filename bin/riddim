@@ -37,6 +37,33 @@ if ARGV.first == 'send'
   end
 end
 
+if ARGV.first == 'interrupt'
+  unless ARGV.length == 2
+    warn 'Usage: riddim interrupt <target>'
+    exit 2
+  end
+
+  begin
+    pane = Riddim::Herdr.interrupt(ARGV[1])
+  rescue Riddim::Herdr::CommandFailed => e
+    $stdout.write(e.stdout)
+    $stderr.write(e.stderr)
+    exit e.exitstatus
+  rescue Riddim::Herdr::InvalidResponse => e
+    warn "riddim: invalid Herdr agent JSON: #{e.message}"
+    exit 1
+  rescue Riddim::Herdr::InterruptUnverified => e
+    key = Riddim::Herdr::INTERRUPT_KEY
+    warn "riddim: #{key} may have been delivered to pane #{e.pane_id}, but the pane could not be " \
+         "re-verified as a Pi endpoint: #{e.message}"
+    warn 'riddim: do not retry blindly; inspect the agent with riddim status or riddim peek first'
+    exit 1
+  end
+
+  puts "interrupt delivered to pane #{pane} (endpoint verified; cancellation unconfirmed)"
+  exit
+end
+
 if ARGV.first == 'status'
   unless ARGV.length == 2
     warn 'Usage: riddim status <target>'
@@ -126,6 +153,7 @@ puts <<~HELP
 
   Commands:
     peek <target> [lines]       Show recent output from a Herdr agent
+    interrupt <target>          Interrupt a Herdr Pi agent with one Escape
     send <target> <message...>  Prompt a Herdr agent
     send --wait <target> <message...>
                                 Prompt a Herdr agent and wait until the

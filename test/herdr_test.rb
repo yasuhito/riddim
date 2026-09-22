@@ -84,3 +84,61 @@ class HerdrWorkspaceParsingTest < Minitest::Test
     assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.parse_workspace(json) }
   end
 end
+
+class HerdrInterruptParsingTest < Minitest::Test
+  def test_returns_the_exact_pane_of_a_pi_agent
+    agent = { 'agent' => 'pi', 'agent_status' => 'working', 'pane_id' => 'w9:p1' }
+
+    assert_equal 'w9:p1', Riddim::Herdr.interrupt_pane(agent)
+  end
+
+  def test_rejects_a_non_pi_agent
+    agent = { 'agent' => 'codex', 'agent_status' => 'idle', 'pane_id' => 'w9:p1' }
+
+    assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.interrupt_pane(agent) }
+  end
+
+  def test_rejects_an_agent_without_a_kind
+    agent = { 'agent_status' => 'idle', 'pane_id' => 'w9:p1' }
+
+    assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.interrupt_pane(agent) }
+  end
+
+  def test_rejects_a_response_without_a_pane_id
+    agent = { 'agent' => 'pi', 'agent_status' => 'idle' }
+
+    assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.interrupt_pane(agent) }
+  end
+
+  def test_rejects_an_empty_pane_id
+    agent = { 'agent' => 'pi', 'agent_status' => 'idle', 'pane_id' => '' }
+
+    assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.interrupt_pane(agent) }
+  end
+
+  def test_rejects_a_non_string_pane_id
+    agent = { 'agent' => 'pi', 'agent_status' => 'idle', 'pane_id' => 42 }
+
+    assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.interrupt_pane(agent) }
+  end
+
+  def test_names_the_pane_it_cannot_reverify
+    error = Riddim::Herdr::InterruptUnverified.new('w9:p1', 'reason')
+
+    assert_equal 'w9:p1', error.pane_id
+  end
+end
+
+class HerdrCommandFailureReasonTest < Minitest::Test
+  def test_appends_herdr_error_to_the_exit_status
+    failure = Riddim::Herdr::CommandFailed.new('', "herdr: pane not found\n", 7)
+
+    assert_equal 'Herdr exited with status 7: herdr: pane not found', Riddim::Herdr.command_failure_reason(failure)
+  end
+
+  def test_stands_alone_without_herdr_error
+    failure = Riddim::Herdr::CommandFailed.new('', '', 7)
+
+    assert_equal 'Herdr exited with status 7', Riddim::Herdr.command_failure_reason(failure)
+  end
+end

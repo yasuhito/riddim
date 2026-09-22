@@ -56,6 +56,10 @@ Then('standard output includes {string}') do |text|
   assert_includes @stdout, text
 end
 
+Then('standard error includes {string}') do |text|
+  assert_includes @stderr, text
+end
+
 Then('standard output is {string}') do |text|
   assert_equal "#{text}\n", @stdout
 end
