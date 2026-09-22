@@ -58,7 +58,7 @@ Feature: Discover available commands
     When I run riddim with:
       """
       """
-    Then standard output includes "status <target>"
+    Then standard output includes "status <name>"
 
   Scenario: Exit successfully when showing help for status
     When I run riddim with:

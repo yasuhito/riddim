@@ -62,12 +62,25 @@ end
 
 if ARGV.first == 'status'
   unless ARGV.length == 2
-    warn 'Usage: riddim status <target>'
+    warn 'Usage: riddim status <name>'
+    exit 2
+  end
+
+  name = ARGV[1]
+  unless name.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
     exit 2
   end
 
   begin
-    puts Riddim::Herdr.agent(ARGV[1]).fetch('agent_status')
+    endpoint = Riddim::Ownership::Endpoint.resolve(name)
+  rescue Riddim::Ownership::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+
+  begin
+    puts Riddim::Herdr.agent(endpoint.pane_id, session: endpoint.session).fetch('agent_status')
   rescue Riddim::Herdr::CommandFailed => e
     $stdout.write(e.stdout)
     $stderr.write(e.stderr)
@@ -156,5 +169,5 @@ puts <<~HELP
     interrupt <target>          Interrupt a Herdr Pi agent with one Escape
     send <target> <message...>  Prompt a Herdr agent
     start <name>                Start a background Pi agent
-    status <target>             Show Herdr's registered agent status
+    status <name>               Show a started agent's registered Herdr status
 HELP

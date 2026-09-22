@@ -219,6 +219,10 @@ class OwnershipParsingTest < Minitest::Test
     assert_raises(Riddim::Ownership::InvalidRecord) { Riddim::Ownership.parse(bytes) }
   end
 
+  def test_rejects_a_record_that_is_not_valid_utf8
+    assert_raises(Riddim::Ownership::InvalidRecord) { Riddim::Ownership.parse("\xFF\n".b) }
+  end
+
   def test_rejects_an_empty_record
     assert_raises(Riddim::Ownership::InvalidRecord) { Riddim::Ownership.parse('') }
   end

@@ -53,7 +53,7 @@ module Riddim
     # key=value field, present exactly once, so a malformed, truncated, or
     # extended record never reads back as ownership evidence.
     def parse(bytes)
-      text = bytes.to_s
+      text = record_text(bytes)
       raise InvalidRecord, 'an endpoint record must not be empty' if text.empty?
       raise InvalidRecord, 'an endpoint record must end with one newline' unless text.end_with?("\n")
 
@@ -63,6 +63,13 @@ module Riddim
       raise InvalidRecord, "the endpoint record is missing #{missing.join(', ')}" unless missing.empty?
 
       fields
+    end
+
+    def record_text(bytes)
+      text = bytes.to_s.dup.force_encoding(Encoding::UTF_8)
+      raise InvalidRecord, 'an endpoint record must use valid UTF-8' unless text.valid_encoding?
+
+      text
     end
 
     def add_field(fields, line)

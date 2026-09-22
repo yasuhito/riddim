@@ -15,8 +15,8 @@ and uses Ruby's standard library.
 ## Requirements
 
 - Ruby
-- Herdr with a running session; status and send also need a Herdr-registered
-  agent, and peek needs an agent started with `riddim start`
+- Herdr with a running session; send needs a Herdr-registered agent, and status
+  and peek need an agent started with `riddim start`
 
 Development uses Ruby 3.4.10, as configured in `mise.toml`.
 
@@ -39,25 +39,34 @@ exactly, even when another Herdr server is running on the same machine, and
 stays valid ahead of commands such as `agent start`, whose `--` passthrough
 tail must reach the agent's own arguments untouched.
 
-`peek` is the exception: its capture targets the session recorded in the
-agent's endpoint ownership record, which overrides the ambient
-`HERDR_SESSION` value on both routing surfaces, so a peek of one recorded
-agent can never drift to another session's endpoint.
+`status` and `peek` are the exceptions: their reads target the session recorded
+in the agent's endpoint ownership record, which overrides the ambient
+`HERDR_SESSION` value on both routing surfaces, so a read of one recorded agent
+can never drift to another session's endpoint.
 
 ### Read agent status
 
 ```sh
-bin/riddim status <target>
+bin/riddim status <name>
 ```
 
-Riddim reads the agent from Herdr and prints its status as one line. The value
-is Herdr's own agent registration status, passed through raw. It does not prove
-the agent's process is alive or what the agent is doing right now: Herdr keeps
-a registration, with its last `agent_status`, even after the registered process
-has exited.
+`name` is the name of an agent started with `riddim start`. Riddim validates its
+endpoint ownership record with the same fail-closed rules as `peek`, then asks
+Herdr for the registration attached to the exact recorded pane in the exact
+recorded session. It prints Herdr's raw `agent_status` as one line.
+
+This is deliberately a smaller subset than Firstmate's current crew-state
+reader. It does not check pane presence, process liveness, task activity, or
+status logs, and it does not return Firstmate's canonical `working`, `parked`,
+`done`, `blocked`, `paused`, `failed`, or `unknown` crew state. It also omits
+Firstmate's lower-level recovery classifier, which distinguishes `alive`,
+`dead`, `missing`, and `unreadable` endpoints. Herdr can retain a registration
+and its last `agent_status` after the registered process exits, so the printed
+value must not be treated as proof that the process is alive or that the agent
+is currently doing the named work.
 
 ```sh
-bin/riddim status pi
+bin/riddim status worker
 # working
 ```
 

@@ -87,8 +87,8 @@ module Riddim
       Kernel.exec(environment(target), 'herdr', *command(*, session: target))
     end
 
-    def agent(target)
-      stdout, stderr, status = capture('agent', 'get', target)
+    def agent(target, session: nil)
+      stdout, stderr, status = capture('agent', 'get', target, session: session)
       raise CommandFailed.new(stdout, stderr, status.exitstatus) unless status.success?
 
       parse_agent(stdout)
