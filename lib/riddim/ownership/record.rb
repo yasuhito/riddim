@@ -14,6 +14,7 @@ module Riddim
       window endpoint_task_id harness model effort spawn_gen backend
       herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id
     ].freeze
+    WORKTREE_FIELDS = %w[project worktree branch].freeze
 
     class InvalidRecord < Error; end
 
@@ -34,13 +35,13 @@ module Riddim
     # Firstmate's field order. Every value must be one nonempty line, so no
     # value can inject or forge another record line.
     def serialize(fields)
-      lines = FIELD_ORDER.map do |key|
-        value = fields.fetch(key) { raise InvalidValue, "missing record field #{key.inspect}" }
+      keys = FIELD_ORDER + WORKTREE_FIELDS.select { |key| fields.key?(key) }
+      "#{keys.map { |key| serialize_field(key, fields) }.join("\n")}\n"
+    end
 
-        validate_value(key, value)
-        "#{key}=#{value}"
-      end
-      "#{lines.join("\n")}\n"
+    def serialize_field(key, fields)
+      value = fields.fetch(key) { raise InvalidValue, "missing record field #{key.inspect}" }
+      "#{key}=#{validate_value(key, value)}"
     end
 
     def validate_value(key, value)

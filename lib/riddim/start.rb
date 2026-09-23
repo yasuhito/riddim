@@ -2,6 +2,7 @@
 
 require_relative 'herdr'
 require_relative 'ownership'
+require_relative 'worktree'
 
 module Riddim
   # The start command's orchestration: Firstmate's spawn sequence, reduced to
@@ -17,19 +18,25 @@ module Riddim
 
     # Runs one complete locked start, exiting the process on every failure
     # with the exit status Herdr's own output and status deserve.
-    def run(name, profile)
+    def run(name, profile, isolated: false)
       Ownership.ensure_state_dir
       record_path = Ownership.record_path(name)
-      Ownership.with_lock(name) { start_locked(name, profile, record_path) }
-    rescue Ownership::Error, SystemCallError => e
+      Ownership.with_lock(name) { start_locked(name, profile, record_path, isolated: isolated) }
+    rescue Ownership::Error, Worktree::Error, Riddim::Herdr::IncompatibleClient, SystemCallError => e
       exit_on_error(e)
     end
 
-    def start_locked(name, profile, record_path)
+    def start_locked(name, profile, record_path, isolated:)
       refuse_duplicate(name, record_path)
-      workspace = create_endpoint(name)
-      spawn_gen = publish_record(name, profile, record_path, workspace)
+      preflight! if isolated
+      worktree = Worktree.create(name, cwd: Dir.pwd) if isolated
+      workspace = create_endpoint(name, cwd: worktree ? worktree.path : Dir.pwd, worktree: worktree)
+      spawn_gen = publish_record(name, profile, record_path, workspace, worktree: worktree)
       launch(name, profile, record_path, workspace, spawn_gen)
+      puts "worktree #{worktree}" if worktree
+      succeeded = true
+    ensure
+      warn "riddim: retained #{worktree.path} (#{worktree.branch}); inspect before cleanup" if worktree && !succeeded
     end
 
     def exit_on_error(error)
@@ -46,30 +53,17 @@ module Riddim
       exit 1
     end
 
-    # The exact endpoint of this start: one unfocused workspace, one root pane.
-    def create_endpoint(name)
-      Riddim::Herdr.verify_client!
-      Riddim::Herdr.create_workspace(cwd: Dir.pwd, label: "riddim-#{name}")
-    rescue Riddim::Herdr::CommandFailed => e
-      [[$stdout, e.stdout], [$stderr, e.stderr]].each { |stream, text| stream.write(text) }
-      Riddim::Herdr.terminate_like(e)
-    rescue Riddim::Herdr::IncompatibleClient => e
-      exit_on_error(e)
-    rescue Riddim::Herdr::InvalidResponse => e
-      warn "riddim: invalid Herdr workspace JSON: #{e.message}"
-      exit 1
-    end
-
     # Publishes the ownership record and returns the fresh spawn generation it
     # carries. The record is the ownership authority: exact response-derived
     # Herdr identities, published atomically after the endpoint exists and
     # never over an existing record. A value that cannot render as one
     # nonempty line is a publication failure like any other.
-    def publish_record(name, profile, record_path, workspace)
+    def publish_record(name, profile, record_path, workspace, worktree:)
       spawn_gen = Ownership.fresh_spawn_gen
       fields = Ownership::Endpoint.fields(
         name: name, profile: profile, spawn_gen: spawn_gen, session: Riddim::Herdr.session, workspace: workspace
       )
+      fields.merge!(worktree.record_fields) if worktree
       Ownership.publish(record_path, Ownership.serialize(fields))
       spawn_gen
     rescue Ownership::Error => e
@@ -147,3 +141,5 @@ module Riddim
     end
   end
 end
+
+require_relative 'start/workspace'

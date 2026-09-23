@@ -424,6 +424,36 @@ profile from another directory.
 
 The agent is started with `--model <model> --thinking <effort>`.
 
+#### Start in a fresh Git worktree
+
+```sh
+bin/riddim start <name> --worktree
+```
+
+From a Git checkout (or a directory inside one), this creates a **new linked
+worktree** beside the checkout's root, named `<project>-riddim-<name>`, on a
+new `riddim/<name>` branch at the checkout's **local HEAD**. It never fetches,
+resets, reuses a worktree or branch, or copies uncommitted changes. An existing
+record, destination, or branch refuses rather than overwrites. The worktree
+must be clean and must resolve to a different root of the same Git repository,
+not to the primary checkout. Before starting Pi, Riddim also requires two
+consecutive exact-pane foreground cwd reads to match that worktree. A failed
+placement closes only the exact created pane and verifies the close.
+
+The ownership record also stores `project`, `worktree`, and `branch` for this
+mode. These are inventory, **not authority to remove files**: `exit` leaves the
+pane, record, worktree, and branch intact. If creation or launch fails, inspect
+the reported path and branch; Riddim never deletes or resets the worktree or
+branch automatically. This is a smaller subset of Firstmate's Treehouse spawn:
+there is no pool, lease, fresh remote fetch, launch brief, reply tracking, or
+teardown. The original `start <name>` still starts in the current directory.
+
+The ignored `config/agent-profile` and `state/` are **not copied into a Git
+worktree**. The invoking Riddim executable uses its own existing config and
+state paths; when running Riddim *from inside the new worktree*, set absolute
+`RIDDIM_CONFIG_DIR` and `RIDDIM_STATE_DIR` pointing back to the original
+checkout's directories so both CLIs use the same profile and records.
+
 #### Endpoint ownership record
 
 Before the agent starts, `start` publishes an endpoint ownership record for
@@ -453,9 +483,9 @@ permissions and keeps every record the same way: the complete record is
 fully written to a `0600` temp file in the same directory and then linked
 into place - an atomic no-replace operation, so a reader never sees a
 partial record and an existing record is never overwritten, even by a
-writer that ignores the lock. Riddim records only the fields it owns -
-there is no `kind`, `worktree`, or `project` value, because Riddim manages
-none of those.
+writer that ignores the lock. Riddim records only the fields it owns: ordinary `start` has no `kind`,
+`worktree`, or `project`, while `start --worktree` adds the created `project`,
+`worktree`, and `branch` as inventory without changing endpoint routing.
 
 The record makes the name owned. `start` holds one per-name lock
 (`.meta-<name>.lock` in the state directory) from a duplicate preflight

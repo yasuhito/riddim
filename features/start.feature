@@ -21,7 +21,7 @@ Feature: Start a background Pi agent
         """
         start
         """
-      Then standard error is "Usage: riddim start <name>"
+      Then standard error is "Usage: riddim start <name> [--worktree]"
 
     Scenario: Reject extra arguments
       When I run riddim with:
@@ -35,7 +35,7 @@ Feature: Start a background Pi agent
         """
         start worker extra
         """
-      Then standard error is "Usage: riddim start <name>"
+      Then standard error is "Usage: riddim start <name> [--worktree]"
 
     Scenario: Reject a name Herdr would not accept
       When I run riddim with:

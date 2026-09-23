@@ -245,8 +245,8 @@ if ARGV.first == 'peek'
 end
 
 if ARGV.first == 'start'
-  unless ARGV.length == 2
-    warn 'Usage: riddim start <name>'
+  unless (2..3).cover?(ARGV.length) && (ARGV.length == 2 || ARGV[2] == '--worktree')
+    warn 'Usage: riddim start <name> [--worktree]'
     exit 2
   end
 
@@ -270,7 +270,7 @@ if ARGV.first == 'start'
   # record lock from duplicate preflight through launch result, duplicate
   # refusal before Herdr is touched at all, then create the exact endpoint,
   # publish the authoritative record, and start the agent.
-  Riddim::Start.run(name, profile)
+  Riddim::Start.run(name, profile, isolated: ARGV[2] == '--worktree')
   exit
 end
 
@@ -290,7 +290,7 @@ puts <<~HELP
                             Show recent output or the visible viewport of a recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane
-    start <name>                Start a background Pi agent
+    start <name> [--worktree]   Start Pi in the cwd or a fresh isolated Git worktree
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status
 HELP
