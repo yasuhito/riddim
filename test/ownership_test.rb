@@ -406,6 +406,19 @@ class OwnershipRemovalIdentityTest < Minitest::Test
     end
   end
 
+  def test_late_cleanup_retains_a_newly_published_generation
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'worker.meta')
+      File.write(path, OWNERSHIP_BYTES)
+      remove_under_lock(path, 's1767200000.4242.7')
+      new_record = OWNERSHIP_BYTES.sub('spawn_gen=s1767200000.4242.7', 'spawn_gen=s1767200000.4242.8')
+      Riddim::Ownership.publish(path, new_record)
+      remove_under_lock(path, 's1767200000.4242.7')
+
+      assert_equal new_record, File.read(path)
+    end
+  end
+
   def test_retains_a_malformed_record
     Dir.mktmpdir do |dir|
       path = File.join(dir, 'worker.meta')
