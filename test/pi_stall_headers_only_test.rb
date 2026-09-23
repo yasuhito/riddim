@@ -55,6 +55,23 @@ class PiStallHeadersOnlyTest < Minitest::Test
     end
   end
 
+  def test_rejects_turn_completion_without_updates
+    assert_equal 'unexpected trace boundaries', check_with_extra_event('turn_end')
+  end
+
+  def test_rejects_agent_settlement_without_updates
+    assert_equal 'unexpected trace boundaries', check_with_extra_event('agent_settled')
+  end
+
+  def check_with_extra_event(event)
+    Dir.mktmpdir do |root|
+      stdout = File.join(root, 'stdout')
+      File.write(stdout, '', mode: 'w', perm: 0o600)
+      write_private_trace(root, %W[request_prepared response_headers #{event}])
+      with_running_child { |pid| return captured_check_error(pid, stdout, root) }
+    end
+  end
+
   def test_rejects_response_body_without_updates
     Dir.mktmpdir do |root|
       stdout = File.join(root, 'stdout')

@@ -73,7 +73,7 @@ module PiStallLab
       raise 'Pi exited before the headers-only interval finished' unless alive?(pid)
       raise 'Pi printed a response without SSE body bytes' unless File.empty?(output)
 
-      observed = events(root) & %w[request_prepared response_headers first_update]
+      observed = events(root) & %w[request_prepared response_headers first_update turn_end agent_settled]
       raise 'unexpected trace boundaries' unless observed == %w[request_prepared response_headers]
 
       puts "headers_only: request received, response headers received, no updates for #{seconds}s, Pi still running"
