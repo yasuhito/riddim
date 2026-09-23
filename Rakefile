@@ -13,6 +13,18 @@ Cucumber::Rake::Task.new(:features)
 
 RuboCop::RakeTask.new(:rubocop)
 
+desc 'Check the PlusCal ownership model (requires mise Java and tla2tools.jar)'
+task :model do
+  jar = File.join(Dir.home, '.local/share/tlaplus/v1.7.4/tla2tools.jar')
+  abort "Missing #{jar}; see spec/README.md" unless File.file?(jar)
+
+  java = ['mise', 'exec', 'java@temurin-21.0.12+8.0.LTS', '--', 'java', '-cp', jar]
+  Dir.chdir('spec') do
+    sh(*java, 'pcal.trans', 'ClaimOneName.tla')
+    sh(*java, 'tlc2.TLC', '-workers', '1', 'ClaimOneName.tla')
+  end
+end
+
 desc 'Check Gherkin conventions'
 task :gherkin do
   violations = Dir['features/**/*.feature'].flat_map do |path|
