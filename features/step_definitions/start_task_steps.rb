@@ -51,6 +51,44 @@ Given('the new Pi cannot be named') do
   File.write(File.join(@herdr_directory, 'rename-fails'), '')
 end
 
+def last_task_source_line
+  invocation = herdr_invocations.grep(/ pane run w9:p1 \. /).last
+  raise 'no submitted task launch line' unless invocation
+
+  invocation.split('pane run w9:p1 ', 2).last
+end
+
+When('I restart the worker with a different task after inspecting and removing its old resources') do
+  @first_stdout, @first_stderr, @first_status = run_riddim('start', 'worker', '--worktree', '--task-file', 'task.md')
+  raise "first start failed: #{@first_stderr}" unless @first_status.success?
+
+  @first_source_line = last_task_source_line
+  @first_generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  File.delete(scenario_record_path('worker'))
+  File.delete(File.join(scenario_state_dir, 'worker.brief'))
+  File.delete(@first_source_line.delete_prefix('. '))
+  git = ->(*args) { Open3.capture3('git', '-C', @project, *args) }
+  raise 'old worktree could not be removed' unless git.call('worktree', 'remove', @worktree).last.success?
+  raise 'old branch could not be removed' unless git.call('branch', '-d', 'riddim/worker').last.success?
+
+  %w[agent-named launch-submitted].each do |marker|
+    File.delete(File.join(@herdr_directory, marker))
+  end
+  File.write(File.join(@project, 'task.md'), 'Replacement task.')
+  @stdout, @stderr, @status = run_riddim('start', 'worker', '--worktree', '--task-file', 'task.md')
+  @second_source_line = last_task_source_line if @status.success?
+end
+
+Then('the original source line cannot launch the replacement task') do
+  @second_generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1] if @status.success?
+  _stdout, _stderr, delayed_status = Open3.capture3('/bin/sh', '-c', @first_source_line, chdir: @worktree)
+  assert_equal [true, true, true, true, true, false],
+               [@status.success?, @first_generation != @second_generation,
+                @first_source_line.include?(".launch.#{@first_generation}.sh"),
+                @second_source_line.include?(".launch.#{@second_generation}.sh"),
+                @first_source_line != @second_source_line, delayed_status.success?], @stderr
+end
+
 Then('Pi receives a staged full brief launch and is named on its exact pane') do
   brief = File.join(scenario_state_dir, 'worker.brief')
   staged = File.join(@herdr_directory, 'staged-launch')

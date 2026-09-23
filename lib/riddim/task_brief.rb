@@ -55,8 +55,12 @@ module Riddim
     # multi-line argument out of Herdr's shell encoder, and never interpolate
     # human-supplied text into shell source. Both files are immutable, private,
     # outside the worktree, and published without replacement under the lock.
-    def publish_launch(brief, profile)
-      path = "#{brief.path}.launch.sh"
+    def publish_launch(brief, profile, spawn_gen)
+      unless spawn_gen.is_a?(String) && spawn_gen.match?(/\As\d+\.\d+\.\d+\z/)
+        raise Error, 'task launch requires a valid spawn generation'
+      end
+
+      path = "#{brief.path}.launch.#{spawn_gen}.sh"
       Ownership.publish(path, launch_source(brief, profile))
       path
     rescue Ownership::Error => e

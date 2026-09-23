@@ -453,8 +453,10 @@ instructions from supervisor instructions in `AGENTS.md`, followed by the
 file's exact task text. Herdr's native `agent start` refuses multi-line
 arguments. For a task, Riddim instead stages a private 0600 shell launch file
 outside the worktree, publishes the ownership record, then submits the launch
-file to the exact new pane. Its quoted command substitution supplies the full
-brief as Pi's initial positional prompt, as Firstmate's Pi launch does. Riddim
+file to the exact new pane. Its filename carries the record's `spawn_gen`, so
+a delayed source line cannot execute a replacement launch after a name is
+reused. Its quoted command substitution supplies the full brief as Pi's
+initial positional prompt, as Firstmate's Pi launch does. Riddim
 confirms that Herdr detects Pi on the exact pane, names that detected agent,
 and confirms the name, incarnation and Pi process before reporting `started`.
 This **does not** confirm Pi read or completed the task, or delivered a reply.

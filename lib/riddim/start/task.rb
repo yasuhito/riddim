@@ -19,19 +19,19 @@ module Riddim
     end
 
     def complete_launch(name, profile, workspace, worktree, brief)
-      record_path = Ownership.record_path(name)
+      spawn_gen = Ownership.fresh_spawn_gen
       if brief
-        launch_file = stage_task_launch(workspace, brief, profile)
-        publish_record(name, profile, record_path, workspace, worktree: worktree)
+        launch_file = stage_task_launch(workspace, brief, profile, spawn_gen)
+        publish_record(name, profile, workspace, spawn_gen, worktree: worktree)
         launch_task(name, workspace, worktree, launch_file)
       else
-        spawn_gen = publish_record(name, profile, record_path, workspace, worktree: worktree)
+        publish_record(name, profile, workspace, spawn_gen, worktree: worktree)
         launch(name, profile, workspace, spawn_gen)
       end
     end
 
-    def stage_task_launch(workspace, brief, profile)
-      TaskBrief.publish_launch(brief, profile)
+    def stage_task_launch(workspace, brief, profile, spawn_gen)
+      TaskBrief.publish_launch(brief, profile, spawn_gen)
     rescue TaskBrief::Error => e
       rollback_after_failed_publication(workspace, e)
     end

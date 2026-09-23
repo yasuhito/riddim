@@ -68,8 +68,8 @@ module Riddim
     # Herdr identities, published atomically after the endpoint exists and
     # never over an existing record. A value that cannot render as one
     # nonempty line is a publication failure like any other.
-    def publish_record(name, profile, record_path, workspace, worktree:)
-      spawn_gen = Ownership.fresh_spawn_gen
+    def publish_record(name, profile, workspace, spawn_gen, worktree:)
+      record_path = Ownership.record_path(name)
       fields = Ownership::Endpoint.fields(
         name: name, profile: profile, spawn_gen: spawn_gen, session: Riddim::Herdr.session, workspace: workspace
       )

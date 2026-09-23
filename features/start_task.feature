@@ -83,6 +83,14 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       """
     Then Pi receives a staged full brief launch and is named on its exact pane
 
+  Scenario: A delayed source line cannot launch a replacement task with the same name
+    Given a task file containing:
+      """
+      Original task.
+      """
+    When I restart the worker with a different task after inspecting and removing its old resources
+    Then the original source line cannot launch the replacement task
+
   Scenario: Keep all ownership evidence when shell submission is unconfirmed
     Given a task file containing:
       """
