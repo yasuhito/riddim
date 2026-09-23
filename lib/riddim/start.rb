@@ -31,12 +31,11 @@ module Riddim
     end
 
     def start_locked(name, profile, create_worktree:, config_dir:, task_file:)
-      record_path = reserve_record_path(name)
+      reserve_record_path(name)
       brief = TaskBrief.publish(name, TaskBrief.read(task_file)) if task_file
       worktree = prepare_worktree(name, config_dir: config_dir) if create_worktree
       workspace = create_endpoint(name, cwd: worktree ? worktree.path : Dir.pwd, worktree: worktree)
-      spawn_gen = publish_record(name, profile, record_path, workspace, worktree: worktree)
-      launch(name, profile, workspace, spawn_gen, initial_prompt: brief&.initial_prompt)
+      complete_launch(name, profile, workspace, worktree, brief)
       report_started_assets(worktree, brief)
       succeeded = true
     ensure
@@ -98,10 +97,9 @@ module Riddim
       exit 1
     end
 
-    def launch(name, profile, workspace, spawn_gen, initial_prompt:)
+    def launch(name, profile, workspace, spawn_gen)
       Riddim::Herdr.start_agent(
-        name: name, pane_id: workspace.root_pane_id, model: profile.model, effort: profile.effort,
-        initial_prompt: initial_prompt
+        name: name, pane_id: workspace.root_pane_id, model: profile.model, effort: profile.effort
       )
       puts "started #{name} in #{workspace.root_pane_id}"
     rescue Riddim::Herdr::CommandFailed, SystemCallError => e

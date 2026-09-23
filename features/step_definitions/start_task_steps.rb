@@ -23,18 +23,38 @@ Given('an existing worker brief') do
   File.write(File.join(scenario_state_dir, 'worker.brief'), 'keep')
 end
 
-Then('Pi receives a pointer to the published worker brief as its initial prompt') do
-  brief = File.join(scenario_state_dir, 'worker.brief')
-  pointer = File.binread(File.join(@herdr_directory, 'initial-brief'))
-  requested = "Fix Riddim's worktree test. Keep the user's instructions intact.\nRun the full test suite."
-  content = File.binread(brief)
-  assert_equal [true, "Read the brief at #{brief} and follow it exactly.", true, true, true, true],
-               [@status.success?, pointer, content.include?(requested),
-                content.include?('You are a coding worker'), content.include?('AGENTS.md'),
-                File.stat(brief).mode & 0o777 == 0o600]
+Given('the shell launch submission is unconfirmed') do
+  File.write(File.join(@herdr_directory, 'shell-submit-fails'), '')
 end
 
-Then('the failed task retains its brief and linked worktree') do
-  assert_equal [false, true, true], [@status.success?, File.file?(File.join(scenario_state_dir, 'worker.brief')),
-                                     File.directory?(@worktree)]
+Given('the new pane does not register Pi') do
+  File.write(File.join(@herdr_directory, 'unrecognized-pi'), '')
+end
+
+Given('the new named Pi belongs to another incarnation') do
+  File.write(File.join(@herdr_directory, 'replaced-pi'), '')
+end
+
+Given('the new Pi cannot be named') do
+  File.write(File.join(@herdr_directory, 'rename-fails'), '')
+end
+
+Then('Pi receives a staged full brief launch and is named on its exact pane') do
+  brief = File.join(scenario_state_dir, 'worker.brief')
+  script = File.binread(File.join(@herdr_directory, 'staged-launch'))
+  content = File.binread(brief)
+  requested = "Fix Riddim's worktree test. Keep the user's instructions intact.\nRun the full test suite."
+  assert_equal [true, true, true, true, true, true, true, false],
+               [@status.success?, script.include?('$(/usr/bin/cat -- '), script.include?(brief),
+                content.include?(requested), content.include?('You are a coding worker'),
+                File.stat(brief).mode & 0o777 == 0o600,
+                herdr_invocations.any? { |line| line.include?('agent rename w9:p1 worker') },
+                script.start_with?('exec ')]
+end
+
+Then('the failed task retains its brief, record, pane, and linked worktree') do
+  assert_equal [false, true, true, true, false],
+               [@status.success?, File.file?(File.join(scenario_state_dir, 'worker.brief')),
+                File.file?(scenario_record_path('worker')), File.directory?(@worktree),
+                herdr_invocations.any? { |line| line.include?('pane close w9:p1') }]
 end

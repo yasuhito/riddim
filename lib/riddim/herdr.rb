@@ -157,13 +157,26 @@ module Riddim
     # Performs no rollback of its own: the caller owns the published endpoint
     # record and the cleanup decisions, so a hidden best-effort close can
     # never race the record's retention rules.
-    def start_agent(name:, pane_id:, model:, effort:, initial_prompt: nil)
-      pi_arguments = ['--model', model, '--thinking', effort]
-      pi_arguments << initial_prompt if initial_prompt
+    def start_agent(name:, pane_id:, model:, effort:)
       stdout, stderr, status = capture(
-        'agent', 'start', name, '--kind', 'pi', '--pane', pane_id, '--', *pi_arguments
+        'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
+        '--', '--model', model, '--thinking', effort
       )
       raise CommandFailed.new(stdout, stderr, status) unless status.success?
+    end
+
+    # A staged shell launch has no native agent-start registration. These
+    # calls never infer a target by label: both address the created pane.
+    def run_pane(pane_id, command)
+      stdout, stderr, status = capture('pane', 'run', pane_id, command)
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
+    end
+
+    def rename_agent(pane_id, name)
+      stdout, stderr, status = capture('agent', 'rename', pane_id, name)
+      raise CommandFailed.new(stdout, stderr, status) unless status.success?
+
+      parse_agent(stdout)
     end
 
     # The non-empty string value of one Herdr response field, or nil.

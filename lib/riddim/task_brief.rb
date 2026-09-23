@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'shellwords'
 require_relative 'ownership'
 
 module Riddim
@@ -9,14 +10,7 @@ module Riddim
   module TaskBrief
     MAX_BYTES = 65_536
     PUBLISHED_SUFFIX = '.brief'
-    Brief = Struct.new(:path, :prompt) do
-      # Herdr's native agent start cannot shell-encode a multi-line argument.
-      # Firstmate uses a short pointer for Kimi/Rovo; this Pi-only subset
-      # requires the worker to read its immutable on-disk brief first.
-      def initial_prompt
-        "Read the brief at #{path} and follow it exactly."
-      end
-    end
+    Brief = Struct.new(:path, :prompt)
 
     class Error < Ownership::Error; end
 
@@ -44,7 +38,7 @@ module Riddim
     end
 
     def path(name)
-      File.join(Ownership.state_dir, "#{Ownership.validated_name(name)}#{PUBLISHED_SUFFIX}")
+      File.join(File.expand_path(Ownership.state_dir), "#{Ownership.validated_name(name)}#{PUBLISHED_SUFFIX}")
     end
 
     def publish(name, task)
@@ -55,6 +49,38 @@ module Riddim
       Brief.new(path, prompt)
     rescue Ownership::Error => e
       raise Error, "task brief could not be published at #{path}: #{e.message}"
+    end
+
+    # The script is sourced by an idle shell in the exact new pane. Keep the
+    # multi-line argument out of Herdr's shell encoder, and never interpolate
+    # human-supplied text into shell source. Both files are immutable, private,
+    # outside the worktree, and published without replacement under the lock.
+    def publish_launch(brief, profile)
+      path = "#{brief.path}.launch.sh"
+      Ownership.publish(path, launch_source(brief, profile))
+      path
+    rescue Ownership::Error => e
+      raise Error, "task launch could not be published at #{path}: #{e.message}"
+    end
+
+    def launch_source(brief, profile)
+      args = [pi_executable, '--model', profile.model, '--thinking', profile.effort]
+      command = args.map { |value| Shellwords.escape(value) }.join(' ')
+      "riddim_launch_brief=$(/usr/bin/cat -- #{Shellwords.escape(brief.path)}) || return 1\n" \
+        "test -n \"$riddim_launch_brief\" || return 1\n" \
+        "#{command} \"$riddim_launch_brief\"\n"
+    end
+
+    def pi_executable
+      candidate = ENV.fetch('PATH').split(File::PATH_SEPARATOR).filter_map do |dir|
+        next unless dir.start_with?('/')
+
+        path = File.join(dir, 'pi')
+        path if File.file?(path) && File.executable?(path)
+      end.first
+      raise Error, 'Pi executable is unavailable on PATH' unless candidate
+
+      candidate
     end
 
     def render(name, task)

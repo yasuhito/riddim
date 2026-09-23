@@ -70,7 +70,7 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       """
     Then no worker worktree is created
 
-  Scenario: Publish a private worker-role brief and pass its pointer into Pi's initial arguments
+  Scenario: Launch Pi with the full private brief before naming its exact registered pane
     Given a task file containing:
       """
       Fix Riddim's worktree test. Keep the user's instructions intact.
@@ -80,16 +80,52 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       """
       start worker --worktree --task-file task.md
       """
-    Then Pi receives a pointer to the published worker brief as its initial prompt
+    Then Pi receives a staged full brief launch and is named on its exact pane
 
-  Scenario: Keep the brief after an unconfirmed agent-start failure
+  Scenario: Keep all ownership evidence when shell submission is unconfirmed
     Given a task file containing:
       """
       Fix the package tests.
       """
-    And the new agent start fails in the linked worktree
+    And the shell launch submission is unconfirmed
     When I run riddim with:
       """
       start worker --worktree --task-file task.md
       """
-    Then the failed task retains its brief and linked worktree
+    Then the failed task retains its brief, record, pane, and linked worktree
+
+  Scenario: Keep all ownership evidence if the new pane hosts an unrecognized process
+    Given a task file containing:
+      """
+      Fix the package tests.
+      """
+    And the new pane does not register Pi
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md
+      """
+    Then the failed task retains its brief, record, pane, and linked worktree
+
+  Scenario: Keep all ownership evidence when the named Pi belongs to a different incarnation
+    Given a task file containing:
+      """
+      Fix the package tests.
+      """
+    And the new named Pi belongs to another incarnation
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md
+      """
+    Then the failed task retains its brief, record, pane, and linked worktree
+
+  Scenario: Keep all ownership evidence if naming the detected Pi fails
+    Given a task file containing:
+      """
+      Fix the package tests.
+      """
+    And the new Pi cannot be named
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md
+      """
+    Then the failed task retains its brief, record, pane, and linked worktree

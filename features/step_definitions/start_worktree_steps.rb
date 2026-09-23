@@ -51,6 +51,47 @@ WORKTREE_AGENT_START = <<~RUBY
   end
 RUBY
 
+WORKTREE_TASK_LAUNCH = <<~RUBY
+  when ['pane', 'run']
+    abort 'wrong pane' unless ARGV[2] == 'w9:p1'
+    command = ARGV[3]
+    abort 'expected a sourced private launch file' unless command.start_with?('. ')
+    script = command.delete_prefix('. ')
+    abort 'record missing at shell submission' unless File.file?(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
+    abort 'launch script missing or not private' unless File.file?(script) && File.stat(script).mode & 0o777 == 0o600
+    File.binwrite(File.expand_path('staged-launch', __dir__), File.binread(script))
+    if File.file?(File.expand_path('shell-submit-fails', __dir__))
+      warn 'shell submission unconfirmed'
+      exit 7
+    end
+    File.write(File.expand_path('launch-submitted', __dir__), '')
+    puts JSON.generate(result: { type: 'ok' })
+  when ['pane', 'process-info']
+    puts JSON.generate(result: { type: 'pane_process_info', process_info: {
+      pane_id: 'w9:p1', shell_pid: Process.ppid,
+      foreground_processes: [{ pid: Process.ppid, name: 'pi', argv: ['pi'] }] } })
+  when ['agent', 'get']
+    abort 'wrong agent target' unless ['w9:p1', 'worker'].include?(ARGV[2])
+    abort 'agent get before launch' unless File.file?(File.expand_path('launch-submitted', __dir__))
+    kind = File.file?(File.expand_path('unrecognized-pi', __dir__)) ? 'codex' : 'pi'
+    name = File.file?(File.expand_path('agent-named', __dir__)) ? 'worker' : nil
+    replaced = ARGV[2] == 'worker' && File.file?(File.expand_path('replaced-pi', __dir__))
+    session = replaced ? '/tmp/replaced-session' : '/tmp/test-session'
+    puts JSON.generate(result: { agent: { agent: kind, name: name, agent_status: 'working', pane_id: 'w9:p1',
+                                          workspace_id: 'w9', tab_id: 'w9:t1',
+                                          agent_session: { source: 'herdr:pi', kind: 'path', value: session } } })
+  when ['agent', 'rename']
+    abort 'wrong rename target' unless ARGV[2..] == ['w9:p1', 'worker']
+    if File.file?(File.expand_path('rename-fails', __dir__))
+      warn 'rename refused'
+      exit 7
+    end
+    File.write(File.expand_path('agent-named', __dir__), '')
+    puts JSON.generate(result: { agent: { agent: 'pi', name: 'worker', agent_status: 'working', pane_id: 'w9:p1',
+                                          workspace_id: 'w9', tab_id: 'w9:t1',
+                                          agent_session: { source: 'herdr:pi', kind: 'path', value: '/tmp/test-session' } } })
+RUBY
+
 Given('Herdr starts the agent only in the linked worktree') do
   install_fake_herdr(<<~RUBY)
     require 'json'
@@ -70,6 +111,7 @@ Given('Herdr starts the agent only in the linked worktree') do
     when ['pane', 'close'] then File.write(File.expand_path('pane-closed', __dir__), '')
     when ['agent', 'start']
       #{WORKTREE_AGENT_START}
+    #{WORKTREE_TASK_LAUNCH}
     else abort "unexpected command: \#{ARGV.join(' ')}"
     end
   RUBY
