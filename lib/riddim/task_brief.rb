@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'shellwords'
 require_relative 'ownership'
 
 module Riddim
@@ -65,44 +64,6 @@ module Riddim
       raise Error, "task brief could not be published at #{path}: #{e.message}"
     end
 
-    # The script is sourced by an idle shell in the exact new pane. Keep the
-    # multi-line argument out of Herdr's shell encoder, and never interpolate
-    # human-supplied text into shell source. Both files are immutable, private,
-    # outside the worktree, and published without replacement under the lock.
-    def publish_launch(brief, profile, spawn_gen)
-      unless spawn_gen.is_a?(String) && spawn_gen.match?(/\As\d+\.\d+\.\d+\z/)
-        raise Error, 'task launch requires a valid spawn generation'
-      end
-
-      path = "#{brief.path}.launch.#{spawn_gen}.sh"
-      begin
-        Ownership.publish(path, launch_source(brief, profile))
-      rescue Ownership::Error => e
-        raise Error, "task launch could not be published at #{path}: #{e.message}"
-      end
-      path
-    end
-
-    def launch_source(brief, profile)
-      args = [pi_executable, '--model', profile.model, '--thinking', profile.effort]
-      command = args.map { |value| Shellwords.escape(value) }.join(' ')
-      "riddim_launch_brief=$(/usr/bin/cat -- #{Shellwords.escape(brief.path)}) || return 1\n" \
-        "test -n \"$riddim_launch_brief\" || return 1\n" \
-        "#{command} \"$riddim_launch_brief\"\n"
-    end
-
-    def pi_executable
-      candidate = ENV.fetch('PATH').split(File::PATH_SEPARATOR).filter_map do |dir|
-        next unless dir.start_with?('/')
-
-        path = File.join(dir, 'pi')
-        path if File.file?(path) && File.executable?(path)
-      end.first
-      raise Error, 'Pi executable is unavailable on PATH' unless candidate
-
-      candidate
-    end
-
     def render(name, task, status_path: nil)
       role = <<~ROLE
         # Riddim worker role
@@ -131,3 +92,5 @@ module Riddim
     end
   end
 end
+
+require_relative 'task_brief/launch'

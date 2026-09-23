@@ -83,6 +83,18 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       """
     Then Pi receives a staged full brief launch and is named on its exact pane
 
+  Scenario: Explicit tracing binds a private Pi trace to this worker generation
+    Given a task file containing:
+      """
+      Reproduce the stalled turn.
+      """
+    And Pi trace is enabled for task launch
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md
+      """
+    Then the staged launch enables a generation-bound Pi trace
+
   Scenario: A delayed source line cannot launch a replacement task with the same name
     Given a task file containing:
       """

@@ -14,6 +14,10 @@ Given('a fake Pi executable is on PATH for the task launch') do
   end
 end
 
+Given('Pi trace is enabled for task launch') do
+  @environment['RIDDIM_PI_TRACE'] = '1'
+end
+
 Given('a task file containing:') do |body|
   File.write(File.join(@project, 'task.md'), body)
 end
@@ -101,6 +105,14 @@ Then('Pi receives a staged full brief launch and is named on its exact pane') do
                 File.stat(brief).mode & 0o777 == 0o600,
                 herdr_invocations.any? { |line| line.include?('agent rename w9:p1 worker') },
                 script.start_with?('exec ')], "#{@stderr}\n#{herdr_invocations.inspect}"
+end
+
+Then('the staged launch enables a generation-bound Pi trace') do
+  gen = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  trace = File.join(scenario_state_dir, "worker.brief.trace.#{gen}.jsonl")
+  script = File.binread(File.join(@herdr_directory, 'staged-launch'))
+  assert_equal [true, true, true, false],
+               [@status.success?, script.include?('pi_stall_trace.ts'), script.include?(trace), File.exist?(trace)]
 end
 
 Then('the failed task retains its brief, record, pane, and linked worktree') do
