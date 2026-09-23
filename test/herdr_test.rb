@@ -2,6 +2,7 @@
 
 require 'minitest/autorun'
 require_relative '../lib/riddim/herdr'
+require_relative 'support/herdr_method_stub'
 
 class HerdrAgentParsingTest < Minitest::Test
   def test_parses_a_valid_agent
@@ -240,18 +241,22 @@ end
 # Replaces Riddim::Herdr.capture with a canned response for one test and
 # restores the real subprocess capture afterwards.
 module HerdrCaptureStub
-  def with_capture(stdout, success: true)
-    Riddim::Herdr.singleton_class.send(:define_method, :capture) do |*|
-      [stdout, '', HerdrCaptureStatus.new(success ? 0 : 7)]
-    end
-    yield
-  ensure
-    Riddim::Herdr.singleton_class.send(:remove_method, :capture)
+  include HerdrMethodStub
+
+  def with_capture(stdout, success: true, &)
+    response = ->(*) { [stdout, '', HerdrCaptureStatus.new(success ? 0 : 7)] }
+    with_herdr_method(:capture, response, &)
   end
 end
 
 class HerdrServerRunningStateTest < Minitest::Test
   include HerdrCaptureStub
+
+  def test_restores_the_original_capture_after_stubbing
+    with_capture('') { nil }
+
+    assert_respond_to Riddim::Herdr, :capture
+  end
 
   def with_status(stdout, success: true, &)
     with_capture(stdout, success: success, &)

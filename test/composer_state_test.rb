@@ -2,6 +2,7 @@
 
 require 'minitest/autorun'
 require_relative '../lib/riddim/herdr'
+require_relative 'support/herdr_method_stub'
 
 class ComposerGhostStripTest < Minitest::Test
   def test_strips_a_dim_run
@@ -92,13 +93,20 @@ class ComposerPairScanTest < Minitest::Test
 end
 
 class ComposerVerdictTest < Minitest::Test
-  def with_screen(identity)
-    Riddim::Herdr.singleton_class.send(:define_method, :composer_capture) { |*| [ComposerPairScanTest::SCREEN, true] }
-    Riddim::Herdr.singleton_class.send(:define_method, :composer_identity) { |*| identity }
-    yield
-  ensure
-    Riddim::Herdr.singleton_class.send(:remove_method, :composer_capture)
-    Riddim::Herdr.singleton_class.send(:remove_method, :composer_identity)
+  include HerdrMethodStub
+
+  def test_restores_capture_and_identity_after_stubbing
+    with_screen(nil) { nil }
+
+    assert_equal [true, true],
+                 [Riddim::Herdr.respond_to?(:composer_capture), Riddim::Herdr.respond_to?(:composer_identity)]
+  end
+
+  def with_screen(identity, &)
+    screen = ->(*) { [ComposerPairScanTest::SCREEN, true] }
+    with_herdr_method(:composer_capture, screen) do
+      with_herdr_method(:composer_identity, ->(*) { identity }, &)
+    end
   end
 
   def test_proves_empty_for_an_idle_live_pi
