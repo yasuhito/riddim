@@ -133,6 +133,19 @@ Given('Herdr creates workspace {string} but fails to start the agent with ' \
   RUBY
 end
 
+Given('Herdr creates workspace {string} but fails to start the agent with ' \
+      'status {int} and error {string} and returns an ambiguous pane read') do |_w, status, error|
+  install_fake_herdr(<<~RUBY)
+    case ARGV[0, 2]
+    when ['workspace', 'create'] then puts #{CANNED_CREATE_RESPONSE.dump}
+    when ['agent', 'start'] then warn #{error.dump}; exit #{status}
+    when ['pane', 'close'] then exit 0
+    when ['pane', 'get'] then puts 'not JSON'
+    else abort "unexpected command: \#{ARGV.join(' ')}"
+    end
+  RUBY
+end
+
 Given('Herdr creates workspace {string} and then disappears') do |_w|
   install_fake_herdr(<<~RUBY)
     case ARGV[0, 2]

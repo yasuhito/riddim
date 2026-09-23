@@ -806,6 +806,22 @@ Feature: Start a background Pi agent
         """
       Then Herdr closes and re-reads only pane "w9:p1"
 
+  Rule: An ambiguous pane read after close retains the endpoint record
+
+    Background:
+      Given a config directory with agent profile:
+        """
+        pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and returns an ambiguous pane read
+
+    Scenario: Retain the record without proof that the pane is gone
+      When I run riddim with:
+        """
+        start worker
+        """
+      Then the endpoint record for "worker" remains
+
   Rule: A Herdr executable that vanishes after publication retains the record
 
     Background:
