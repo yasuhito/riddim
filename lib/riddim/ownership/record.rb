@@ -14,7 +14,7 @@ module Riddim
       window endpoint_task_id harness model effort spawn_gen backend
       herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id
     ].freeze
-    WORKTREE_FIELDS = %w[project worktree branch].freeze
+    WORKTREE_FIELDS = %w[project worktree branch task_mode base_head].freeze
 
     class InvalidRecord < Error; end
 

@@ -8,7 +8,7 @@ module Riddim
   # Fresh, unpooled Git worktrees for isolated Pi workers. Unlike Firstmate's
   # Treehouse pool, this owner never resets, returns, or removes a worktree.
   module Worktree
-    Created = Struct.new(:project, :path, :branch) do
+    Created = Struct.new(:project, :path, :branch, :base_head) do
       def record_fields
         { 'project' => project, 'worktree' => path, 'branch' => branch }
       end
@@ -33,7 +33,7 @@ module Riddim
       path = destination(project, name, branch)
       add_worktree!(project, path, branch, base_head)
 
-      created = Created.new(project, path, branch)
+      created = Created.new(project, path, branch, base_head)
       verify_created!(created, base_head)
       publish_runtime_paths!(created, config_dir: config_dir, state_dir: state_dir)
       created
@@ -45,6 +45,14 @@ module Riddim
       raise Error, "worktree destination already exists: #{path}" if File.exist?(path) || File.symlink?(path)
 
       path
+    end
+
+    def require_main!(cwd)
+      project = project_root(cwd)
+      return if git_value(project, 'symbolic-ref', '--short', 'HEAD') == 'main' &&
+                git_value(project, 'rev-parse', 'HEAD') == git_value(project, 'rev-parse', 'refs/heads/main')
+
+      raise Error, 'local-only start requires the source checkout on main'
     end
 
     def add_worktree!(project, path, branch, base_head)

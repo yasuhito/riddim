@@ -18,14 +18,13 @@ module Riddim
       path
     end
 
-    def complete_launch(name, profile, workspace, worktree, brief)
-      spawn_gen = Ownership.fresh_spawn_gen
-      if brief
-        launch_file = stage_task_launch(workspace, brief, profile, spawn_gen)
-        publish_record(name, profile, workspace, spawn_gen, worktree: worktree)
+    def complete_launch(name, profile, workspace, worktree, task_launch)
+      if task_launch.brief
+        launch_file = stage_task_launch(workspace, task_launch.brief, profile, task_launch.spawn_gen)
+        publish_record(name, profile, workspace, task_launch, worktree: worktree)
         launch_task(name, workspace, worktree, launch_file)
       else
-        publish_record(name, profile, workspace, spawn_gen, worktree: worktree)
+        spawn_gen = publish_record(name, profile, workspace, task_launch, worktree: worktree)
         launch(name, profile, workspace, spawn_gen)
       end
     end

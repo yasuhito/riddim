@@ -466,11 +466,42 @@ is published, any failed or ambiguous submission, registration, or naming
 retains the pane, record, brief, launch file, and worktree for inspection:
 Riddim cannot prove the task did not already run and never automatically
 retries it. A symlinked, non-regular, empty, invalid UTF-8, or NUL-containing
-task file refuses before allocation. This remains a Pi-only subset of
-Firstmate's launch brief: there is no typed Firstmate operational-input marker,
-mode, durable inbox, acknowledgement, reply tracking, PR delivery, or
-completion detection. Without `--task-file`, `start --worktree` retains its
-previous native `agent start` behavior.
+task file refuses before allocation. This remains a Pi-only subset of Firstmate's launch brief: there is no typed
+Firstmate operational-input marker, durable inbox, acknowledgement, reply
+tracking, or PR delivery. Without `--task-file`, `start --worktree` retains
+its previous native `agent start` behavior.
+
+#### Local-only result handoff
+
+```sh
+bin/riddim start <name> --worktree --task-file <path> --mode local-only
+bin/riddim result <name>
+```
+
+This explicit mode starts only from a checkout on its local `main` branch. It
+adds a local-only delivery contract to the private brief: the worker commits
+on `riddim/<name>`, never pushes or opens a PR, and appends a short, timestamped
+`done`, `blocked`, `failed`, or `needs-decision` event to a private status file
+outside the worktree. The status filename includes the ownership record's
+`spawn_gen`, so an old report cannot become the new worker's report. The
+result file is created before launch with owner-only permissions; ambiguous
+launch failures leave it and other assets available for inspection.
+
+`result` requires the exact current ownership record. `unreported` means its
+status file is empty; `reported` is the worker's last event, not proof of
+current activity. A `done` event becomes `ready` **only** if the recorded
+linked worktree is still in the same repository, its branch has a commit past
+the recorded start HEAD, that commit is the branch tip, its worktree has no
+tracked or untracked changes, and `main` is an ancestor of that tip. Otherwise
+it remains `reported (not ready)`. An earlier `blocked`, `failed`, or
+`needs-decision` event cannot be cleared by a later `done` in this subset;
+resolve it explicitly and start a new task. Missing, symlinked, unreadable, or malformed
+status evidence fails closed instead of yielding `ready`. This is a snapshot,
+not permission to merge: independently review code and tests and recheck Git
+before merging. It does not infer completion from Herdr idle, validate test
+claims, automatically merge, clean up, or implement Firstmate's reconciled
+current crew-state, inbox, or watcher. Existing starts without `--mode` retain
+their previous briefs and delivery behavior.
 
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority to remove files**: `exit` leaves the
