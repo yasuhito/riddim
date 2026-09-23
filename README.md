@@ -244,7 +244,8 @@ exit does not start servers, so a stopped server refuses unproven. Every
 refusal names what exit would have done and why it stopped.
 
 This is a smaller subset of Firstmate's `exit`: Riddim is pi-only, has no
-relaunch, and does not start servers on recheck.
+relaunch, and does not start servers on recheck; an interrupt that actually
+stops the agent reports interrupt's own refusal instead of exit success.
 
 ### Read agent status
 

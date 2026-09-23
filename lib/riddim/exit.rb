@@ -28,14 +28,9 @@ module Riddim
     end
 
     def verdict(name, endpoint)
-      case Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
-      when :dead then 'already-stopped'
-      when :alive then stop_alive(name, endpoint)
-      when :missing then missing_verdict(name, endpoint)
-      else
-        raise Refusal, "#{name}'s endpoint reads 'unreadable' rather than a positively classified state; " \
-                       'refusing to send a lifecycle command into an unattributed endpoint'
-      end
+      message = "#{name}'s endpoint reads 'unreadable' rather than a positively classified state; " \
+                'refusing to send a lifecycle command into an unattributed endpoint'
+      classify(name, endpoint, missing: -> { missing_verdict(name, endpoint) }, unclassifiable: message)
     end
 
     # `missing` conflates destroyed with unreachable: only a positively
@@ -45,13 +40,20 @@ module Riddim
       server = Herdr.server_running_state(session: endpoint.session)
       raise Refusal, unproven_missing_message(name, server) unless server == :running
 
+      message = "#{name}'s endpoint could not be classified even with its server running; " \
+                'exit will not claim an agent stopped at an address it cannot trust'
+      classify(name, endpoint, missing: -> { 'endpoint-gone' }, unclassifiable: message)
+    end
+
+    # The shared three-state classification: dead is already-stopped, alive
+    # keeps going through the composer gate, and what a missing pane means is
+    # the caller's absence context; every other read is unattributed.
+    def classify(name, endpoint, missing:, unclassifiable:)
       case Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
       when :dead then 'already-stopped'
       when :alive then stop_alive(name, endpoint)
-      when :missing then 'endpoint-gone'
-      else
-        raise Refusal, "#{name}'s endpoint could not be classified even with its server running; " \
-                       'exit will not claim an agent stopped at an address it cannot trust'
+      when :missing then missing.call
+      else raise Refusal, unclassifiable
       end
     end
 

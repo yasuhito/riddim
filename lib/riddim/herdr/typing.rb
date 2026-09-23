@@ -32,8 +32,6 @@ module Riddim
       case key
       when 'Enter' then 'enter'
       when 'Escape' then 'escape'
-      when 'C-c' then 'ctrl+c'
-      when 'C-u' then 'ctrl+u'
       else key
       end
     end
@@ -65,11 +63,14 @@ module Riddim
       verdict
     end
 
+    # One Enter delivery: :send_failed when no Enter ever reached the pane, or
+    # :attempted when the key was delivered now, or earlier with the retry send
+    # failing - either way the composer verdict, not the delivery, decides.
     def deliver_enter_key(pane_id, session:, enter_sent:)
       send_key(pane_id, 'Enter', session: session)
-      :delivered
+      :attempted
     rescue CommandFailed
-      enter_sent ? :failed_once : :send_failed
+      enter_sent ? :attempted : :send_failed
     end
 
     def composer_verdict_for_submit(pane_id, session:)
