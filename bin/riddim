@@ -10,6 +10,7 @@ require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/result'
+require_relative '../lib/riddim/review_diff'
 require_relative '../lib/riddim/runtime_paths'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
@@ -268,6 +269,22 @@ if ARGV.first == 'result'
   exit
 end
 
+if ARGV.first == 'review-diff'
+  unless (ARGV.length == 2 || (ARGV.length == 3 && ARGV[2] == '--stat')) &&
+         ARGV[1]&.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'Usage: riddim review-diff <name> [--stat]'
+    exit 2
+  end
+
+  begin
+    print Riddim::ReviewDiff.read(ARGV[1], stat_only: ARGV.last == '--stat')
+  rescue Riddim::Ownership::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'start'
   worktree_only = ARGV.length == 3 && ARGV[2] == '--worktree'
   tasked = ARGV.length == 5 && ARGV[2..3] == %w[--worktree --task-file]
@@ -325,6 +342,8 @@ puts <<~HELP
     start <name> [--worktree [--task-file <path> [--mode local-only]]]
                             Start Pi in the cwd or a fresh isolated Git worktree with a task brief
     result <name>           Read a local-only worker event and verify a ready branch
+    review-diff <name> [--stat]
+                            Show the committed local-only branch diff against local main
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status
 HELP

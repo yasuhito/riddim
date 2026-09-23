@@ -72,6 +72,12 @@ Feature: Discover available commands
       """
     Then standard error is empty
 
+  Scenario: List the read-only review command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "review-diff <name> [--stat]"
+
   Scenario: List the start command
     When I run riddim with:
       """

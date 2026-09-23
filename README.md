@@ -509,6 +509,28 @@ claims, automatically merge, clean up, or implement Firstmate's reconciled
 current crew-state, inbox, or watcher. Existing starts without `--mode` retain
 their previous briefs and delivery behavior.
 
+#### Review a local-only worker's committed diff
+
+```sh
+bin/riddim review-diff <name> [--stat]
+```
+
+Compares the recorded `riddim/<name>` branch with the project's **local
+`main`**, using Git's three-dot diff (changes since their merge base). It
+prints a stat and patch, or only the stat with `--stat`; an uncommitted edit
+is not included. This is read-only: no fetch, PR lookup, merge, or cleanup.
+It requires the current local-only ownership record, the same linked Git
+repository and checked-out named branch, and rechecks the record and Git tips
+before printing. A detected change or an unreadable checkout refuses without
+printing a partial diff. This is a point-in-time read, not a lock against
+future changes. Reviewing a diff does not make a task `ready` or approve it
+for merge; `result` separately checks the worker's report and Git handoff
+evidence.
+
+This is only the local-branch subset of Firstmate's `fm-review-diff.sh`, which
+can also refresh a remote-backed base and review a recorded PR's fetched head.
+Riddim deliberately neither fetches nor substitutes a PR or remote head.
+
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority to remove files**: `exit` leaves the
 pane, record, worktree, and branch intact. If creation or launch fails, inspect
