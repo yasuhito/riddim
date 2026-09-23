@@ -220,6 +220,32 @@ submitted command, and `pending` means visibly unsubmitted text is sitting
 in the pane. Unlike Firstmate, Riddim classifies only the pi shape and never
 emits `pending-unproven`.
 
+### Stop a started Pi agent
+
+```sh
+bin/riddim exit <name>
+```
+
+Stops the recorded Pi agent and reports one of Firstmate's exit verdicts:
+`stopped` (the exit command was submitted and the agent is proven stopped),
+`already-stopped` (idempotent: the recovery-grade state already reads dead),
+or `endpoint-gone` (a positively running recorded server proves the pane
+itself is gone). The pane and the ownership record are preserved in every
+outcome; record cleanup is a separate decision, never part of exit.
+
+A busy agent is interrupted first, with `interrupt`'s own verification. The
+composer must then be proven `empty` by `composer-state` before the pi exit
+command (`/quit`) is typed once and submitted with Enter - pending text
+refuses, and Enter is retried without retyping. The postcondition is the
+recovered agent state within a bounded wait (`RIDDIM_EXIT_WAIT`, default 30
+seconds); a timeout refuses with `exit=unconfirmed`. A `missing` endpoint is
+absence-proven only by the recorded session's positively running server:
+exit does not start servers, so a stopped server refuses unproven. Every
+refusal names what exit would have done and why it stopped.
+
+This is a smaller subset of Firstmate's `exit`: Riddim is pi-only, has no
+relaunch, and does not start servers on recheck.
+
 ### Read agent status
 
 ```sh

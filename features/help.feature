@@ -18,6 +18,12 @@ Feature: Discover available commands
       """
     Then standard output includes "composer-state <name>"
 
+  Scenario: List the exit command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "exit <name>"
+
   Scenario: List the foreground working-directory command
     When I run riddim with:
       """

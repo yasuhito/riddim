@@ -4,6 +4,7 @@
 require 'json'
 
 require_relative '../lib/riddim/herdr'
+require_relative '../lib/riddim/exit'
 require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/ownership'
@@ -104,6 +105,27 @@ if ARGV.first == 'send'
       exit 3
     end
   rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
+if ARGV.first == 'exit'
+  unless ARGV.length == 2
+    warn 'Usage: riddim exit <name>'
+    exit 2
+  end
+
+  name = ARGV[1]
+  unless name.match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'riddim: name must match [a-z][a-z0-9_-]{0,31}'
+    exit 2
+  end
+
+  begin
+    puts Riddim::Exit.run(name)
+  rescue Riddim::Ownership::Error, Riddim::Exit::Refusal, SystemCallError => e
     warn "riddim: #{e.message}"
     exit 1
   end
@@ -269,5 +291,6 @@ puts <<~HELP
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane
     start <name>                Start a background Pi agent
+    exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status
 HELP
