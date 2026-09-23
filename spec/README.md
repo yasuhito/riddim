@@ -4,7 +4,15 @@
 
 必要なものはJava 11以上と[公式リリース](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4)の`tla2tools.jar`だけ。この環境ではJava `temurin-21.0.12+8.0.LTS`を`mise`のユーザー領域に、jar v1.7.4を`~/.local/share/tlaplus/v1.7.4/tla2tools.jar`に置いた（SHA-256: `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`）。リポジトリにjarは含めない。
 
-リポジトリのルートから:
+リポジトリのルートから、一発で正常なモデルとわざと壊した一時コピーを検査できる:
+
+```sh
+./spec/check-claim
+```
+
+正常なモデルでは`No error has been found`、一時コピーでは`Invariant NeverTwoPublished is violated`とA・Bの順番を表示する。**この2つがそろって終了コード0**。一時コピーは自動で削除し、本物の`.tla`と`.cfg`は変更しない。
+
+PlusCalを変更した後に手動で変換・検査する場合は、`spec/`に移動して以下を実行する:
 
 ```sh
 cd spec
