@@ -15,6 +15,39 @@ Feature: Start a Pi worker in an isolated Git worktree
       """
     Then the worker has a separate linked worktree at the project's HEAD
 
+  Scenario: Refuse a checkout hook that changes the new branch's HEAD
+    Given the project has an earlier commit and a post-checkout hook resets the worker branch
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then no Herdr workspace is created for the changed worker branch
+
+  Scenario: The worker's copied Riddim CLI shares the original profile and state without environment setup
+    Given the project contains the Riddim CLI
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then Riddim inside the worktree can start another agent using the original profile and state
+
+  Scenario: A symlinked Git-admin runtime marker refuses rather than routing to a new state directory
+    Given the project contains the Riddim CLI
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    And I replace the worker's runtime marker with a symlink
+    Then Riddim in the worktree refuses the marker
+
+  Scenario: An explicit state directory overrides the inherited state directory
+    Given the project contains the Riddim CLI
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then Riddim in the worktree respects an explicit state override
+
   Scenario: Report where the worker's new branch lives
     When I run riddim with:
       """

@@ -18,18 +18,20 @@ module Riddim
 
     # Runs one complete locked start, exiting the process on every failure
     # with the exit status Herdr's own output and status deserve.
-    def run(name, profile, isolated: false)
+    def run(name, profile, create_worktree: false, config_dir: nil)
       Ownership.ensure_state_dir
       record_path = Ownership.record_path(name)
-      Ownership.with_lock(name) { start_locked(name, profile, record_path, isolated: isolated) }
+      Ownership.with_lock(name) do
+        start_locked(name, profile, record_path, create_worktree: create_worktree, config_dir: config_dir)
+      end
     rescue Ownership::Error, Worktree::Error, Riddim::Herdr::IncompatibleClient, SystemCallError => e
       exit_on_error(e)
     end
 
-    def start_locked(name, profile, record_path, isolated:)
+    def start_locked(name, profile, record_path, create_worktree:, config_dir:)
       refuse_duplicate(name, record_path)
-      preflight! if isolated
-      worktree = Worktree.create(name, cwd: Dir.pwd) if isolated
+      preflight! if create_worktree
+      worktree = prepare_worktree(name, config_dir: config_dir) if create_worktree
       workspace = create_endpoint(name, cwd: worktree ? worktree.path : Dir.pwd, worktree: worktree)
       spawn_gen = publish_record(name, profile, record_path, workspace, worktree: worktree)
       launch(name, profile, record_path, workspace, spawn_gen)
@@ -37,6 +39,12 @@ module Riddim
       succeeded = true
     ensure
       warn "riddim: retained #{worktree.path} (#{worktree.branch}); inspect before cleanup" if worktree && !succeeded
+    end
+
+    def prepare_worktree(name, config_dir:)
+      raise Worktree::Error, 'worktree start requires a config directory' unless config_dir
+
+      Worktree.create(name, cwd: Dir.pwd, config_dir: config_dir, state_dir: Ownership.state_dir)
     end
 
     def exit_on_error(error)

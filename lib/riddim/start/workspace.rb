@@ -32,9 +32,11 @@ module Riddim
     end
 
     def confirm_worktree_workspace(workspace, worktree)
-      Worktree.confirm_pane!(workspace, worktree)
-    rescue Worktree::Error => e
-      rollback_after_failed_publication(workspace, e)
+      pane = workspace.root_pane_id
+      return if Riddim::Herdr.worktree_cwd_confirmed?(pane, worktree.path, session: Riddim::Herdr.session)
+
+      error = Worktree::Error.new("pane #{pane} never confirmed its worktree cwd #{worktree.path}")
+      rollback_after_failed_publication(workspace, error)
     end
   end
 end

@@ -449,10 +449,14 @@ there is no pool, lease, fresh remote fetch, launch brief, reply tracking, or
 teardown. The original `start <name>` still starts in the current directory.
 
 The ignored `config/agent-profile` and `state/` are **not copied into a Git
-worktree**. The invoking Riddim executable uses its own existing config and
-state paths; when running Riddim *from inside the new worktree*, set absolute
-`RIDDIM_CONFIG_DIR` and `RIDDIM_STATE_DIR` pointing back to the original
-checkout's directories so both CLIs use the same profile and records.
+worktree**. Before launching Pi, Riddim atomically writes the original config
+and state directory paths into that worktree's private Git admin directory
+(`riddim-home`), outside the checkout. A Riddim CLI invoked from the linked
+worktree reads that marker and defaults to the original profile and records;
+there is no environment setup for the worker. Explicit `RIDDIM_CONFIG_DIR` and
+`RIDDIM_STATE_DIR` overrides still win. A malformed or symlinked marker refuses
+rather than silently using a different state directory. The marker is not
+endpoint authority and does not authorize worktree deletion.
 
 #### Endpoint ownership record
 

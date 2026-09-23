@@ -18,6 +18,7 @@ require_relative 'herdr/process_state'
 require_relative 'herdr/prompt'
 require_relative 'herdr/server_state'
 require_relative 'herdr/typing'
+require_relative 'herdr/worktree_path'
 
 module Riddim
   # Owns Riddim's concrete Herdr command-line surface: it resolves the one

@@ -17,6 +17,27 @@ Given('a local Git project for worktree start') do
   @working_directory = @project
 end
 
+Given('the project contains the Riddim CLI') do
+  FileUtils.mkdir_p(File.join(@project, 'bin'))
+  FileUtils.cp(RiddimWorld::RIDDIM, File.join(@project, 'bin', 'riddim'))
+  source_lib = File.join(File.dirname(RiddimWorld::RIDDIM, 2), 'lib')
+  FileUtils.cp_r(source_lib, @project)
+  git = ->(*args) { Open3.capture3('git', '-C', @project, *args) }
+  raise 'git add failed' unless git.call('add', 'bin', 'lib').last.success?
+  raise 'git commit failed' unless git.call('-c', 'user.name=Riddim', '-c', 'user.email=test@example.invalid',
+                                            'commit', '-qm', 'riddim sources').last.success?
+end
+
+Given('the project has an earlier commit and a post-checkout hook resets the worker branch') do
+  git = ->(*args) { Open3.capture3('git', '-C', @project, *args) }
+  raise 'second commit failed' unless git.call('-c', 'user.name=Riddim', '-c', 'user.email=test@example.invalid',
+                                               'commit', '--allow-empty', '-qm', 'second').last.success?
+
+  hook = File.join(@project, '.git', 'hooks', 'post-checkout')
+  File.write(hook, "#!/bin/sh\ngit reset --hard -q HEAD~1\n")
+  File.chmod(0o755, hook)
+end
+
 Given('Herdr starts the agent only in the linked worktree') do
   install_fake_herdr(<<~RUBY)
     require 'json'
@@ -69,6 +90,48 @@ Then('the worker has a separate linked worktree at the project\'s HEAD') do
   output, status = Open3.capture2('git', '-C', @worktree, 'rev-parse', '--show-toplevel', 'HEAD')
   expected, = Open3.capture2('git', '-C', @project, 'rev-parse', 'HEAD')
   assert_equal [true, true, @worktree, expected.strip], [@status.success?, status.success?, *output.lines.map(&:strip)]
+end
+
+def run_worker_cli(*, environment: @environment)
+  worker = File.join(@worktree, 'bin', 'riddim')
+  Bundler.with_unbundled_env { Open3.capture3(environment, worker, *, chdir: @worktree) }
+end
+
+Then('Riddim inside the worktree can start another agent using the original profile and state') do
+  environment = @environment.merge('RIDDIM_CONFIG_DIR' => nil, 'RIDDIM_STATE_DIR' => nil)
+  stdout, stderr, status = run_worker_cli('start', 'another', environment: environment)
+  assert_equal [true, true, true, false], [status.success?, stdout.include?('started another'),
+                                           File.file?(scenario_record_path('another')),
+                                           File.exist?(File.join(@worktree, 'state', 'another.meta'))], stderr
+end
+
+When("I replace the worker's runtime marker with a symlink") do
+  git_dir, status = Open3.capture2('git', '-C', @worktree, 'rev-parse', '--absolute-git-dir')
+  raise 'missing linked Git admin directory' unless status.success?
+
+  marker = File.join(git_dir.strip, 'riddim-home')
+  File.delete(marker)
+  File.symlink(@project, marker)
+end
+
+Then('Riddim in the worktree refuses the marker') do
+  environment = @environment.merge('RIDDIM_CONFIG_DIR' => nil, 'RIDDIM_STATE_DIR' => nil)
+  _stdout, stderr, status = run_worker_cli('list', environment: environment)
+  assert_equal [1, true], [status.exitstatus, stderr.include?('worktree marker cannot be read')]
+end
+
+Then('Riddim in the worktree respects an explicit state override') do
+  other_state = File.join(new_temporary_directory, 'state')
+  environment = @environment.merge('RIDDIM_CONFIG_DIR' => nil, 'RIDDIM_STATE_DIR' => other_state)
+  stdout, stderr, status = run_worker_cli('list', '--json', environment: environment)
+  assert_equal [true, 0], [status.success?, JSON.parse(stdout).fetch('records').size], stderr
+end
+
+Then('no Herdr workspace is created for the changed worker branch') do
+  assert_equal [false, true, true], [@status.success?, herdr_invocations.none? do |line|
+    line.include?('workspace create')
+  end,
+                                     File.directory?(@worktree)]
 end
 
 Then('the start output names the new worktree and branch') do
