@@ -253,8 +253,10 @@ if ARGV.first == 'peek'
 end
 
 if ARGV.first == 'start'
-  unless (2..3).cover?(ARGV.length) && (ARGV.length == 2 || ARGV[2] == '--worktree')
-    warn 'Usage: riddim start <name> [--worktree]'
+  worktree_only = ARGV.length == 3 && ARGV[2] == '--worktree'
+  tasked = ARGV.length == 5 && ARGV[2..3] == %w[--worktree --task-file]
+  unless ARGV.length == 2 || worktree_only || tasked
+    warn 'Usage: riddim start <name> [--worktree [--task-file <path>]]'
     exit 2
   end
 
@@ -278,7 +280,8 @@ if ARGV.first == 'start'
   # record lock from duplicate preflight through launch result, duplicate
   # refusal before Herdr is touched at all, then create the exact endpoint,
   # publish the authoritative record, and start the agent.
-  Riddim::Start.run(name, profile, create_worktree: ARGV[2] == '--worktree', config_dir: config_dir)
+  Riddim::Start.run(name, profile, create_worktree: worktree_only || tasked,
+                                   config_dir: config_dir, task_file: tasked ? ARGV[4] : nil)
   exit
 end
 
@@ -298,7 +301,8 @@ puts <<~HELP
                             Show recent output or the visible viewport of a recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> <message...>    Prompt a started agent's recorded pane
-    start <name> [--worktree]   Start Pi in the cwd or a fresh isolated Git worktree
+    start <name> [--worktree [--task-file <path>]]
+                            Start Pi in the cwd or a fresh isolated Git worktree with a task brief
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status
 HELP

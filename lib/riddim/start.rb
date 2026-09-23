@@ -3,6 +3,7 @@
 require_relative 'herdr'
 require_relative 'ownership'
 require_relative 'worktree'
+require_relative 'task_brief'
 
 module Riddim
   # The start command's orchestration: Firstmate's spawn sequence, reduced to
@@ -18,32 +19,34 @@ module Riddim
 
     # Runs one complete locked start, exiting the process on every failure
     # with the exit status Herdr's own output and status deserve.
-    def run(name, profile, create_worktree: false, config_dir: nil)
+    def run(name, profile, create_worktree: false, config_dir: nil, task_file: nil)
+      raise TaskBrief::Error, 'task-file requires --worktree' if task_file && !create_worktree
+
       Ownership.ensure_state_dir
-      record_path = Ownership.record_path(name)
       Ownership.with_lock(name) do
-        start_locked(name, profile, record_path, create_worktree: create_worktree, config_dir: config_dir)
+        start_locked(name, profile, create_worktree: create_worktree, config_dir: config_dir, task_file: task_file)
       end
     rescue Ownership::Error, Worktree::Error, Riddim::Herdr::IncompatibleClient, SystemCallError => e
       exit_on_error(e)
     end
 
-    def start_locked(name, profile, record_path, create_worktree:, config_dir:)
-      refuse_duplicate(name, record_path)
-      preflight! if create_worktree
+    def start_locked(name, profile, create_worktree:, config_dir:, task_file:)
+      record_path = reserve_record_path(name)
+      brief = TaskBrief.publish(name, TaskBrief.read(task_file)) if task_file
       worktree = prepare_worktree(name, config_dir: config_dir) if create_worktree
       workspace = create_endpoint(name, cwd: worktree ? worktree.path : Dir.pwd, worktree: worktree)
       spawn_gen = publish_record(name, profile, record_path, workspace, worktree: worktree)
-      launch(name, profile, record_path, workspace, spawn_gen)
-      puts "worktree #{worktree}" if worktree
+      launch(name, profile, workspace, spawn_gen, initial_prompt: brief&.initial_prompt)
+      report_started_assets(worktree, brief)
       succeeded = true
     ensure
-      warn "riddim: retained #{worktree.path} (#{worktree.branch}); inspect before cleanup" if worktree && !succeeded
+      report_retained_assets(worktree, brief) unless succeeded
     end
 
     def prepare_worktree(name, config_dir:)
       raise Worktree::Error, 'worktree start requires a config directory' unless config_dir
 
+      preflight!
       Worktree.create(name, cwd: Dir.pwd, config_dir: config_dir, state_dir: Ownership.state_dir)
     end
 
@@ -95,13 +98,14 @@ module Riddim
       exit 1
     end
 
-    def launch(name, profile, record_path, workspace, spawn_gen)
+    def launch(name, profile, workspace, spawn_gen, initial_prompt:)
       Riddim::Herdr.start_agent(
-        name: name, pane_id: workspace.root_pane_id, model: profile.model, effort: profile.effort
+        name: name, pane_id: workspace.root_pane_id, model: profile.model, effort: profile.effort,
+        initial_prompt: initial_prompt
       )
       puts "started #{name} in #{workspace.root_pane_id}"
     rescue Riddim::Herdr::CommandFailed, SystemCallError => e
-      cleanup_failed_start(name, record_path, workspace, spawn_gen, e)
+      cleanup_failed_start(name, Ownership.record_path(name), workspace, spawn_gen, e)
     end
 
     # One exact pane close, then a pane get: only Herdr's structured
@@ -151,3 +155,4 @@ module Riddim
 end
 
 require_relative 'start/workspace'
+require_relative 'start/task'

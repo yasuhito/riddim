@@ -38,6 +38,19 @@ Given('the project has an earlier commit and a post-checkout hook resets the wor
   File.chmod(0o755, hook)
 end
 
+WORKTREE_AGENT_START = <<~RUBY
+  abort 'agent arguments cannot be encoded safely for the target shell' if ARGV.any? { |arg| arg.include?(10.chr) }
+  if ARGV.last != 'max'
+    brief = File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.brief')
+    abort 'agent start before the task brief was published' unless File.file?(brief)
+    File.binwrite(File.expand_path('initial-brief', __dir__), ARGV.last)
+  end
+  if File.exist?(File.expand_path('agent-start-fails', __dir__))
+    warn 'agent refused start'
+    exit 7
+  end
+RUBY
+
 Given('Herdr starts the agent only in the linked worktree') do
   install_fake_herdr(<<~RUBY)
     require 'json'
@@ -56,10 +69,7 @@ Given('Herdr starts the agent only in the linked worktree') do
       puts JSON.generate(result: { pane: { pane_id: 'w9:p1', foreground_cwd: cwd } })
     when ['pane', 'close'] then File.write(File.expand_path('pane-closed', __dir__), '')
     when ['agent', 'start']
-      if File.exist?(File.expand_path('agent-start-fails', __dir__))
-        warn 'agent refused start'
-        exit 7
-      end
+      #{WORKTREE_AGENT_START}
     else abort "unexpected command: \#{ARGV.join(' ')}"
     end
   RUBY

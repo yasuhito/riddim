@@ -157,10 +157,11 @@ module Riddim
     # Performs no rollback of its own: the caller owns the published endpoint
     # record and the cleanup decisions, so a hidden best-effort close can
     # never race the record's retention rules.
-    def start_agent(name:, pane_id:, model:, effort:)
+    def start_agent(name:, pane_id:, model:, effort:, initial_prompt: nil)
+      pi_arguments = ['--model', model, '--thinking', effort]
+      pi_arguments << initial_prompt if initial_prompt
       stdout, stderr, status = capture(
-        'agent', 'start', name, '--kind', 'pi', '--pane', pane_id,
-        '--', '--model', model, '--thinking', effort
+        'agent', 'start', name, '--kind', 'pi', '--pane', pane_id, '--', *pi_arguments
       )
       raise CommandFailed.new(stdout, stderr, status) unless status.success?
     end

@@ -440,6 +440,30 @@ not to the primary checkout. Before starting Pi, Riddim also requires two
 consecutive exact-pane foreground cwd reads to match that worktree. A failed
 placement closes only the exact created pane and verifies the close.
 
+For an assigned task, give `start` a UTF-8 file (at most 64 KiB):
+
+```sh
+bin/riddim start <name> --worktree --task-file <path>
+```
+
+Riddim reads and validates the file before allocating a worktree or endpoint,
+then atomically publishes a 0600 `state/<name>.brief` outside the worktree.
+The brief starts with a Pi worker role that distinguishes project coding
+instructions from supervisor instructions in `AGENTS.md`, followed by the
+file's exact task text. Herdr's native `agent start` refuses multi-line
+arguments, so Riddim passes a short pointer to the brief as Pi's **initial
+positional prompt**. Firstmate passes the full brief to Pi at launch; it uses
+pointers for Kimi/Rovo instead. This Pi pointer is a smaller, separately
+verified delivery path: `start` success says the backend accepted the launch,
+not that Pi read the file, completed the task, or replied. An
+existing brief refuses any new start under the same name. On any later failure
+the brief and worktree are retained for inspection, and Riddim never retries
+the initial instruction automatically. A symlinked, non-regular, empty, invalid UTF-8,
+or NUL-containing task file refuses before allocation. This is a Pi-only
+subset of Firstmate's launch brief: no mode, durable inbox, acknowledgement,
+reply tracking, PR delivery, or completion detection is implied. Without
+`--task-file`, `start --worktree` retains its previous idle-agent behavior.
+
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority to remove files**: `exit` leaves the
 pane, record, worktree, and branch intact. If creation or launch fails, inspect
