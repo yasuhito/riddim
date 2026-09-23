@@ -151,6 +151,18 @@ PROCESS_INFO_FIXTURE = <<~RUBY.freeze
   end
 RUBY
 
+# Keep Git available for a linked Riddim checkout's runtime-path marker while
+# excluding the real Herdr after a fake executable vanishes. The tested
+# failure is Herdr's absence, not the absence of Git.
+def restrict_path_without_herdr(directory)
+  git = ENV.fetch('PATH').split(File::PATH_SEPARATOR).map { |part| File.join(part, 'git') }
+           .find { |path| File.file?(path) && File.executable?(path) }
+  raise 'Git is required for the CLI scenarios' unless git
+
+  File.symlink(File.realpath(git), File.join(directory, 'git'))
+  @environment = @environment.merge('PATH' => directory)
+end
+
 # Installs a process-level Herdr test double while exercising the public CLI.
 # Every invocation is logged beside the fake, and every invocation must be
 # session-targeted: HERDR_SESSION set in the subprocess environment and an

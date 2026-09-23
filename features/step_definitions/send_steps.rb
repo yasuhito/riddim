@@ -53,7 +53,7 @@ end
 Given('no Herdr executable is available') do
   directory = new_temporary_directory
   @herdr_directory = directory
-  @environment = (@environment || {}).merge('PATH' => directory)
+  restrict_path_without_herdr(directory)
 end
 
 Given('the recorded prompt fails with status {int}, output {string}, and error {string}') do |status, output, error|

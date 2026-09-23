@@ -142,9 +142,8 @@ Given('Herdr creates workspace {string} and then disappears') do |_w|
     else abort "unexpected command: \#{ARGV.join(' ')}"
     end
   RUBY
-  # Keep later exec searches inside the fake directory. Otherwise PATH would
-  # fall through to the developer's real Herdr after the fake deletes itself.
-  @environment = @environment.merge('PATH' => @herdr_directory)
+  # Do not fall through to the real Herdr after the fake deletes itself.
+  restrict_path_without_herdr(@herdr_directory)
 end
 
 Given('Herdr creates workspace {string} and refuses to start an agent before its record exists') do |_w|

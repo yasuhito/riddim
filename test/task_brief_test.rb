@@ -41,6 +41,25 @@ class TaskBriefLaunchTest < Minitest::Test
     ENV['PATH'] = old_path
   end
 
+  # Publishes a launch through TaskBrief.publish_launch with the fake Pi on
+  # PATH, so publication tests never depend on a real Pi installation.
+  def publish_launch(profile, spawn_gen)
+    old_path = ENV.fetch('PATH')
+    ENV['PATH'] = "#{@bin}:#{old_path}"
+    Riddim::TaskBrief.publish_launch(Riddim::TaskBrief::Brief.new(@brief_path, ''), profile, spawn_gen)
+  ensure
+    ENV['PATH'] = old_path
+  end
+
+  # Publishes through TaskBrief.publish_launch and returns the raised
+  # TaskBrief::Error, or nil when the publication succeeds.
+  def launch_rejection(profile, spawn_gen)
+    publish_launch(profile, spawn_gen)
+    nil
+  rescue Riddim::TaskBrief::Error => e
+    e
+  end
+
   def test_missing_brief_does_not_start_pi
     profile = Riddim::AgentProfile.parse('pi safe max')
     File.delete(@brief_path)
@@ -56,5 +75,42 @@ class TaskBriefLaunchTest < Minitest::Test
     assert_equal [true, ['--model', 'model$(touchPWNED)', '--thinking', 'max',
                          "Worker role\nTask with ' and $(not-run)"], false],
                  [status.success?, File.binread(@output).split("\0"), File.exist?(File.join(@root, 'PWNED'))]
+  end
+
+  def test_publish_launch_rejects_a_path_traversal_spawn_gen_before_publishing_anything
+    rejection_error = launch_rejection(Riddim::AgentProfile.parse('pi safe max'), '../../escape')
+
+    assert_equal [Riddim::TaskBrief::Error, 'task launch requires a valid spawn generation',
+                  false, %w[worker.brief]],
+                 [rejection_error&.class, rejection_error&.message,
+                  File.exist?(File.join(@root, 'escape.sh')), Dir.children(@private_dir).sort]
+  end
+
+  def test_publish_launch_rejects_every_invalid_spawn_gen_shape_before_publishing
+    profile = Riddim::AgentProfile.parse('pi safe max')
+    invalid = [nil, 17, '', 's1.2', '1.2.3', 's1.2.3.4', "s1.2.3\n", '/s1.2.3']
+    messages = invalid.map { |spawn_gen| launch_rejection(profile, spawn_gen)&.message }
+
+    assert_equal [Array.new(invalid.size, 'task launch requires a valid spawn generation'), %w[worker.brief]],
+                 [messages, Dir.children(@private_dir).sort]
+  end
+
+  def test_publish_launch_refuses_to_replace_a_launch_file_for_the_same_generation
+    gen = 's1767200000.4242.7'
+    published = publish_launch(Riddim::AgentProfile.parse('pi safe max'), gen)
+    original_bytes = File.binread(published)
+    replacement_error = launch_rejection(Riddim::AgentProfile.parse('pi model$(touchPWNED) low'), gen)
+
+    assert_equal [Riddim::TaskBrief::Error, true, original_bytes],
+                 [replacement_error&.class, replacement_error&.message&.include?('already exists'),
+                  File.binread(published)]
+  end
+
+  def test_published_launch_filename_carries_the_spawn_generation
+    gen = 's1767200000.4242.7'
+    path = publish_launch(Riddim::AgentProfile.parse('pi safe max'), gen)
+
+    assert_equal [File.join(@private_dir, "worker.brief.launch.#{gen}.sh"), true],
+                 [path, File.exist?(path)]
   end
 end

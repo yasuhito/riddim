@@ -61,10 +61,12 @@ module Riddim
       end
 
       path = "#{brief.path}.launch.#{spawn_gen}.sh"
-      Ownership.publish(path, launch_source(brief, profile))
+      begin
+        Ownership.publish(path, launch_source(brief, profile))
+      rescue Ownership::Error => e
+        raise Error, "task launch could not be published at #{path}: #{e.message}"
+      end
       path
-    rescue Ownership::Error => e
-      raise Error, "task launch could not be published at #{path}: #{e.message}"
     end
 
     def launch_source(brief, profile)
