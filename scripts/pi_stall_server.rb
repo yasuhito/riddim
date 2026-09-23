@@ -50,5 +50,13 @@ module PiStallLab
       socket.write("data: #{JSON.generate(chunk)}\n\ndata: [DONE]\n\n")
       socket.flush
     end
+
+    # Sends only static HTTP 200 event-stream headers and keeps the connection
+    # open. No SSE body follows until the caller closes the socket. Header
+    # values are constants and are never logged.
+    def send_headers_only(socket)
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+      socket.flush
+    end
   end
 end

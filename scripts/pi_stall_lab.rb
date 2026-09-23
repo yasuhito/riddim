@@ -68,6 +68,17 @@ module PiStallLab
       puts "silent: request received, Pi prepared request, no headers or updates for #{seconds}s, Pi still running"
     end
 
+    def check_headers_only(pid, output, root, seconds)
+      sleep seconds
+      raise 'Pi exited before the headers-only interval finished' unless alive?(pid)
+      raise 'Pi printed a response without SSE body bytes' unless File.empty?(output)
+
+      observed = events(root) & %w[request_prepared response_headers first_update]
+      raise 'unexpected trace boundaries' unless observed == %w[request_prepared response_headers]
+
+      puts "headers_only: request received, response headers received, no updates for #{seconds}s, Pi still running"
+    end
+
     def prepare(root)
       server = TCPServer.new('127.0.0.1', 0)
       LabServer.config(root, server.addr[1])
@@ -90,15 +101,30 @@ module PiStallLab
       end
     end
 
+    def deliver(mode, socket)
+      if mode == :healthy
+        LabServer.send_ok(socket)
+        socket.close
+      elsif mode == :headers_only
+        LabServer.send_headers_only(socket)
+      end
+      # :silent delivers nothing; the connection stays open without headers.
+    end
+
+    def check_case(mode, pid, output, root, silence)
+      if mode == :healthy
+        check_healthy(pid, output, root)
+      elsif mode == :headers_only
+        check_headers_only(pid, output, root, silence)
+      else
+        check_silent(pid, output, root, silence)
+      end
+    end
+
     def run_case(mode, silence: 2)
       with_pi do |pid, socket, output, root|
-        if mode == :healthy
-          LabServer.send_ok(socket)
-          socket.close
-          check_healthy(pid, output, root)
-        else
-          check_silent(pid, output, root, silence)
-        end
+        deliver(mode, socket)
+        check_case(mode, pid, output, root, silence)
       end
     end
   end
@@ -106,7 +132,7 @@ module PiStallLab
   def self.run
     case ARGV
     in ['reproduce']
-      %i[healthy silent].each { |mode| Reproducer.run_case(mode) }
+      %i[healthy silent headers_only].each { |mode| Reproducer.run_case(mode) }
     in ['replay', String => file]
       Trace.replay(file)
     in ['observe', String => file]
