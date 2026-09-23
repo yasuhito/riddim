@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'cucumber/rake/task'
+require 'open3'
 require 'rake/testtask'
 require 'rubocop/rake_task'
 require_relative 'test/support/one_then_per_scenario'
@@ -18,11 +19,18 @@ task :model do
   jar = File.join(Dir.home, '.local/share/tlaplus/v1.7.4/tla2tools.jar')
   abort "Missing #{jar}; see spec/README.md" unless File.file?(jar)
 
-  java = ['mise', 'exec', 'java@temurin-21.0.12+8.0.LTS', '--', 'java', '-cp', jar]
+  java = ['mise', 'exec', 'java@temurin-21.0.12+8.0.LTS', '--', 'java', '-XX:+UseParallelGC', '-cp', jar]
   Dir.chdir('spec') do
     %w[ClaimOneName ProtectNewGeneration].each do |name|
-      sh(*java, 'pcal.trans', "#{name}.tla")
-      sh(*java, 'tlc2.TLC', '-workers', '1', "#{name}.tla")
+      model = "#{name}.tla"
+      [['pcal.trans', model], ['tlc2.TLC', '-workers', '1', model]].each do |args|
+        output, status = Open3.capture2e(*java, *args)
+        abort "#{model}: #{args.first} failed (exit #{status.exitstatus}):\n#{output}" unless status.success?
+
+        warnings = output.lines.grep(/Warning:/)
+        warn warnings.join unless warnings.empty?
+      end
+      puts "#{name}: OK"
     end
   end
 end

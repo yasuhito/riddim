@@ -10,7 +10,7 @@
 bundle exec rake model
 ```
 
-それぞれPlusCalの変換とTLCの検査を順に行う。両方に`No error has been found`が出れば合格。失敗例の作成・検査は含めない。このタスクはJavaが必要なため、通常の`rake`やCIには含めない。変換器は`.tla`内の`BEGIN TRANSLATION`以降を生成し直すので、PlusCalを編集した場合は生成差分も確認する。`spec/*.old`のバックアップはGitから除外している。
+それぞれPlusCalの変換とTLCの検査を順に行う。正常時は`ClaimOneName: OK`と`ProtectNewGeneration: OK`だけを表示し、変換や検査に失敗したときは詳細とTLCの反例を表示して失敗する。TLCの警告も表示する。失敗例の作成・検査は含めない。このタスクはJavaが必要なため、通常の`rake`やCIには含めない。変換器は`.tla`内の`BEGIN TRANSLATION`以降を生成し直すので、PlusCalを編集した場合は生成差分も確認する。`spec/*.old`のバックアップはGitから除外している。
 
 PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`BEGIN TRANSLATION`以降は手で編集しない。
 
