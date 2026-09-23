@@ -483,9 +483,15 @@ adds a local-only delivery contract to the private brief: the worker commits
 on `riddim/<name>`, never pushes or opens a PR, and appends a short, timestamped
 `done`, `blocked`, `failed`, or `needs-decision` event to a private status file
 outside the worktree. The status filename includes the ownership record's
-`spawn_gen`, so an old report cannot become the new worker's report. The
-result file is created before launch with owner-only permissions; ambiguous
-launch failures leave it and other assets available for inspection.
+`spawn_gen`, so an old report cannot become the new worker's report. Every
+explicit `Delivery contract: mode=...` line in the task file must agree with
+`local-only`, or the start refuses before allocating a worktree, pane, brief,
+or result file. For free-text conflicts (such as an instruction to push), the
+launch contract takes precedence and tells the worker to report a decision
+instead of carrying out the conflicting delivery; this is an instruction, not
+a guarantee of model compliance. The result file is created before launch with
+owner-only permissions; ambiguous launch failures leave it and other assets
+available for inspection.
 
 `result` requires the exact current ownership record. `unreported` means its
 status file is empty; `reported` is the worker's last event, not proof of

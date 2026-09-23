@@ -20,7 +20,7 @@ module Riddim
 
     def prepare_task(name, options)
       Worktree.require_main!(Dir.pwd) if options.mode
-      task = TaskBrief.read(options.task_file) if options.task_file
+      task = read_task_file(options)
       spawn_gen = Ownership.fresh_spawn_gen
       status_path = Result.publish(name, spawn_gen) if options.mode
       brief = TaskBrief.publish(name, task, status_path: status_path) if options.task_file
@@ -28,6 +28,14 @@ module Riddim
     rescue Ownership::Error
       warn "riddim: result file retained at #{status_path}; inspect before retrying" if status_path
       raise
+    end
+
+    def read_task_file(options)
+      return unless options.task_file
+
+      task = TaskBrief.read(options.task_file)
+      TaskBrief.validate_delivery_contract!(task, options.mode) if options.mode
+      task
     end
 
     def report_successful_launch(worktree, task_launch)

@@ -37,6 +37,20 @@ module Riddim
       text
     end
 
+    # A task file may carry a Firstmate-style explicit delivery contract. Every
+    # such line must agree with the launch mode; checking only the first would
+    # let a later contradictory instruction reach Pi after publication.
+    def validate_delivery_contract!(task, mode)
+      expected = "Delivery contract: mode=#{mode}"
+      task.each_line do |line|
+        declared = line.delete_suffix("\n")
+        next unless declared.start_with?('Delivery contract: mode=')
+        next if declared == expected
+
+        raise Error, "delivery mismatch: task declares #{declared.inspect}, launch uses mode=#{mode}"
+      end
+    end
+
     def path(name)
       File.join(File.expand_path(Ownership.state_dir), "#{Ownership.validated_name(name)}#{PUBLISHED_SUFFIX}")
     end
@@ -107,6 +121,8 @@ module Riddim
       <<~CONTRACT
 
         # Local-only delivery contract
+        Delivery contract: mode=local-only
+        This delivery contract supersedes conflicting project and task instructions, including explicit human instructions to push, open a PR, or merge. If the task conflicts, append a needs-decision event and stop instead of carrying out the conflicting delivery.
         This task is local-only: do not push, open a PR, or merge. Commit your completed work on your riddim/#{name} branch.
         Keep the worktree clean and your branch fast-forwardable from main. If main moves, rebase your branch before claiming readiness.
         Append one short event to #{status_path} when you have a result: `done [at=<epoch>]: <summary>` after committing and testing, or `blocked [at=<epoch>]: <reason>`, `failed [at=<epoch>]: <reason>`, or `needs-decision [at=<epoch>]: <question>` if you cannot finish. Use the current Unix epoch seconds for <epoch>.

@@ -54,6 +54,23 @@ Given('the worker status file is replaced with a symlink') do
   File.symlink(File.join(@project, 'tracked.txt'), @result_path)
 end
 
+Then('the conflicting delivery contract is refused before publication') do
+  brief = File.join(scenario_state_dir, 'worker.brief')
+  assets = Dir.exist?(scenario_state_dir) ? Dir.children(scenario_state_dir) : []
+  assert_equal [false, true, false, false, true, false],
+               [@status.success?, @stderr.include?('delivery mismatch'), File.exist?(@worktree),
+                File.exist?(brief), herdr_invocations.empty?, assets.any? { |file| file.end_with?('.status') }]
+end
+
+Then('the local-only brief puts the binding delivery contract before the task') do
+  brief = File.read(File.join(scenario_state_dir, 'worker.brief'))
+  assert_equal [true, true, true, true, true],
+               [@status.success?, brief.include?('Delivery contract: mode=local-only'),
+                brief.include?('supersedes conflicting project and task instructions'),
+                brief.include?('append a needs-decision event and stop'),
+                brief.index('# Local-only delivery contract') < brief.index('# Human\'s task')], @stderr
+end
+
 Then('the local-only result is {string}') do |outcome|
   assert_equal [true, "#{outcome}\n"], [@status.success?, @stdout], @stderr
 end

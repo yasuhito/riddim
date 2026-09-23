@@ -21,6 +21,48 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then no worker worktree is created
 
+  Scenario: Refuse a conflicting delivery contract before allocating an endpoint
+    Given a task file containing:
+      """
+      Fix the tests.
+      Delivery contract: mode=direct-PR
+      """
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    Then the conflicting delivery contract is refused before publication
+
+  Scenario: Refuse even a second conflicting delivery contract line
+    Given a task file containing:
+      """
+      Delivery contract: mode=local-only
+      Delivery contract: mode=direct-PR
+      Fix the tests.
+      """
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    Then the conflicting delivery contract is refused before publication
+
+  Scenario: A matching explicit delivery contract is accepted
+    Given a task file containing:
+      """
+      Delivery contract: mode=local-only
+      Fix the tests without pushing.
+      """
+    Given a local-only task was started
+    Then the local-only brief puts the binding delivery contract before the task
+
+  Scenario: A task's request to push cannot override local-only delivery
+    Given a task file containing:
+      """
+      Change a test, commit, and push your branch.
+      """
+    Given a local-only task was started
+    Then the local-only brief puts the binding delivery contract before the task
+
   Scenario: A regular task is not silently treated as local-only
     Given a regular task was started
     When I run riddim with:
