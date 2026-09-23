@@ -1,2 +1,3 @@
 config/agent-profile
 state/
+spec/*.old
