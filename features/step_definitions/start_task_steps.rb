@@ -2,6 +2,18 @@
 
 require_relative '../../lib/riddim/task_brief'
 
+Given('a fake Pi executable is on PATH for the task launch') do
+  bin = File.join(@herdr_directory, 'pi-bin')
+  FileUtils.mkdir_p(bin)
+  executable = File.join(bin, 'pi')
+  File.write(executable, "#!/bin/sh\nexit 0\n")
+  File.chmod(0o755, executable)
+  @environment['PATH'] = "#{bin}:#{@environment.fetch('PATH')}"
+  unless @environment.fetch('PATH').split(File::PATH_SEPARATOR).include?(@herdr_directory)
+    raise 'fake Herdr is not on PATH'
+  end
+end
+
 Given('a task file containing:') do |body|
   File.write(File.join(@project, 'task.md'), body)
 end
@@ -41,7 +53,8 @@ end
 
 Then('Pi receives a staged full brief launch and is named on its exact pane') do
   brief = File.join(scenario_state_dir, 'worker.brief')
-  script = File.binread(File.join(@herdr_directory, 'staged-launch'))
+  staged = File.join(@herdr_directory, 'staged-launch')
+  script = File.file?(staged) ? File.binread(staged) : "missing launch: #{@stderr}"
   content = File.binread(brief)
   requested = "Fix Riddim's worktree test. Keep the user's instructions intact.\nRun the full test suite."
   assert_equal [true, true, true, true, true, true, true, false],
@@ -49,7 +62,7 @@ Then('Pi receives a staged full brief launch and is named on its exact pane') do
                 content.include?(requested), content.include?('You are a coding worker'),
                 File.stat(brief).mode & 0o777 == 0o600,
                 herdr_invocations.any? { |line| line.include?('agent rename w9:p1 worker') },
-                script.start_with?('exec ')]
+                script.start_with?('exec ')], "#{@stderr}\n#{herdr_invocations.inspect}"
 end
 
 Then('the failed task retains its brief, record, pane, and linked worktree') do

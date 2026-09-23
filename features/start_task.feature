@@ -7,6 +7,7 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       pi openrouter/z-ai/glm-5.3-flash max
       """
     And Herdr starts the agent only in the linked worktree
+    And a fake Pi executable is on PATH for the task launch
 
   Scenario: Refuse an empty task before allocating a worktree or endpoint
     Given a task file containing:
