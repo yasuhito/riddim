@@ -520,16 +520,21 @@ Compares the recorded `riddim/<name>` branch with the project's **local
 prints a stat and patch, or only the stat with `--stat`; an uncommitted edit
 is not included. This is read-only: no fetch, PR lookup, merge, or cleanup.
 It requires the current local-only ownership record, the same linked Git
-repository and checked-out named branch, and rechecks the record and Git tips
-before printing. A detected change or an unreadable checkout refuses without
-printing a partial diff. This is a point-in-time read, not a lock against
-future changes. Reviewing a diff does not make a task `ready` or approve it
-for merge; `result` separately checks the worker's report and Git handoff
-evidence.
+repository and checked-out named branch. It holds the per-name lock from the
+authoritative record read through printing, and rechecks the record and Git
+tips before printing. A detected change or an unreadable checkout refuses
+without printing a partial diff. Cooperating Riddim lifecycle writers wait
+for the display to finish; Git writers and processes that ignore the lock do
+not. This is a point-in-time read, not a merge authorization. Reviewing a
+diff does not make a task `ready`; `result` separately checks the worker's
+report and Git handoff evidence.
 
 This is only the local-branch subset of Firstmate's `fm-review-diff.sh`, which
 can also refresh a remote-backed base and review a recorded PR's fetched head.
 Riddim deliberately neither fetches nor substitutes a PR or remote head.
+Firstmate's review-diff does not hold a task lock or recheck its record; the
+Riddim read adds that guard, while Firstmate's state-changing local merge has
+its own generation and control-lock gate.
 
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority to remove files**: `exit` leaves the

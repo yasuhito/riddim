@@ -277,7 +277,7 @@ if ARGV.first == 'review-diff'
   end
 
   begin
-    print Riddim::ReviewDiff.read(ARGV[1], stat_only: ARGV.last == '--stat')
+    Riddim::ReviewDiff.emit(ARGV[1], stat_only: ARGV.last == '--stat') { |diff| print diff }
   rescue Riddim::Ownership::Error => e
     warn "riddim: #{e.message}"
     exit 1

@@ -65,6 +65,16 @@ Feature: Review a local-only worker branch without changing it
       """
     Then review-diff refuses changed ownership without printing a patch
 
+  Scenario: Keep the name locked through the final Git check and diff display
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And a competing writer attempts to rebind ownership during the final Git check
+    When I run riddim with:
+      """
+      review-diff worker
+      """
+    Then review-diff keeps the original owner until the diff is displayed
+
   Scenario: Refuse a symlinked worktree path in the ownership record
     Given a local-only task was started
     And the recorded worker worktree is a symlink

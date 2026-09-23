@@ -6,19 +6,26 @@ require_relative 'result'
 module Riddim
   # Read-only local-only review against the project's local main. The recorded
   # worktree must still be the named branch in the same repository. Snapshot
-  # both Git tips and ownership before producing output, then recheck them so
-  # an observation of a replacement worker is never presented as this one.
+  # both Git tips and ownership before producing output. The per-name lock
+  # stays held through display so cooperating lifecycle writers cannot rebind
+  # the record between its final check and the displayed diff.
   module ReviewDiff
     class Refused < Result::Error; end
 
     module_function
 
-    def read(name, stat_only: false)
+    def emit(name, stat_only: false)
+      Result.task_record(name) # Unlocked preflight refuses missing/non-local records without creating a lock.
+      Ownership.with_lock(name) { yield read_under_lock(name, stat_only: stat_only) }
+    end
+
+    def read_under_lock(name, stat_only:)
       snapshot, fields, bytes = Result.task_record(name)
       base, head = tips(name, fields)
       output = render(fields.fetch('worktree'), base, head, stat_only: stat_only)
-      verify_record!(name, snapshot, bytes)
       raise Refused, 'Git refs changed during review' unless tips(name, fields) == [base, head]
+
+      verify_record!(name, snapshot, bytes)
 
       output
     rescue KeyError, SystemCallError, Worktree::Error => e
