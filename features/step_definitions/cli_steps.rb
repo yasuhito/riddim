@@ -134,6 +134,9 @@ PROCESS_INFO_FIXTURE = <<~RUBY.freeze
     end
     pane = File.exist?(File.expand_path('wrong-process-pane', __dir__)) ? 'w9:p2' : ARGV[3]
     #{REBIND_RECORD_FIXTURE}
+    if File.exist?(File.expand_path('remove-record', __dir__))
+      File.unlink(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
+    end
     kind = if File.exist?(File.expand_path('other-pi', __dir__))
              'ruby'
            elsif File.exist?(File.expand_path('stale-pi', __dir__))

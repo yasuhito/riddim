@@ -73,8 +73,7 @@ module Riddim
     # an explicit unknown whenever the status evidence itself is unreadable,
     # so a fleet row never turns malformed evidence into a positive claim.
     def describe_for_fleet(name, fields)
-      snapshot, _current_fields, _bytes = task_record(name)
-      describe(read_status(path(name, snapshot.last)), name, fields)
+      describe(read_status(path(name, fields.fetch('spawn_gen'))), name, fields)
     rescue Error, SystemCallError
       'unknown (unreadable status evidence)'
     end

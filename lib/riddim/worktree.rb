@@ -113,15 +113,15 @@ module Riddim
         git_value(created.path, 'rev-parse', 'HEAD') == base_head
     end
 
-    def git_value(dir, *args)
-      output, status = git(dir, *args)
+    def git_value(dir, *args, env: GIT_ENV)
+      output, status = git(dir, *args, env: env)
       raise Error, "git #{args.join(' ')} failed in #{dir}: #{output.strip}" unless status.success?
 
       output.strip
     end
 
-    def git(dir, *)
-      stdout, stderr, status = Open3.capture3(GIT_ENV, 'git', '-C', dir, *)
+    def git(dir, *, env: GIT_ENV)
+      stdout, stderr, status = Open3.capture3(env, 'git', '-C', dir, *)
       [status.success? ? stdout : stderr + stdout, status]
     end
   end

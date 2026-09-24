@@ -42,6 +42,14 @@ Feature: A read-only fleet overview of recorded workers
       """
       Then the human view renders the JSON record's facts
 
+    Scenario: Git readiness inspection does not refresh the worker's Git index
+      Given the worker's tracked file has stale index metadata
+      When I run riddim with:
+      """
+      fleet --json
+      """
+      Then the worker Git index bytes and mtime are unchanged
+
   Rule: A record without a task mode has no report surface
 
     Background:
@@ -126,6 +134,14 @@ Feature: A read-only fleet overview of recorded workers
       """
       Then the ready-looking done stays gated by the earlier decision
 
+    Scenario: A pipe in a report does not add a Markdown column
+      Given the worker reports a pipe-containing event
+      When I run riddim with:
+      """
+      fleet
+      """
+      Then the human view keeps the pipe inside its report cell
+
   Rule: Mutable evidence belongs only to the captured generation
 
     Background:
@@ -137,6 +153,30 @@ Feature: A read-only fleet overview of recorded workers
 
     Scenario: Discard mutable evidence when ownership changes during observation
       Given ownership is rebound while Herdr reads the process view
+      When I run riddim with:
+      """
+      fleet --json
+      """
+      Then the row keeps the captured identity without mutable evidence
+
+    Scenario: A same-generation pane change between record reads cannot change the observed pane
+      Given the recorded pane changes after endpoint capture
+      When I run riddim with:
+      """
+      fleet --json
+      """
+      Then the row retains its first pane without another pane's evidence
+
+    Scenario: A record removed after enumeration is absent, not a null row
+      Given the record disappears after enumeration
+      When I run riddim with:
+      """
+      fleet
+      """
+      Then the human view reports no records
+
+    Scenario: A record removed while observing keeps identity without stale evidence
+      Given the record disappears while Herdr reads the process view
       When I run riddim with:
       """
       fleet --json

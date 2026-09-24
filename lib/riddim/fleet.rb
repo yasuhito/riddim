@@ -49,11 +49,11 @@ module Riddim
       cells = [record.fetch(:name), record.fetch(:session), record.fetch(:pane_id),
                record.fetch(:task_mode, '-'), record.fetch(:report, '-'),
                record.fetch(:pi_process, '-')]
-      "| #{cells.join(' | ')} |"
+      "| #{cells.map { |cell| cell.to_s.gsub('\\') { '\\\\' }.gsub('|') { '\\|' } }.join(' | ')} |"
     end
 
     def rows
-      List.record_names.map { |name| row(name) }
+      List.record_names.filter_map { |name| row(name) }
     end
 
     # One row: the validated record identity plus mutable evidence that is
@@ -62,23 +62,30 @@ module Riddim
       captured = captured_record(name)
       return nil unless captured
 
-      fields = Ownership.parse(captured.fetch(:bytes))
-      mutable = observe_mutables(name, fields)
-      captured.merge!(mutable) if unchanged?(name, captured.fetch(:bytes))
-      captured.delete(:bytes)
-      captured
+      snapshot = captured.delete(:snapshot)
+      bytes = captured.delete(:bytes)
+      fields = Ownership.parse(bytes)
+      return captured.except(:task_mode) unless same_identity?(fields, snapshot)
+
+      mutable = observe_mutables(name, fields, snapshot.first)
+      return captured.except(:task_mode) unless unchanged?(name, snapshot, bytes)
+
+      captured.merge(mutable)
+    end
+
+    def same_identity?(fields, snapshot)
+      fields['spawn_gen'] == snapshot.last &&
+        fields.values_at('herdr_session', 'herdr_workspace_id', 'herdr_tab_id',
+                         'herdr_pane_id') == snapshot.first.to_a
     end
 
     # Captures one record's identity, task mode, and exact bytes together, so
     # every later observation belongs to one selected generation.
     def captured_record(name)
-      endpoint, generation = Ownership::Endpoint.resolve_snapshot(name)
-      bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
-      fields = Ownership.parse(bytes)
-      raise Error, 'fleet record changed while reading' unless fields['spawn_gen'] == generation
-
+      snapshot, bytes, fields = capture_fields(name)
+      endpoint = snapshot.first
       { name: name, session: endpoint.session, pane_id: endpoint.pane_id,
-        task_mode: fields['task_mode'], bytes: bytes }.compact
+        task_mode: fields['task_mode'], snapshot: snapshot, bytes: bytes }.compact
     rescue Ownership::Endpoint::Refused, Ownership::InvalidRecord
       # Like Firstmate's snapshot, a record removed during enumeration is
       # absent. Any still-present but invalid record fails the whole read.
@@ -87,20 +94,28 @@ module Riddim
       nil
     end
 
+    def capture_fields(name)
+      snapshot = Ownership::Endpoint.resolve_snapshot(name)
+      path = Ownership.record_path(name)
+      bytes = Ownership::Endpoint.read_bytes(path)
+      fields = Ownership.parse(bytes)
+      Ownership::Endpoint.validate(name, path, fields)
+      [snapshot, bytes, fields]
+    end
+
     # Mutable observations for one captured record, each attributed
     # separately. A report outcome is a claim, not human approval; the Pi
     # process view is an exact-pane observation, not agent registration.
-    def observe_mutables(name, fields)
+    def observe_mutables(name, fields, endpoint)
       mutable = {}
       mutable[:report] = Result.describe_for_fleet(name, fields) if fields['task_mode'] == 'local-only'
-      mutable[:pi_process] = pi_process_verdict(name)
+      mutable[:pi_process] = pi_process_verdict(endpoint)
       mutable
     end
 
-    # The exact recorded pane's Pi process verdict, or "unknown" whenever any
-    # observation is unreadable: an unknown never becomes a positive claim.
-    def pi_process_verdict(name)
-      endpoint = Ownership::Endpoint.resolve(name)
+    # The exact recorded pane's Pi process verdict; an unreadable process
+    # view or invalid Herdr response never becomes a positive claim.
+    def pi_process_verdict(endpoint)
       Herdr.pi_process_state(endpoint.pane_id, session: endpoint.session).to_s
     rescue Herdr::InvalidResponse, Ownership::Error
       'unknown'
@@ -109,15 +124,13 @@ module Riddim
     # Mutable evidence is retained only while the captured record still
     # identifies this spawn, so an old worker's pane is never attributed to a
     # replacement. The row keeps its captured identity alone.
-    def unchanged?(name, bytes)
-      Ownership::Endpoint.unchanged?(name, resolve_current(name)) &&
+    def unchanged?(name, snapshot, bytes)
+      Ownership::Endpoint.resolve_snapshot(name) == snapshot &&
         Ownership::Endpoint.read_bytes(Ownership.record_path(name)) == bytes
-    end
-
-    def resolve_current(name)
-      Ownership::Endpoint.resolve_snapshot(name)
     rescue Ownership::Endpoint::Refused
-      nil
+      raise if Ownership.record_present?(Ownership.record_path(name))
+
+      false
     end
   end
 end

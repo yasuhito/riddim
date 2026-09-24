@@ -98,10 +98,11 @@ guessed from Herdr labels or workspaces.
 
 `--json` prints the single structured snapshot, schema `riddim.fleet.v1`, with
 a `state_dir` and a `records` array; the human view renders those same facts.
-Both views stay honest about missing and malformed evidence: an unreadable or
-changed observation reports `unknown` or omits the evidence rather than
-becoming a positive alive/ready claim, and a still-present invalid ownership
-record fails the whole read instead of a partial success. If a record's spawn
+Both views stay honest about missing and malformed evidence: an unreadable
+process observation is `unreadable`, other unknowns are marked `unknown`, and
+changed ownership drops mutable evidence rather than becoming a positive
+alive/ready claim. A still-present invalid ownership record fails the whole
+read instead of a partial success. If a record's spawn
 generation or exact bytes change while observations run, the row keeps only
 the captured identity and drops its mutable evidence. Report history is not
 current crew state and idle is not done. This is not Firstmate's full fleet

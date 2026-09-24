@@ -32,6 +32,21 @@ Then('the snapshot pairs the git-verified report with the Pi process evidence') 
                 record.fetch('pi_process') == 'pi', record.key?('agent_status')], @stdout
 end
 
+Given("the worker's tracked file has stale index metadata") do
+  index, status = Open3.capture2('git', '-C', @worktree, 'rev-parse', '--git-path', 'index')
+  raise 'worker index path unavailable' unless status.success?
+
+  @worker_index = File.expand_path(index.strip, @worktree)
+  File.utime(Time.at(1), Time.at(1), File.join(@worktree, 'tracked.txt'))
+  @index_before = [File.binread(@worker_index), File.stat(@worker_index).mtime]
+end
+
+Then('the worker Git index bytes and mtime are unchanged') do
+  unchanged = @index_before == [File.binread(@worker_index), File.stat(@worker_index).mtime]
+  report = JSON.parse(@stdout).fetch('records').fetch(0).fetch('report')
+  assert_equal [true, true], [unchanged, report.start_with?('ready:')]
+end
+
 Then('standard output is the empty fleet snapshot') do
   expected = { 'schema' => 'riddim.fleet.v1', 'state_dir' => scenario_state_dir, 'records' => [] }
   assert_equal expected, JSON.parse(@stdout)
@@ -61,8 +76,73 @@ end
 
 Then('the row keeps the captured identity without mutable evidence') do
   record = JSON.parse(@stdout).fetch('records').fetch(0)
-  assert_equal [true, false, false],
-               [record.fetch('name') == 'worker', record.key?('report'), record.key?('pi_process')], @stdout
+  assert_equal [true, false, false, false],
+               [record.fetch('name') == 'worker', record.key?('task_mode'), record.key?('report'),
+                record.key?('pi_process')], @stdout
+end
+
+Given('the worker reports a pipe-containing event') do
+  status = Dir.glob(File.join(scenario_state_dir, 'worker.*.status')).fetch(0)
+  File.write(status, "working [at=18]: first | second\n")
+end
+
+Then('the human view keeps the pipe inside its report cell') do
+  row = @stdout.lines.find { |line| line.start_with?('| worker |') }
+  assert_equal [true, 7], [row&.include?('first \\| second'), row&.scan(/(?<!\\)\|/)&.length], @stdout
+end
+
+# A CLI subprocess with a one-shot filesystem race at the precise read seam.
+# Only the test child loads this module; production still runs the real CLI.
+def preload_fleet_race(source)
+  file = File.join(new_temporary_directory, 'fleet-race.rb')
+  File.write(file, "require #{File.expand_path('../../lib/riddim/list', __dir__).dump}\n#{source}")
+  @environment = @environment.merge('RUBYOPT' => "-r#{file}")
+end
+
+Given('the recorded pane changes after endpoint capture') do
+  preload_fleet_race(<<~RUBY)
+    Riddim::Ownership::Endpoint.singleton_class.prepend(Module.new do
+      def resolve_snapshot(name)
+        snapshot = super
+        marker = File.join(Riddim::Ownership.state_dir, 'replace-once')
+        if File.exist?(marker)
+          File.unlink(marker)
+          path = Riddim::Ownership.record_path(name)
+          fields = Riddim::Ownership.parse(read_bytes(path))
+          fields['herdr_pane_id'] = 'w9:p2'
+          fields['window'] = 'riddim:w9:p2'
+          staging = "\#{path}.replacement"
+          File.write(staging, Riddim::Ownership.serialize(fields))
+          File.rename(staging, path)
+        end
+        snapshot
+      end
+    end)
+  RUBY
+  File.write(File.join(scenario_state_dir, 'replace-once'), '')
+end
+
+Then("the row retains its first pane without another pane's evidence") do
+  row = JSON.parse(@stdout).fetch('records').fetch(0)
+  assert_equal ['w9:p1', false, false, false],
+               [row.fetch('pane_id'), row.key?('task_mode'), row.key?('report'),
+                row.key?('pi_process')], @stdout
+end
+
+Given('the record disappears after enumeration') do
+  preload_fleet_race(<<~RUBY)
+    Riddim::List.singleton_class.prepend(Module.new do
+      def record_names
+        names = super
+        File.unlink(Riddim::Ownership.record_path('worker')) if names.include?('worker')
+        names
+      end
+    end)
+  RUBY
+end
+
+Given('the record disappears while Herdr reads the process view') do
+  File.write(File.join(@herdr_directory, 'remove-record'), '')
 end
 
 Then('the snapshot names the selected state directory') do
