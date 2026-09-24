@@ -29,7 +29,12 @@ module Riddim
       args.push('--extension', trace_extension) if trace_file
       command = args.map { |value| Shellwords.escape(value) }.join(' ')
       command = "RIDDIM_PI_TRACE_FILE=#{Shellwords.escape(trace_file)} #{command}" if trace_file
-      "riddim_launch_brief=$(/usr/bin/cat -- #{Shellwords.escape(brief.path)}) || return 1\n" \
+      # The marked task worker is a branch actor for role-partitioned actions
+      # such as merge-local. This is an operational actor boundary the Pi
+      # process and every shell tool it spawns inherit, not proof of the
+      # human's approval.
+      "export RIDDIM_ACTOR=branch\n" \
+        "riddim_launch_brief=$(/usr/bin/cat -- #{Shellwords.escape(brief.path)}) || return 1\n" \
         "test -n \"$riddim_launch_brief\" || return 1\n" \
         "#{command} \"$riddim_launch_brief\"\n"
     end

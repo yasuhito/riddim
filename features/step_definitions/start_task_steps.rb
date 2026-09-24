@@ -99,8 +99,9 @@ Then('Pi receives a staged full brief launch and is named on its exact pane') do
   script = File.file?(staged) ? File.binread(staged) : "missing launch: #{@stderr}"
   content = File.binread(brief)
   requested = "Fix Riddim's worktree test. Keep the user's instructions intact.\nRun the full test suite."
-  assert_equal [true, true, true, true, true, true, true, false],
-               [@status.success?, script.include?('$(/usr/bin/cat -- '), script.include?(brief),
+  assert_equal [true, true, true, true, true, true, true, true, false],
+               [@status.success?, script.include?('export RIDDIM_ACTOR=branch'),
+                script.include?('$(/usr/bin/cat -- '), script.include?(brief),
                 content.include?(requested), content.include?('You are a coding worker'),
                 File.stat(brief).mode & 0o777 == 0o600,
                 herdr_invocations.any? { |line| line.include?('agent rename w9:p1 worker') },

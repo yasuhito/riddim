@@ -113,4 +113,21 @@ class TaskBriefLaunchTest < Minitest::Test
     assert_equal [File.join(@private_dir, "worker.brief.launch.#{gen}.sh"), true],
                  [path, File.exist?(path)]
   end
+
+  def test_launch_source_marks_the_task_pi_as_a_branch_actor
+    source = with_fake_pi_path do
+      Riddim::TaskBrief.launch_source(Riddim::TaskBrief::Brief.new(@brief_path, ''),
+                                      Riddim::AgentProfile.parse('pi safe max'))
+    end
+
+    assert source.start_with?("export RIDDIM_ACTOR=branch\n")
+  end
+
+  def with_fake_pi_path
+    old_path = ENV.fetch('PATH')
+    ENV['PATH'] = "#{@bin}:#{old_path}"
+    yield
+  ensure
+    ENV['PATH'] = old_path
+  end
 end
