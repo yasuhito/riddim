@@ -20,7 +20,8 @@ module Riddim
 
     def complete_launch(name, profile, workspace, worktree, task_launch)
       if task_launch.brief
-        launch_file = stage_task_launch(workspace, task_launch.brief, profile, task_launch.spawn_gen)
+        launch_file = stage_task_launch(workspace, task_launch.brief, profile, task_launch.spawn_gen,
+                                        task_launch.runtime_paths)
         publish_record(name, profile, workspace, task_launch, worktree: worktree)
         launch_task(name, workspace, worktree, launch_file)
       else
@@ -29,8 +30,8 @@ module Riddim
       end
     end
 
-    def stage_task_launch(workspace, brief, profile, spawn_gen)
-      TaskBrief.publish_launch(brief, profile, spawn_gen)
+    def stage_task_launch(workspace, brief, profile, spawn_gen, runtime_paths)
+      TaskBrief.publish_launch(brief, profile, spawn_gen, runtime_paths: runtime_paths)
     rescue TaskBrief::Error => e
       rollback_after_failed_publication(workspace, e)
     end

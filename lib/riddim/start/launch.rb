@@ -23,11 +23,16 @@ module Riddim
       task = read_task_file(options)
       spawn_gen = Ownership.fresh_spawn_gen
       status_path = Result.publish(name, spawn_gen) if options.mode
-      brief = TaskBrief.publish(name, task, status_path: status_path) if options.task_file
-      TaskLaunch.new(brief: brief, spawn_gen: spawn_gen, mode: options.mode, status_path: status_path)
+      brief = TaskBrief.publish(name, task, status_path: status_path, spawn_gen: spawn_gen) if options.task_file
+      TaskLaunch.new(brief: brief, spawn_gen: spawn_gen, mode: options.mode,
+                     status_path: status_path, runtime_paths: task_runtime_paths(options))
     rescue Ownership::Error
       warn "riddim: result file retained at #{status_path}; inspect before retrying" if status_path
       raise
+    end
+
+    def task_runtime_paths(options)
+      { config_dir: options.config_dir, state_dir: Ownership.state_dir }
     end
 
     def read_task_file(options)
@@ -66,7 +71,10 @@ module Riddim
         session: Riddim::Herdr.session, workspace: workspace
       )
       fields.merge!(worktree.record_fields) if worktree
-      fields.merge!('task_mode' => task_launch.mode, 'base_head' => worktree.base_head) if task_launch.mode
+      if task_launch.mode
+        fields.merge!('task_mode' => task_launch.mode, 'base_head' => worktree.base_head,
+                      'status_protocol' => Result::STATUS_PROTOCOL)
+      end
       fields
     end
   end

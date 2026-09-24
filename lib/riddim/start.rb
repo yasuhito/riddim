@@ -17,7 +17,7 @@ module Riddim
   # to the record whose retention rules it must respect.
   module Start
     Options = Data.define(:create_worktree, :config_dir, :task_file, :mode)
-    TaskLaunch = Data.define(:brief, :spawn_gen, :mode, :status_path)
+    TaskLaunch = Data.define(:brief, :spawn_gen, :mode, :status_path, :runtime_paths)
 
     module_function
 

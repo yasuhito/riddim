@@ -156,7 +156,7 @@ Feature: A local-only task reports a claim, not inferred completion
   Scenario: Malformed status events are not accepted as done
     Given a local-only task was started
     And the worker commits a change in its own branch
-    And the worker reports "done: trust me"
+    And the worker status contains a malformed event
     When I run riddim with:
       """
       result worker

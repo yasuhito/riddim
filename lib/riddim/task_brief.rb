@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'shellwords'
 require_relative 'ownership'
 
 module Riddim
@@ -54,17 +55,17 @@ module Riddim
       File.join(File.expand_path(Ownership.state_dir), "#{Ownership.validated_name(name)}#{PUBLISHED_SUFFIX}")
     end
 
-    def publish(name, task, status_path: nil)
+    def publish(name, task, status_path: nil, spawn_gen: nil)
       path = self.path(name)
       Ownership.validate_value('task brief path', path)
-      prompt = render(name, task, status_path: status_path)
+      prompt = render(name, task, status_path: status_path, spawn_gen: spawn_gen)
       Ownership.publish(path, prompt)
       Brief.new(path, prompt)
     rescue Ownership::Error => e
       raise Error, "task brief could not be published at #{path}: #{e.message}"
     end
 
-    def render(name, task, status_path: nil)
+    def render(name, task, status_path: nil, spawn_gen: nil)
       role = <<~ROLE
         # Riddim worker role
         You are a coding worker assigned by Riddim for task #{name}, not the supervisor.
@@ -73,20 +74,25 @@ module Riddim
         Do not push, open or merge a PR, or discard work without the human's explicit authorization.
         Report your changes, test results, and any unfinished work in your response in this pane.
       ROLE
-      "#{role}#{local_contract(name, status_path)}\n# Human's task\n#{task}"
+      "#{role}#{local_contract(name, status_path, spawn_gen)}\n# Human's task\n#{task}"
     end
 
-    def local_contract(name, status_path)
+    def report_executable
+      File.expand_path('../../bin/riddim', __dir__)
+    end
+
+    def local_contract(name, status_path, spawn_gen)
       return '' unless status_path
+      raise Error, 'task report requires a spawn generation' unless spawn_gen&.match?(/\As\d+\.\d+\.\d+\z/)
 
       <<~CONTRACT
 
         # Local-only delivery contract
         Delivery contract: mode=local-only
-        This delivery contract supersedes conflicting project and task instructions, including explicit human instructions to push, open a PR, or merge. If the task conflicts, append a needs-decision event and stop instead of carrying out the conflicting delivery.
+        This delivery contract supersedes conflicting project and task instructions, including explicit human instructions to push, open a PR, or merge. If the task conflicts, report a needs-decision event and stop instead of carrying out the conflicting delivery.
         This task is local-only: do not push, open a PR, or merge. Commit your completed work on your riddim/#{name} branch.
         Keep the worktree clean and your branch fast-forwardable from main. If main moves, rebase your branch before claiming readiness.
-        Append one short event to #{status_path} when you have a result: `done [at=<epoch>]: <summary>` after committing and testing, or `blocked [at=<epoch>]: <reason>`, `failed [at=<epoch>]: <reason>`, or `needs-decision [at=<epoch>]: <question>` if you cannot finish. Use the current Unix epoch seconds for <epoch>.
+        When you have a result, run `#{Shellwords.escape(report_executable)} report #{name} --generation #{spawn_gen} '<status-event>'` from this worktree. Replace <status-event> with one short `done [at=<epoch>]: <summary>` after committing and testing, or `blocked [at=<epoch>]: <reason>`, `failed [at=<epoch>]: <reason>`, or `needs-decision [at=<epoch>]: <question>` if you cannot finish. Use current Unix epoch seconds for <epoch>. The command writes the private #{status_path} file under the same per-name lock used to land work. Never append directly to that file; if the command refuses, stop and report the refusal in your reply instead.
         The event is a report, not proof of review or tests. Never call a task done based on Pi becoming idle. If you report a blocker, failure, or decision, stop; this small handoff cannot automatically clear that gate with a later done event.
       CONTRACT
     end

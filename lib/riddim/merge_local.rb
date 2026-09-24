@@ -45,14 +45,9 @@ module Riddim
       raise Refused, "local merge unavailable: #{e.message}"
     end
 
-    def verify_done_report!(name, generation)
-      return if Result.ungated_done?(name, generation)
-
-      raise Refused, 'worker has no ungated done report; refusing the merge'
-    end
-
     # Every gate that must hold before the fast-forward may move main.
     def verify_landing!(name, fields, main, head)
+      verify_protocol!(fields)
       project = fields.fetch('project')
       verify_invocation_checkout!(project)
       unless Result.committed_branch?(name, fields)
@@ -76,9 +71,11 @@ module Riddim
     def land(name, fields, reviewed, snapshot, bytes)
       project = fields.fetch('project')
       previous = Worktree.git_value(project, 'rev-parse', 'refs/heads/main')
+      verify_done_report!(name, snapshot.last) # A decision can arrive during the Git preflight.
       merge!(project, reviewed, previous)
       landed = Worktree.git_value(project, 'rev-parse', 'refs/heads/main')
       verify_owner!(name, snapshot, bytes, "during the merge; local main may have moved to #{landed}")
+      verify_post_merge_report!(name, snapshot.last, landed)
       verify_landed_tip!(landed, reviewed)
       "merged riddim/#{name} into local main (#{previous} -> #{landed}) in #{project}"
     end
@@ -154,3 +151,5 @@ module Riddim
     end
   end
 end
+
+require_relative 'merge_local/status_gate'

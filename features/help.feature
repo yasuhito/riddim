@@ -72,6 +72,12 @@ Feature: Discover available commands
       """
     Then standard error is empty
 
+  Scenario: List the generation-locked report command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "report <name> --generation <spawn-gen>"
+
   Scenario: List the local-only teardown command
     When I run riddim with:
       """

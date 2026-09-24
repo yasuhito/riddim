@@ -21,7 +21,13 @@ Given('a local-only task was started') do
 end
 
 Given('the worker reports {string}') do |event|
-  File.open(@result_path, 'a') { |file| file.puts(event) }
+  generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  _output, errors, status = run_riddim('report', 'worker', '--generation', generation, event)
+  raise "worker report failed: #{errors}" unless status.success?
+end
+
+Given('the worker status contains a malformed event') do
+  File.open(@result_path, 'a') { |file| file.puts('done: trust me') }
 end
 
 Given('the worker commits a change in its own branch') do
@@ -90,7 +96,7 @@ Then('the local-only brief puts the binding delivery contract before the task') 
   assert_equal [true, true, true, true, true],
                [@status.success?, brief.include?('Delivery contract: mode=local-only'),
                 brief.include?('supersedes conflicting project and task instructions'),
-                brief.include?('append a needs-decision event and stop'),
+                brief.include?('report a needs-decision event and stop'),
                 brief.index('# Local-only delivery contract') < brief.index('# Human\'s task')], @stderr
 end
 

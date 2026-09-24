@@ -10,6 +10,7 @@ require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/merge_local'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
+require_relative '../lib/riddim/report'
 require_relative '../lib/riddim/result'
 require_relative '../lib/riddim/review_diff'
 require_relative '../lib/riddim/runtime_paths'
@@ -256,6 +257,23 @@ if ARGV.first == 'peek'
   exit
 end
 
+if ARGV.first == 'report'
+  unless ARGV.length == 5 && ARGV[1]&.match?(Riddim::Ownership::NAME_PATTERN) &&
+         ARGV[2] == '--generation' && ARGV[3]&.match?(Riddim::Result::GENERATION) &&
+         ARGV[4]&.match?(Riddim::Result::EVENT)
+    warn 'Usage: riddim report <name> --generation <spawn-gen> <status-event>'
+    exit 2
+  end
+
+  begin
+    puts Riddim::Report.run(ARGV[1], ARGV[3], ARGV[4])
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'result'
   unless ARGV.length == 2 && ARGV[1].match?(Riddim::Ownership::NAME_PATTERN)
     warn 'Usage: riddim result <name>'
@@ -374,6 +392,8 @@ puts <<~HELP
     send <name> <message...>    Prompt a started agent's recorded pane
     start <name> [--worktree [--task-file <path> [--mode local-only]]]
                             Start Pi in the cwd or a fresh isolated Git worktree with a task brief
+    report <name> --generation <spawn-gen> <status-event>
+                            Append a worker report under the task name lock
     result <name>           Read a local-only worker event and verify a ready branch
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main

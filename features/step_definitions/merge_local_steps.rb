@@ -6,6 +6,15 @@ Given('the operator approves the reviewed worker branch tip') do
   @approved_head = worker_branch_tip
 end
 
+Given('an uncoordinated worker directly writes {string}') do |event|
+  File.open(@result_path, 'a') { |file| file.puts(event) }
+end
+
+Given('the worker record has no locked reporting protocol') do
+  path = scenario_record_path('worker')
+  File.write(path, File.read(path).sub(/^status_protocol=.+\n/, ''))
+end
+
 Given('the caller is the marked task worker') do
   @environment.merge!('RIDDIM_ACTOR' => 'branch')
 end
@@ -116,6 +125,38 @@ MERGE_GIT_LOG = <<~'RUBY'
   end
 RUBY
 
+# Opens a decision after the first status read, during the final Git gate.
+# This simulates the worker's append, which does not take the name lock.
+MERGE_LATE_DECISION = <<~RUBY
+  if ARGV.include?('merge-base') && ARGV.include?('--is-ancestor') && !File.exist?(ENV.fetch('MERGE_TEST_GATE_APPENDED'))
+    File.open(ENV.fetch('MERGE_TEST_STATUS'), 'a') do |file|
+      file.puts('needs-decision [at=125]: new decision before landing')
+    end
+    File.write(ENV.fetch('MERGE_TEST_GATE_APPENDED'), '')
+  end
+RUBY
+
+Given('Git writes a decision directly after merge preflight') do
+  install_merge_git_fixture(MERGE_LATE_DECISION)
+  @environment.merge!(
+    'MERGE_TEST_STATUS' => @result_path,
+    'MERGE_TEST_GATE_APPENDED' => File.join(@herdr_directory, 'late-decision')
+  )
+end
+
+MERGE_DECISION_DURING_FAST_FORWARD = <<~RUBY
+  if ARGV.include?('merge')
+    File.open(ENV.fetch('MERGE_TEST_STATUS'), 'a') do |file|
+      file.puts('needs-decision [at=125]: new decision during landing')
+    end
+  end
+RUBY
+
+Given('Git writes a decision directly during the fast-forward') do
+  install_merge_git_fixture(MERGE_DECISION_DURING_FAST_FORWARD)
+  @environment['MERGE_TEST_STATUS'] = @result_path
+end
+
 Given('Git records every invocation during the merge') do
   install_merge_git_fixture(MERGE_GIT_LOG)
 end
@@ -210,9 +251,26 @@ Then('merge-local refuses the already-landed branch without moving local main') 
                [@status.success?, local_main_tip, @stderr.include?('already in local main')], @stderr
 end
 
+Then('merge-local refuses the uncoordinated report without moving local main') do
+  assert_equal [false, @main_before, true],
+               [@status.success?, local_main_tip, @stderr.include?('locked report protocol')], @stderr
+end
+
 Then('merge-local refuses without an ungated done report') do
   assert_equal [false, @main_before, true],
                [@status.success?, local_main_tip, @stderr.include?('ungated done report')], @stderr
+end
+
+Then('merge-local refuses the late decision without moving local main') do
+  assert_equal [false, @main_before, true, true],
+               [@status.success?, local_main_tip, @stderr.include?('ungated done report'),
+                File.exist?(File.join(@herdr_directory, 'late-decision'))], @stderr
+end
+
+Then('merge-local reports the landed main and the late decision') do
+  assert_equal [false, @approved_head, true, true],
+               [@status.success?, local_main_tip, @stderr.include?('decision'),
+                @stderr.include?(@approved_head)], @stderr
 end
 
 Then('merge-local refuses the open decision gate') do

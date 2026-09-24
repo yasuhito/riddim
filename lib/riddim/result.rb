@@ -13,6 +13,7 @@ module Riddim
     GENERATION = /\As\d+\.\d+\.\d+\z/
     EVENT = /\A(done|blocked|failed|needs-decision|working|paused) \[at=\d+\]: ([^\n\r\x00]+)\z/
     MAX_BYTES = 65_536
+    STATUS_PROTOCOL = 'locked-v1'
     Status = Data.define(:last, :open_gate)
 
     module_function

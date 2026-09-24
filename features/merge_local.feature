@@ -143,6 +143,16 @@ Feature: Land an approved local-only worker branch into local main
     When I run riddim merge-local with the approved head
     Then merge-local refuses the already-landed branch without moving local main
 
+  Scenario: Refuse a legacy worker whose reports do not share the merge lock
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker record has no locked reporting protocol
+    And an uncoordinated worker directly writes "done [at=123]: work committed"
+    And the operator approves the reviewed worker branch tip
+    When I run riddim merge-local with the approved head
+    Then merge-local refuses the uncoordinated report without moving local main
+
   Scenario: Refuse a worker with no status report
     Given a local-only task was started
     And the task input is removed after launch
@@ -160,6 +170,26 @@ Feature: Land an approved local-only worker branch into local main
     And the operator approves the reviewed worker branch tip
     When I run riddim merge-local with the approved head
     Then merge-local refuses the open decision gate
+
+  Scenario: Refuse a direct status append after the first read but before landing
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the operator approves the reviewed worker branch tip
+    And Git writes a decision directly after merge preflight
+    When I run riddim merge-local with the approved head
+    Then merge-local refuses the late decision without moving local main
+
+  Scenario: Report a direct status append during Git's fast-forward without claiming success
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the operator approves the reviewed worker branch tip
+    And Git writes a decision directly during the fast-forward
+    When I run riddim merge-local with the approved head
+    Then merge-local reports the landed main and the late decision
 
   Scenario: Land without remote, cleanup, or Herdr side effects
     Given a local-only task was started

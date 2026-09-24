@@ -7,24 +7,25 @@ module Riddim
   module TaskBrief
     module_function
 
-    def publish_launch(brief, profile, spawn_gen)
+    def publish_launch(brief, profile, spawn_gen, runtime_paths: nil)
       unless spawn_gen.is_a?(String) && spawn_gen.match?(/\As\d+\.\d+\.\d+\z/)
         raise Error, 'task launch requires a valid spawn generation'
       end
 
       path = "#{brief.path}.launch.#{spawn_gen}.sh"
       trace_file = "#{brief.path}.trace.#{spawn_gen}.jsonl" if ENV['RIDDIM_PI_TRACE'] == '1'
-      publish_launch_file(path, brief, profile, trace_file)
+      publish_launch_file(path, brief, profile, trace_file, runtime_paths)
       path
     end
 
-    def publish_launch_file(path, brief, profile, trace_file)
-      Ownership.publish(path, launch_source(brief, profile, trace_file: trace_file))
+    def publish_launch_file(path, brief, profile, trace_file, runtime_paths)
+      source = launch_source(brief, profile, trace_file: trace_file, runtime_paths: runtime_paths)
+      Ownership.publish(path, source)
     rescue Ownership::Error => e
       raise Error, "task launch could not be published at #{path}: #{e.message}"
     end
 
-    def launch_source(brief, profile, trace_file: nil)
+    def launch_source(brief, profile, trace_file: nil, runtime_paths: nil)
       args = [pi_executable, '--model', profile.model, '--thinking', profile.effort]
       args.push('--extension', trace_extension) if trace_file
       command = args.map { |value| Shellwords.escape(value) }.join(' ')
@@ -34,9 +35,17 @@ module Riddim
       # process and every shell tool it spawns inherit, not proof of the
       # human's approval.
       "export RIDDIM_ACTOR=branch\n" \
+        "#{runtime_exports(runtime_paths)}" \
         "riddim_launch_brief=$(/usr/bin/cat -- #{Shellwords.escape(brief.path)}) || return 1\n" \
         "test -n \"$riddim_launch_brief\" || return 1\n" \
         "#{command} \"$riddim_launch_brief\"\n"
+    end
+
+    def runtime_exports(paths)
+      return '' unless paths
+
+      "export RIDDIM_CONFIG_DIR=#{Shellwords.escape(File.expand_path(paths.fetch(:config_dir)))}\n" \
+        "export RIDDIM_STATE_DIR=#{Shellwords.escape(File.expand_path(paths.fetch(:state_dir)))}\n"
     end
 
     def trace_extension

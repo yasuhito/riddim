@@ -477,15 +477,20 @@ its previous native `agent start` behavior.
 
 ```sh
 bin/riddim start <name> --worktree --task-file <path> --mode local-only
+bin/riddim report <name> --generation <spawn-gen> '<status-event>'
 bin/riddim result <name>
 ```
 
 This explicit mode starts only from a checkout on its local `main` branch. It
 adds a local-only delivery contract to the private brief: the worker commits
-on `riddim/<name>`, never pushes or opens a PR, and appends a short, timestamped
-`done`, `blocked`, `failed`, or `needs-decision` event to a private status file
-outside the worktree. The status filename includes the ownership record's
-`spawn_gen`, so an old report cannot become the new worker's report. Every
+on `riddim/<name>`, never pushes or opens a PR, and uses `report` to append a
+short, timestamped `done`, `blocked`, `failed`, or `needs-decision` event to a
+private status file outside the worktree. `report` requires the ownership
+record's `spawn_gen` and holds the same per-name lock as `merge-local` through
+the append, so a cooperating worker cannot open a decision during the
+fast-forward. Direct writes to the status file are outside this contract. The
+status filename also includes `spawn_gen`, so an old report cannot become the
+new worker's report. Every
 explicit `Delivery contract: mode=...` line in the task file must agree with
 `local-only`, or the start refuses before allocating a worktree, pane, brief,
 or result file. For free-text conflicts (such as an instruction to push), the
@@ -493,7 +498,10 @@ launch contract takes precedence and tells the worker to report a decision
 instead of carrying out the conflicting delivery; this is an instruction, not
 a guarantee of model compliance. The result file is created before launch with
 owner-only permissions; ambiguous launch failures leave it and other assets
-available for inspection.
+available for inspection. If `report` refuses, the worker must stop and
+explain the refusal, not write the file directly. Work launched before the
+locked reporting protocol remains readable by `result` but is not eligible
+for `merge-local` and needs a separately approved manual landing.
 
 `result` requires the exact current ownership record. `unreported` means its
 status file is empty; `reported` is the worker's last event, not proof of
@@ -551,7 +559,11 @@ bin/riddim merge-local <name> --head <reviewed-commit>
 the project checkout's local `main` to the exact reviewed worker branch tip
 with one strict fast-forward. It is a smaller counterpart of Firstmate's
 `fm-merge-local.sh`: no PR, pool, yolo, remote fetch, backlog, captain-hold
-lifecycle, or automatic approval of any kind.
+lifecycle, or automatic approval of any kind. Firstmate's worker status log
+is a best-effort direct append, while its separate captain-hold record shares
+the local merge's control lock. Riddim lacks that hold, so new task workers
+report through the shared name lock instead; this is a stricter local-only
+subset, not a claim to implement Firstmate's full hold lifecycle.
 
 The operating rule is explicit human approval: run `review-diff`, review the
 patch, and approve the exact `head:` SHA it prints. That approval is the
@@ -566,11 +578,12 @@ merged riddim/<name> into local main (<old main tip> -> <new main tip>) in <proj
 
 The command must be invoked from the recorded project's main checkout. Under
 the per-name lock it validates, in order, and refuses without moving `main`
-when any check fails:
+when a pre-merge check fails:
 
 - the current local-only ownership record bytes and generation; missing,
   symlinked, malformed, rebound, or non-local records refuse
-- an ungated generation-local `done` report: any open `blocked`, `failed`, or
+- a generation record using the locked report protocol and an ungated
+  generation-local `done` report: any open `blocked`, `failed`, or
   `needs-decision` event refuses, and a later `done` cannot clear one (the
   sticky status rule)
 - the same linked worktree and checked-out named branch, the branch tip
@@ -588,9 +601,15 @@ The lock stays held through Git's `merge --ff-only` and the result
 verification. The merge fast-forwards to the approved commit id itself, not
 to the branch name, so a branch that moves during the merge window cannot
 land an unapproved tip; Git re-checks the fast-forward on its own. After the
-fast-forward, Riddim re-verifies the ownership record and the resulting
-`main` tip, and refuses to claim a verified merge when a change is detected
-(the merge may already have landed; inspect before continuing).
+fast-forward, Riddim re-verifies the ownership record, the ungated `done`
+report, and the resulting `main` tip, and refuses to claim a verified merge
+when a change is detected (the merge may already have landed; inspect before
+continuing). A `report` call waits on the shared name lock; a decision reported
+during landing therefore cannot be written until the fast-forward finishes.
+Riddim also rechecks status immediately before and after Git's merge. A direct
+file append ignores that lock and is outside the cooperative guarantee; if
+noticed afterward, Riddim reports that `main` may have moved rather than
+claiming success.
 `merge-local` never pushes, fetches, auto-reviews, tears down, retries, or
 forces, and it never closes a pane or removes a worktree, branch, brief, or
 record: those remain for `teardown`. Cooperative Riddim writers share the
