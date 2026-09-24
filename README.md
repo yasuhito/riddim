@@ -540,6 +540,79 @@ Firstmate's review-diff does not hold a task lock or recheck its record; the
 Riddim read adds that guard, while Firstmate's state-changing local merge has
 its own generation and control-lock gate.
 
+#### Land an approved local-only worker branch
+
+```sh
+bin/riddim review-diff <name>                          # review, then approve the printed head
+bin/riddim merge-local <name> --head <reviewed-commit>
+```
+
+`merge-local` is the operator's landing action for a local-only task: it moves
+the project checkout's local `main` to the exact reviewed worker branch tip
+with one strict fast-forward. It is a smaller counterpart of Firstmate's
+`fm-merge-local.sh`: no PR, pool, yolo, remote fetch, backlog, captain-hold
+lifecycle, or automatic approval of any kind.
+
+The operating rule is explicit human approval: run `review-diff`, review the
+patch, and approve the exact `head:` SHA it prints. That approval is the
+operator's own decision, recorded outside this CLI; a `ready` result, a `done`
+report, or a printed diff is **not** approval, and this brief is not one
+either. `merge-local` never claims that a human approved anything in the CLI.
+It reports only what it did, with the exact resulting local main tip:
+
+```text
+merged riddim/<name> into local main (<old main tip> -> <new main tip>) in <project>
+```
+
+The command must be invoked from the recorded project's main checkout. Under
+the per-name lock it validates, in order, and refuses without moving `main`
+when any check fails:
+
+- the current local-only ownership record bytes and generation; missing,
+  symlinked, malformed, rebound, or non-local records refuse
+- an ungated generation-local `done` report: any open `blocked`, `failed`, or
+  `needs-decision` event refuses, and a later `done` cannot clear one (the
+  sticky status rule)
+- the same linked worktree and checked-out named branch, the branch tip
+  matching its name, and the recorded base/ready relationship
+- clean worker and project checkouts, and the project checkout on local
+  `main`
+- a strict fast-forward: local `main` must be a proper ancestor of the branch
+  tip. A diverged branch refuses with Firstmate's rebase guidance; a branch
+  local `main` already contains is refused as nothing to land
+- the given `--head` must be a full commit id equal to the verified branch
+  tip: a stale or changed reviewed SHA refuses, so the merge lands exactly
+  the reviewed version
+
+The lock stays held through Git's `merge --ff-only` and the result
+verification. The merge fast-forwards to the approved commit id itself, not
+to the branch name, so a branch that moves during the merge window cannot
+land an unapproved tip; Git re-checks the fast-forward on its own. After the
+fast-forward, Riddim re-verifies the ownership record and the resulting
+`main` tip, and refuses to claim a verified merge when a change is detected
+(the merge may already have landed; inspect before continuing).
+`merge-local` never pushes, fetches, auto-reviews, tears down, retries, or
+forces, and it never closes a pane or removes a worktree, branch, brief, or
+record: those remain for `teardown`. Cooperative Riddim writers share the
+name lock; external Git writers ignoring it remain outside that guarantee.
+
+##### Role boundary: the task worker never lands
+
+The task launch exports `RIDDIM_ACTOR=branch` for the Pi process started by
+the generation-bound private task shell, and every shell tool it spawns
+inherits the marker, mirroring Firstmate's supervision role partition where
+the supervision branch never lands local-only work. `merge-local` refuses a
+`branch` actor and any unknown `RIDDIM_ACTOR` value before reading the task
+record or touching Git; an unmarked caller is the operator, and the refusal
+of a wrong actor precedes reading the record, so the role applies whatever
+the record says. The variable is an operational actor boundary, not
+cryptographic proof of the human's approval, and it deliberately covers only
+this subset: native non-task `start --worktree` and `start` launch Pi through
+Herdr's own `agent start`, which offers no environment-injection surface, so
+marking those workers would change Herdr-native semantics. This first subset
+therefore enforces the role partition for task workers only and does not
+claim universal enforcement.
+
 #### Retire an already-landed local-only worker
 
 ```sh

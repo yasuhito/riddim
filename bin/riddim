@@ -7,6 +7,7 @@ require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/exit'
 require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/list'
+require_relative '../lib/riddim/merge_local'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/result'
@@ -286,6 +287,22 @@ if ARGV.first == 'review-diff'
   exit
 end
 
+if ARGV.first == 'merge-local'
+  unless ARGV.length == 4 && ARGV[1]&.match?(Riddim::Ownership::NAME_PATTERN) &&
+         ARGV[2] == '--head' && ARGV[3]&.match?(Riddim::MergeLocal::REVIEWED_SHA)
+    warn 'Usage: riddim merge-local <name> --head <reviewed-commit>'
+    exit 2
+  end
+
+  begin
+    puts Riddim::MergeLocal.run(ARGV[1], ARGV[3])
+  rescue Riddim::Ownership::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'teardown'
   unless ARGV.length == 2 && ARGV[1].match?(Riddim::Ownership::NAME_PATTERN)
     warn 'Usage: riddim teardown <name>'
@@ -360,6 +377,8 @@ puts <<~HELP
     result <name>           Read a local-only worker event and verify a ready branch
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main
+    merge-local <name> --head <reviewed-commit>
+                            Fast-forward local main to the exact approved reviewed tip
     teardown <name>             Retire only landed, clean local-only worker assets; keep evidence
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status

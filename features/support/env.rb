@@ -75,8 +75,10 @@ World(RiddimWorld)
 Before do
   @temporary_directories = []
   # Every scenario resolves its state in an isolated directory, so no test
-  # ever reads or writes the repository's own state/ records.
-  @environment = { 'RIDDIM_STATE_DIR' => File.join(new_temporary_directory, 'state') }
+  # ever reads or writes the repository's own state/ records. The actor
+  # marker is cleared the same way, so the harness tests an unmarked
+  # operator caller regardless of the process running the suite.
+  @environment = { 'RIDDIM_STATE_DIR' => File.join(new_temporary_directory, 'state'), 'RIDDIM_ACTOR' => nil }
 end
 
 After do
