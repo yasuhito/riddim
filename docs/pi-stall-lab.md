@@ -20,4 +20,4 @@ ruby scripts/pi_stall_lab.rb observe /path/to/worker.brief.trace.<spawn_gen>.jso
 
 実Herdr検証（2026-09-23、専用session `riddim`）: 一時Git repoの新しいworktree workerを明示的なtrace付きで起動した。exact paneでPiの登録を確認し、0600の世代別traceに`request_prepared`、`response_headers`、`first_update`、`turn_end`、`agent_settled`が順番に記録された。合成タスクへの返信をPiセッションで確認し、`agent-state=alive`、`busy-state=idle`も別々に確認した。これは正常な短いturnの検証であり、元の停滞の原因を示さない。
 
-**限界:** ローカル試験が再現するのは「リクエスト後、APIから何も届かずPiが待つ」という症状であり、元の停滞が提供元、ネットワーク、Pi内部のどこで起きたかは証明しない。Pi JSONLに応答がないことも、未到達とAPI待ちを区別しない。再発時は中断前に、requestの到達・最初の応答バイト・Piのturn境界を別々に観測する必要がある。実セッションや認証情報をラボへコピーしない。
+**限界:** 停滞を模した2ケースは、リクエスト後に応答がまったく来ない場合と、HTTPヘッダーだけ届いてSSE本文が来ない場合のPiの待機を再現する。どちらも元の停滞が提供元、ネットワーク、Pi内部のどこで起きたかは証明しない。Pi JSONLに応答がないことも、未到達とAPI待ちを区別しない。再発時は中断前に、requestの到達・最初の応答バイト・Piのturn境界を別々に観測する必要がある。実セッションや認証情報をラボへコピーしない。
