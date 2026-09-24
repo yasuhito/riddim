@@ -59,10 +59,14 @@ module Riddim
     # One row: the validated record identity plus mutable evidence that is
     # discarded whenever ownership changes during the observations.
     def row(name)
-      record = captured_record(name)
-      mutable = observe_mutables(name, record_fields(name))
-      record.merge!(mutable) if unchanged?(name, record.delete(:bytes))
-      record
+      captured = captured_record(name)
+      return nil unless captured
+
+      fields = Ownership.parse(captured.fetch(:bytes))
+      mutable = observe_mutables(name, fields)
+      captured.merge!(mutable) if unchanged?(name, captured.fetch(:bytes))
+      captured.delete(:bytes)
+      captured
     end
 
     # Captures one record's identity, task mode, and exact bytes together, so
@@ -81,10 +85,6 @@ module Riddim
       raise if Ownership.record_present?(Ownership.record_path(name))
 
       nil
-    end
-
-    def record_fields(name)
-      Ownership.parse(Ownership::Endpoint.read_bytes(Ownership.record_path(name)))
     end
 
     # Mutable observations for one captured record, each attributed
