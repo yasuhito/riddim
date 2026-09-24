@@ -69,6 +69,16 @@ module Riddim
       ready ? "ready: #{event}" : "reported (not ready): #{event}"
     end
 
+    # The report outcome for the fleet view: the same describe() wording with
+    # an explicit unknown whenever the status evidence itself is unreadable,
+    # so a fleet row never turns malformed evidence into a positive claim.
+    def describe_for_fleet(name, fields)
+      snapshot, _current_fields, _bytes = task_record(name)
+      describe(read_status(path(name, snapshot.last)), name, fields)
+    rescue Error, SystemCallError
+      'unknown (unreadable status evidence)'
+    end
+
     def read_status(file)
       File.open(file, File::RDONLY | File::NOFOLLOW) do |handle|
         verify_private_file!(handle)

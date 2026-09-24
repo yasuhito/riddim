@@ -80,6 +80,36 @@ provide Firstmate's current crew state, endpoint presence, process liveness,
 backlog, or full `fm-fleet-snapshot.v1` schema. Use `status <name>` for the
 separate raw Herdr registration read, not as proof of process liveness.
 
+### View the fleet overview
+
+```sh
+bin/riddim fleet [--json]
+```
+
+A read-only overview of the recorded workers in one selected state directory:
+Firstmate's fleet snapshot row shape, reduced to what Riddim owns. It
+enumerates validated `state/<name>.meta` records in name order and pairs each
+captured record identity with separately attributed evidence - this
+generation's read-only local-only report outcome (including Git readiness for
+a done claim; `reported`/`ready` is never human approval) and the exact
+recorded pane's Pi process view where available. The selected directory is the
+nonempty `RIDDIM_STATE_DIR`, otherwise the repository's own `state/` - never
+guessed from Herdr labels or workspaces.
+
+`--json` prints the single structured snapshot, schema `riddim.fleet.v1`, with
+a `state_dir` and a `records` array; the human view renders those same facts.
+Both views stay honest about missing and malformed evidence: an unreadable or
+changed observation reports `unknown` or omits the evidence rather than
+becoming a positive alive/ready claim, and a still-present invalid ownership
+record fails the whole read instead of a partial success. If a record's spawn
+generation or exact bytes change while observations run, the row keeps only
+the captured identity and drops its mutable evidence. Report history is not
+current crew state and idle is not done. This is not Firstmate's full fleet
+state: no backlog, registered secondmates, remote summaries, PRs, no-mistakes
+run steps, notifications, automatic actions, or inferred current crew state.
+The command reads only; it never writes ownership or status, wakes or focuses
+an agent, or mutates Git.
+
 ### Read an agent's process state
 
 ```sh

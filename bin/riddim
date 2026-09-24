@@ -5,6 +5,7 @@ require 'json'
 
 require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/exit'
+require_relative '../lib/riddim/fleet'
 require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/merge_local'
@@ -71,6 +72,26 @@ if ARGV.first == 'list'
       puts JSON.generate(snapshot)
     else
       snapshot.fetch(:records).each { |row| puts "#{row.fetch(:name)}\t#{row.fetch(:session)}\t#{row.fetch(:pane_id)}" }
+    end
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
+if ARGV.first == 'fleet'
+  unless ARGV == ['fleet'] || ARGV == %w[fleet --json]
+    warn 'Usage: riddim fleet [--json]'
+    exit 2
+  end
+
+  begin
+    snapshot = Riddim::Fleet.snapshot
+    if ARGV.last == '--json'
+      puts JSON.generate(snapshot)
+    else
+      puts Riddim::Fleet.render(snapshot)
     end
   rescue Riddim::Ownership::Error, SystemCallError => e
     warn "riddim: #{e.message}"
@@ -386,6 +407,7 @@ puts <<~HELP
     process-state <name>        Inspect Pi/shell process evidence (pi/shell/unreadable)
     server-state <name>         Read the recorded session's server state (running/stopped/unknown)
     list [--json]               List recorded agents and exact endpoints (not liveness)
+    fleet [--json]          Read-only fleet overview: records with report and process evidence
     peek <name> [lines|--visible]
                             Show recent output or the visible viewport of a recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
