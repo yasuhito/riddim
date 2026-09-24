@@ -50,6 +50,15 @@ module Riddim
       [snapshot, fields, bytes]
     end
 
+    # Whether the generation-local status file ends with an ungated done
+    # event: the last event is done and no blocked, failed, or
+    # needs-decision event precedes it. Teardown and merge-local gate on this
+    # one predicate, so a later done cannot clear an open decision in either.
+    def ungated_done?(name, generation)
+      status = read_status(path(name, generation))
+      status.last&.start_with?('done ') && !status.open_gate
+    end
+
     def describe(status, name, fields)
       event = status.last
       return 'unreported' unless event

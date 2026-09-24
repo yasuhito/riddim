@@ -55,8 +55,7 @@ module Riddim
 
     def verify_preflight!(task)
       location!(task)
-      status = Result.read_status(Result.path(task.name, task.generation))
-      return if status.last&.start_with?('done ') && !status.open_gate
+      return if Result.ungated_done?(task.name, task.generation)
 
       raise Refused, 'worker has no ungated done report; retaining assets'
     end

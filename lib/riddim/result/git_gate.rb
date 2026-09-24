@@ -52,5 +52,30 @@ module Riddim
 
       Worktree.git(project, 'merge-base', '--is-ancestor', base, head).last.success?
     end
+
+    # The local main tip and the verified worker branch tip of one local-only
+    # record. Raises Result::Error, refusing instead of guessing, when the
+    # branch is not bound to this name, the worktree is not the recorded
+    # linked checkout, the named branch is not checked out there, or the
+    # named branch tip no longer matches its checkout.
+    def verified_tips(name, fields)
+      branch = "riddim/#{name}"
+      raise Error, 'worker branch is not bound to this name' unless fields.fetch('branch') == branch
+      raise Error, 'worker worktree is not the recorded linked checkout' unless linked_checkout?(fields)
+
+      worktree = fields.fetch('worktree')
+      project = fields.fetch('project')
+      verify_checked_out_branch!(worktree, branch)
+      head = Worktree.git_value(worktree, 'rev-parse', 'HEAD')
+      named_head = Worktree.git_value(project, 'rev-parse', "refs/heads/#{branch}")
+      raise Error, 'worker branch no longer points to its checkout' unless named_head == head
+
+      [Worktree.git_value(project, 'rev-parse', 'refs/heads/main'), head]
+    end
+
+    def verify_checked_out_branch!(worktree, branch)
+      checkout_branch, status = Worktree.git(worktree, 'symbolic-ref', '--quiet', '--short', 'HEAD')
+      raise Error, 'worker branch is not checked out' unless status.success? && checkout_branch.strip == branch
+    end
   end
 end
