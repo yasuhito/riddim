@@ -33,11 +33,12 @@ module Riddim
     end
 
     def render(worktree, base, head, stat_only:)
+      header = "diff base: main\nhead: #{head}\n"
       changes = diff(worktree, base, head, '--stat')
-      return "diff base: main\nno changes vs main\n" if changes.empty?
-      return "diff base: main\n#{changes}" if stat_only
+      return "#{header}no changes vs main\n" if changes.empty?
+      return "#{header}#{changes}" if stat_only
 
-      "diff base: main\n#{changes}\n#{diff(worktree, base, head)}"
+      "#{header}#{changes}\n#{diff(worktree, base, head)}"
     end
 
     def verify_record!(name, snapshot, bytes)

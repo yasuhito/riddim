@@ -520,7 +520,9 @@ bin/riddim review-diff <name> [--stat]
 Compares the recorded `riddim/<name>` branch with the project's **local
 `main`**, using Git's three-dot diff (changes since their merge base). It
 prints a stat and patch, or only the stat with `--stat`; an uncommitted edit
-is not included. This is read-only: no fetch, PR lookup, merge, or cleanup.
+is not included. Both outputs begin with the exact worker branch tip SHA on
+a `head:` line, the reviewed version the operator can approve for
+`merge-local`. This is read-only: no fetch, PR lookup, merge, or cleanup.
 It requires the current local-only ownership record, the same linked Git
 repository and checked-out named branch. It holds the per-name lock from the
 authoritative record read through printing, and rechecks the record and Git

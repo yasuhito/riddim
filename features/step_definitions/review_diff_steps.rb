@@ -93,18 +93,21 @@ Then('review-diff refuses a non-local task') do
 end
 
 Then('review-diff reports no changes against local main') do
-  assert_equal [true, "diff base: main\nno changes vs main\n"], [@status.success?, @stdout], @stderr
+  assert_equal [true, "diff base: main\nhead: #{@worker_tip}\nno changes vs main\n"],
+               [@status.success?, @stdout], @stderr
 end
 
 Then("review-diff shows the worker's committed patch against local main") do
-  assert_equal [true, true, true, true],
+  assert_equal [true, true, true, true, true],
                [@status.success?, @stdout.start_with?("diff base: main\n"),
-                @stdout.include?('tracked.txt |'), @stdout.include?("+worker change\n")], @stderr
+                @stdout.include?("head: #{@worker_tip}\n"), @stdout.include?('tracked.txt |'),
+                @stdout.include?("+worker change\n")], @stderr
 end
 
 Then("review-diff shows only the worker's change statistics") do
-  assert_equal [true, true, false],
-               [@status.success?, @stdout.include?('tracked.txt |'), @stdout.include?('diff --git')], @stderr
+  assert_equal [true, true, true, false],
+               [@status.success?, @stdout.include?("head: #{@worker_tip}\n"),
+                @stdout.include?('tracked.txt |'), @stdout.include?('diff --git')], @stderr
 end
 
 Then('review-diff refuses changed ownership without printing a patch') do

@@ -17,6 +17,7 @@ Given('a local-only task was started') do
 
   generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
   @result_path = File.join(scenario_state_dir, "worker.#{generation}.status")
+  @worker_tip = worker_branch_tip
 end
 
 Given('the worker reports {string}') do |event|
@@ -31,6 +32,28 @@ Given('the worker commits a change in its own branch') do
   git = Open3.capture3('git', '-C', @worktree, '-c', 'user.name=Worker', '-c', 'user.email=test@example.invalid',
                        'commit', '-qm', 'worker change').last
   raise 'worker could not commit' unless git.success?
+
+  @worker_tip = worker_branch_tip
+end
+
+Given('the worker commits another change in its own branch') do
+  File.write(File.join(@worktree, 'tracked.txt'), "worker change two\n")
+  git = Open3.capture3('git', '-C', @worktree, 'add', 'tracked.txt').last
+  raise 'worker could not stage its second change' unless git.success?
+
+  git = Open3.capture3('git', '-C', @worktree, '-c', 'user.name=Worker', '-c', 'user.email=test@example.invalid',
+                       'commit', '-qm', 'worker change two').last
+  raise 'worker could not commit a second change' unless git.success?
+
+  @worker_tip = worker_branch_tip
+end
+
+# The full commit id of the recorded worker branch, read from the project.
+def worker_branch_tip
+  output, status = Open3.capture2('git', '-C', @project, 'rev-parse', 'refs/heads/riddim/worker')
+  raise 'worker branch tip could not be read' unless status.success?
+
+  output.strip
 end
 
 Given('the worker leaves an untracked file') do
