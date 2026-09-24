@@ -73,6 +73,10 @@ WORKTREE_TASK_LAUNCH = <<~RUBY
   when ['agent', 'get']
     abort 'wrong agent target' unless ['w9:p1', 'worker'].include?(ARGV[2])
     abort 'agent get before launch' unless File.file?(File.expand_path('launch-submitted', __dir__))
+    if File.exist?(File.expand_path('agent-gone', __dir__))
+      puts JSON.generate(error: { code: 'agent_not_found' })
+      exit 1
+    end
     kind = File.file?(File.expand_path('unrecognized-pi', __dir__)) ? 'codex' : 'pi'
     name = File.file?(File.expand_path('agent-named', __dir__)) ? 'worker' : nil
     replaced = ARGV[2] == 'worker' && File.file?(File.expand_path('replaced-pi', __dir__))
@@ -102,8 +106,12 @@ Given('Herdr starts the agent only in the linked worktree') do
       puts #{CANNED_CREATE_RESPONSE.dump}
     when ['pane', 'get']
       if File.exist?(File.expand_path('pane-closed', __dir__))
-        puts #{PANE_NOT_FOUND_RESPONSE.dump}
-        exit 1
+        if File.exist?(File.expand_path('ambiguous-close', __dir__))
+          puts JSON.generate(result: { pane: { pane_id: 'w9:p1' } })
+        else
+          puts #{PANE_NOT_FOUND_RESPONSE.dump}
+          exit 1
+        end
       end
       cwd = File.read(File.expand_path('workspace-cwd', __dir__))
       cwd = '/' if File.exist?(File.expand_path('wrong-pane-cwd', __dir__))

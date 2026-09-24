@@ -70,11 +70,11 @@ module Riddim
     # gone with a structured pane get: only a pane_not_found error response
     # proves the endpoint gone. This is the only cleanup primitive the start
     # flow uses, and it never touches a workspace.
-    def close_pane_confirmed(pane_id)
-      _stdout, _stderr, status = capture('pane', 'close', pane_id)
+    def close_pane_confirmed(pane_id, session: nil)
+      _stdout, _stderr, status = capture('pane', 'close', pane_id, session: session)
       return false unless status.success?
 
-      get_stdout, get_stderr, _get_status = capture('pane', 'get', pane_id)
+      get_stdout, get_stderr, _get_status = capture('pane', 'get', pane_id, session: session)
       pane_presence(pane_id, get_stdout, get_stderr) == :gone
     rescue SystemCallError
       # The Herdr executable itself was unavailable: nothing is confirmed.

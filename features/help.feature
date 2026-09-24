@@ -72,6 +72,12 @@ Feature: Discover available commands
       """
     Then standard error is empty
 
+  Scenario: List the local-only teardown command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "teardown <name>"
+
   Scenario: List the read-only review command
     When I run riddim with:
       """

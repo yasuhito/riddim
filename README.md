@@ -177,10 +177,12 @@ information, unreadable OS process data, and an ownership change during the
 read all produce `unreadable`. Firstmate additionally distinguishes `other`
 and settles transient foreground helpers; Riddim does not yet claim that state.
 
-This read explains why a registration may be stale, but `shell` **never**
-authorizes closing a pane. Firstmate explicitly refuses to close a
-stale-registration pane as a disposable husk because it may hold a nested
-worktree shell. Neither this output nor `agent-state` proves turn completion.
+This read explains why a registration may be stale, but `shell` **alone never**
+authorizes closing a pane. Firstmate refuses to close a stale-registration
+pane as a disposable husk during recovery because it may hold a nested
+worktree shell. Explicit `teardown` instead requires landed work, an ungated
+report, exact pane ownership, and confirmed disappearance. Neither this output
+nor `agent-state` proves turn completion.
 
 ### Read the recorded session's server state
 
@@ -536,12 +538,49 @@ Firstmate's review-diff does not hold a task lock or recheck its record; the
 Riddim read adds that guard, while Firstmate's state-changing local merge has
 its own generation and control-lock gate.
 
+#### Retire an already-landed local-only worker
+
+```sh
+bin/riddim teardown <name>
+```
+
+This is a **destructive, explicit** local-only subset of Firstmate's
+`fm-teardown.sh`, not an approval or merge command. Firstmate also manages
+Treehouse pool slots, remote/PR tasks, backlog transitions, and forced discard;
+Riddim does none of those. First merge the reviewed worker branch into local
+`main` with separate human approval. `teardown` then requires an ungated `done`
+report, the current ownership generation, a clean linked worker checkout on its
+recorded branch, a clean project checkout on `main`, and proof that the worker
+branch tip is already in local `main`. No `--force` is available.
+
+Under the name lock it closes **only** the recorded exact pane (or confirms it
+was already gone). It refuses to close its own calling pane or a pane occupied
+by a different agent, and requires a structured read proving the pane gone.
+Before removing the linked worktree without force, it runs Firstmate's
+non-recursive process-cwd scan (`lsof -a -d cwd -Fpn`) and refuses if the scan
+fails, returns empty or malformed records, or finds a process in the worker
+checkout. Git
+checks are repeated after pane closure. Only then does it remove the worktree,
+delete the merged branch with `git branch -d`, archive the private brief at
+`state/<name>.<spawn_gen>.brief`, and remove the generation-matched ownership
+record. Generation-local status, opt-in trace, and the immutable launch file
+remain private for diagnosis. Archiving frees the name for a later start.
+
+On ambiguous reads or partial failures, it does not force-delete, retry a close,
+or infer success: the record and any unremoved assets stay for inspection. In
+particular, if Git removal succeeded but a later stage failed, do **not** run
+another teardown blindly. Verify exactly what remains. Cooperative Riddim
+writers share the name lock; an external process ignoring it or concurrently
+changing Git is outside this guarantee. The command does not attest that a
+human reviewed the patch; the operator must make that decision before landing.
+
 The ownership record also stores `project`, `worktree`, and `branch` for this
-mode. These are inventory, **not authority to remove files**: `exit` leaves the
-pane, record, worktree, and branch intact. If creation or launch fails, inspect
+mode. These are inventory, **not authority by themselves to remove files**:
+`exit` leaves the pane, record, worktree, and branch intact, while `teardown`
+requires the independent gates above. If creation or launch fails, inspect
 the reported path and branch; Riddim never deletes or resets the worktree or
 branch automatically. This is a smaller subset of Firstmate's Treehouse spawn:
-there is no pool, lease, fresh remote fetch, reply tracking, or teardown. The original `start <name>` still starts in the current directory.
+there is no pool, lease, fresh remote fetch, reply tracking, or Firstmate's full teardown. The original `start <name>` still starts in the current directory.
 
 The ignored `config/agent-profile` and `state/` are **not copied into a Git
 worktree**. Before launching Pi, Riddim atomically writes the original config

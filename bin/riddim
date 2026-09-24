@@ -14,6 +14,7 @@ require_relative '../lib/riddim/review_diff'
 require_relative '../lib/riddim/runtime_paths'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
+require_relative '../lib/riddim/teardown'
 
 begin
   Riddim::RuntimePaths.activate!
@@ -285,6 +286,21 @@ if ARGV.first == 'review-diff'
   exit
 end
 
+if ARGV.first == 'teardown'
+  unless ARGV.length == 2 && ARGV[1].match?(Riddim::Ownership::NAME_PATTERN)
+    warn 'Usage: riddim teardown <name>'
+    exit 2
+  end
+
+  begin
+    puts Riddim::Teardown.run(ARGV[1])
+  rescue Riddim::Ownership::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'start'
   worktree_only = ARGV.length == 3 && ARGV[2] == '--worktree'
   tasked = ARGV.length == 5 && ARGV[2..3] == %w[--worktree --task-file]
@@ -344,6 +360,7 @@ puts <<~HELP
     result <name>           Read a local-only worker event and verify a ready branch
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main
+    teardown <name>             Retire only landed, clean local-only worker assets; keep evidence
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status
 HELP
