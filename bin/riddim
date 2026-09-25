@@ -297,14 +297,19 @@ if ARGV.first == 'report'
 end
 
 if ARGV.first == 'notifications'
-  unless ARGV == ['notifications'] || ARGV == %w[notifications scan]
-    warn 'Usage: riddim notifications [scan]'
+  unless ARGV == ['notifications'] || ARGV == %w[notifications scan] ||
+         (ARGV.length == 3 && ARGV[1] == 'ack')
+    warn 'Usage: riddim notifications [scan | ack <presented-id>]'
     exit 2
   end
 
   begin
-    entries = ARGV.last == 'scan' ? Riddim::Notifications.scan : Riddim::Notifications.pending
-    puts JSON.generate(entries.map(&:to_h))
+    if ARGV[1] == 'ack'
+      puts JSON.generate(Riddim::Notifications.acknowledge(ARGV[2]).to_h)
+    else
+      entries = ARGV.last == 'scan' ? Riddim::Notifications.scan : Riddim::Notifications.pending
+      puts JSON.generate(entries.map(&:to_h))
+    end
   rescue Riddim::Ownership::Error, SystemCallError => e
     warn "riddim: #{e.message}"
     exit 1

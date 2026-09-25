@@ -70,6 +70,63 @@ Given('the notification cursor cannot be replaced') do
   @environment['RUBYOPT'] = "-r#{fixture}"
 end
 
+def worker_notification_id(sequence)
+  generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  "worker.#{generation}.#{sequence}"
+end
+
+When('I acknowledge the presented worker notification twice') do
+  id = worker_notification_id(1)
+  @acks = [run_riddim('notifications', 'ack', id), run_riddim('notifications', 'ack', id)]
+end
+
+When('I acknowledge the first worker generation notification') do
+  generation = File.basename(@result_path)[/worker\.(s\d+\.\d+\.\d+)\.status/, 1]
+  @ack = run_riddim('notifications', 'ack', "worker.#{generation}.1")
+end
+
+Then('the replacement remains pending after an old-generation acknowledgement') do
+  output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [true, true, [worker_notification_id(1)]],
+               [@ack[2].success?, status.success?, JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
+
+When('I acknowledge the first worker notification') do
+  @ack = run_riddim('notifications', 'ack', worker_notification_id(1))
+end
+
+Given('the first notification file is removed from the old generation') do
+  generation = File.basename(@result_path)[/worker\.(s\d+\.\d+\.\d+)\.status/, 1]
+  File.unlink(File.join(scenario_state_dir, '.notifications', "worker.#{generation}.1.json"))
+end
+
+Then('the unacknowledged report is replayed without another worker event') do
+  assert_equal [true, [worker_notification_id(1)], 1],
+               [@status.success?, JSON.parse(@stdout).map { |entry| entry.fetch('id') },
+                File.readlines(@result_path).size], @stderr
+end
+
+Given('the first notification file is removed') do
+  File.unlink(File.join(scenario_state_dir, '.notifications', "#{worker_notification_id(1)}.json"))
+end
+
+Then('only the later notification remains pending') do
+  output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [true, true, [worker_notification_id(2)]],
+               [@acks.all? { |_out, _err, ack_status| ack_status.success? }, status.success?,
+                JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
+
+Then('acknowledgement fails and scanning recovers the report') do
+  output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [false, true, [worker_notification_id(1)]],
+               [@ack[2].success?, status.success?, JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
+
+Then('the missing queue is reported as a failure') do
+  assert_equal [false, true], [@status.success?, @stderr.include?('missing notification')]
+end
+
 When('I scan pending notifications twice') do
   @first_scan = run_riddim('notifications', 'scan')
   @second_scan = run_riddim('notifications', 'scan')

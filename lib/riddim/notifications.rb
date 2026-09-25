@@ -30,27 +30,79 @@ module Riddim
         name = file.delete_suffix('.meta')
         Ownership.with_lock(name) { classify(name) }
       end
-      pending
+      present(pending)
     end
 
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-    def pending
-      return [] unless File.exist?(directory) || File.symlink?(directory)
-
-      verify_directory
-      Dir.children(directory).grep(/\.json\z/).sort.map do |filename|
-        path = File.join(directory, filename)
-        bytes = private_read(path)
-        row = JSON.parse(bytes)
-        raise Error, "invalid notification at #{path}" unless valid_entry?(row, filename)
-
-        Entry.new(**row.transform_keys(&:to_sym))
+    def present(entries)
+      entries.each do |entry|
+        Ownership.with_lock(entry.task) do
+          publish(marker_path('presented', entry.id), "#{JSON.generate(entry.to_h)}\n")
+        end
       end
-    rescue JSON::ParserError => e
-      raise Error, "invalid notification: #{e.message}"
+      entries
     end
 
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+    def pending
+      verify_directory
+      files = Dir.children(directory)
+      files.grep(/\A\.(?:handled|presented)-.*\.json\z/).each do |filename|
+        verify_marker_queue(filename, files)
+      end
+      files.grep(/\A[^.].*\.json\z/).sort.filter_map do |filename|
+        entry = read_entry(File.join(directory, filename), filename)
+        next if marker?(marker_path('handled', entry.id), entry)
+
+        entry
+      end
+    end
+
+    def verify_marker_queue(filename, files)
+      entry = read_entry(File.join(directory, filename), filename.sub(/\A\.(?:handled|presented)-/, ''))
+      queue_path = File.join(directory, "#{entry.id}.json")
+      raise Error, "missing notification at #{queue_path}" unless files.include?("#{entry.id}.json")
+      raise Error, "notification marker mismatch at #{queue_path}" unless
+        read_entry(queue_path, "#{entry.id}.json") == entry
+    end
+
+    def read_entry(path, filename)
+      row = JSON.parse(private_read(path))
+      raise Error, "invalid notification at #{path}" unless valid_entry?(row, filename)
+
+      Entry.new(**row.transform_keys(&:to_sym))
+    rescue JSON::ParserError => e
+      raise Error, "invalid notification at #{path}: #{e.message}"
+    end
+
+    def marker_path(kind, id)
+      File.join(directory, ".#{kind}-#{id}.json")
+    end
+
+    def marker?(path, entry)
+      return false unless File.exist?(path) || File.symlink?(path)
+
+      raise Error, "notification marker mismatch at #{path}" unless read_entry(path, "#{entry.id}.json") == entry
+
+      true
+    end
+
+    # Acknowledgement requires evidence that this exact row was presented.
+    # Retain both the queue row and receipt for provenance and crash replay.
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    def acknowledge(id)
+      match = /\A([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.([1-9]\d*)\z/.match(id)
+      raise Error, 'invalid notification identity' unless match
+
+      Ownership.verify_state_dir(Ownership.state_dir)
+      Ownership.with_lock(match[1]) do
+        verify_directory
+        path = File.join(directory, "#{id}.json")
+        entry = read_entry(path, "#{id}.json")
+        raise Error, 'notification was not presented' unless marker?(marker_path('presented', id), entry)
+
+        publish(marker_path('handled', id), "#{JSON.generate(entry.to_h)}\n")
+        entry
+      end
+    end
 
     # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     def valid_entry?(row, filename)
@@ -101,14 +153,17 @@ module Riddim
       position = 0
       text.lines.each_with_index do |line, index|
         position += line.bytesize
-        next if position <= offset
-
         event = line.split(' ', 2).first
         next unless ACTIONABLE.include?(event)
 
         entry = Entry.new(id: identity(name, generation, index + 1), task: name,
                           generation: generation, sequence: index + 1, event: event)
-        publish(File.join(directory, "#{entry.id}.json"), "#{JSON.generate(entry.to_h)}\n")
+        queue_path = File.join(directory, "#{entry.id}.json")
+        if position <= offset && !File.exist?(queue_path) && !File.symlink?(queue_path)
+          raise Error, "missing notification at #{queue_path}"
+        end
+
+        publish(queue_path, "#{JSON.generate(entry.to_h)}\n")
       end
       return if position == offset
 

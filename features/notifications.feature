@@ -31,6 +31,59 @@ Feature: Inspect durable actionable reports from the selected local-only home
     When I scan pending notifications twice
     Then the appended decision stays pending with its own sequence
 
+  Scenario: Acknowledgement handles only a presented identity and survives replay
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    When I acknowledge the presented worker notification twice
+    And the worker reports "done [at=2]: later"
+    And notifications were scanned
+    Then only the later notification remains pending
+
+  Scenario: A replacement cannot be acknowledged using its predecessor's identity
+    Given the worker reports "done [at=1]: original"
+    And notifications were scanned
+    And the ownership record names a replacement generation
+    And a new generation status file is published
+    And the worker reports "blocked [at=2]: replacement"
+    When I acknowledge the first worker generation notification
+    Then the replacement remains pending after an old-generation acknowledgement
+
+  Scenario: An unpresented report cannot be acknowledged
+    Given the worker reports "blocked [at=1]: hold"
+    When I acknowledge the first worker notification
+    Then acknowledgement fails and scanning recovers the report
+
+  Scenario: An interrupted handling turn re-presents the same report after restart
+    Given the worker reports "needs-decision [at=1]: choose"
+    And notifications were scanned
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then the unacknowledged report is replayed without another worker event
+
+  Scenario: Lost historical queue evidence is not a successful empty drain
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    And the ownership record names a replacement generation
+    And a new generation status file is published
+    And the first notification file is removed from the old generation
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then the missing queue is reported as a failure
+
+  Scenario: Lost queue evidence is not a successful empty drain
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    And the first notification file is removed
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then the missing queue is reported as a failure
+
   Scenario: Routine progress alone does not notify
     Given the worker reports "working [at=1]: started"
     And the worker reports "paused [at=2]: later"

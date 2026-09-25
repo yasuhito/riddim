@@ -550,6 +550,26 @@ claims, automatically merge, clean up, or implement Firstmate's reconciled
 current crew-state, inbox, or watcher. Existing starts without `--mode` retain
 their previous briefs and delivery behavior.
 
+#### Drain and acknowledge local-only reports
+
+```sh
+bin/riddim notifications scan
+bin/riddim notifications ack '<id-from-scan>'
+```
+
+`scan` reconciles current local-only status files and prints pending notifications
+as JSON with task, source generation, sequence, event and stable id. Handle each
+report before acknowledging its exact id; acknowledgement is repeatable and
+never consumes a later report or another generation. A restart can replay
+unacknowledged reports, including an actionable event followed by routine
+progress. The private queue retains handled receipts for provenance. Scanning
+fails rather than claiming an empty drain when current status or previously
+classified queue evidence is missing or invalid. `notifications` without
+`scan` inspects the existing queue without reconciling current workers.
+This is a manually drained local-only subset of Firstmate's generation-bound
+wake queue: it does not inject a Pi message, interrupt workers, approve
+landing, or infer current Worker state.
+
 #### Review a local-only worker's committed diff
 
 ```sh
