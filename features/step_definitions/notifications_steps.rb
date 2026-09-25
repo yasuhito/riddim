@@ -7,6 +7,14 @@ Given('notifications were scanned') do
   raise "scan failed: #{error}" unless status.success?
 end
 
+Given('another valid plain task record is present') do
+  original = File.read(scenario_record_path('worker'))
+  plain = original.sub('endpoint_task_id=worker', 'endpoint_task_id=peer')
+                  .lines.reject { |line| line.start_with?('task_mode=', 'status_protocol=') }.join
+  File.write(scenario_record_path('peer'), plain)
+  File.chmod(0o600, scenario_record_path('peer'))
+end
+
 Given('the ownership record is invalid for notification scanning') do
   path = scenario_record_path('worker')
   File.write(path, File.read(path).sub('endpoint_task_id=worker', 'endpoint_task_id=other'))
@@ -66,6 +74,13 @@ Then('the appended decision stays pending with its own sequence') do
   assert_equal [expected, expected], [JSON.parse(@first_scan[0]), JSON.parse(@second_scan[0])]
 end
 
+Then('only the worker report is pending') do
+  generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  expected = [{ 'id' => "worker.#{generation}.1", 'task' => 'worker', 'generation' => generation,
+                'sequence' => 1, 'event' => 'blocked' }]
+  assert_equal [true, expected], [@status.success?, JSON.parse(@stdout)], @stderr
+end
+
 Then('only the replacement generation report is pending') do
   generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
   expected = [{ 'id' => "worker.#{generation}.1", 'task' => 'worker', 'generation' => generation,
@@ -84,11 +99,6 @@ Then('the old notification remains historical and the successor has no claim') d
   assert_equal [false, false, [{ 'id' => "worker.#{generation}.1", 'task' => 'worker',
                                  'generation' => generation, 'sequence' => 1, 'event' => 'failed' }]],
                [@first_scan[2].success?, @second_scan[2].success?, JSON.parse(inspected)]
-end
-
-Then('scanning refuses the missing successor status without publishing the old report') do
-  inspected, = run_riddim('notifications')
-  assert_equal [false, true, "[]\n"], [@status.success?, !@stderr.empty?, inspected]
 end
 
 Then('scanning fails without publishing a notification') do

@@ -65,8 +65,14 @@ module Riddim
 
     # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
     def classify(name)
-      snapshot, fields, bytes = Result.task_record(name)
-      return unless fields['status_protocol'] == Result::STATUS_PROTOCOL
+      snapshot = Ownership::Endpoint.resolve_snapshot(name)
+      bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
+      fields = Ownership.parse(bytes)
+      raise Error, "ownership changed during notification scan for #{name}" unless fields['spawn_gen'] == snapshot.last
+      return unless fields['task_mode'] == 'local-only'
+      unless fields['status_protocol'] == Result::STATUS_PROTOCOL
+        raise Error, "uncoordinated report protocol for #{name}"
+      end
 
       generation = snapshot.last
       path = Result.path(name, generation)

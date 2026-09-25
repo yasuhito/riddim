@@ -62,11 +62,28 @@ Feature: Inspect durable actionable reports from the selected local-only home
       """
       notifications scan
       """
-    Then scanning refuses the missing successor status without publishing the old report
+    Then scanning fails without publishing a notification
 
   Scenario: Invalid ownership cannot produce a positive claim
     Given the worker reports "done [at=1]: original"
     And the ownership record is invalid for notification scanning
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
+  Scenario: A valid plain task does not block a local-only report
+    Given another valid plain task record is present
+    And the worker reports "blocked [at=1]: stuck"
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then only the worker report is pending
+
+  Scenario: A legacy local-only record is not a successful empty scan
+    Given the worker record has no locked reporting protocol
     When I run riddim with:
       """
       notifications scan
