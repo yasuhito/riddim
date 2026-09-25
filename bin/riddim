@@ -19,6 +19,7 @@ require_relative '../lib/riddim/runtime_paths'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
 require_relative '../lib/riddim/teardown'
+require_relative '../lib/riddim/watcher'
 
 begin
   Riddim::RuntimePaths.activate!
@@ -291,6 +292,30 @@ if ARGV.first == 'report'
     puts Riddim::Report.run(ARGV[1], ARGV[3], ARGV[4])
   rescue Riddim::Ownership::Error, SystemCallError => e
     warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
+if ARGV.first == 'watch-notifications'
+  unless ARGV.length == 4 && ARGV[1] == '--nonce' && ARGV[3] == '--exclude-stdin'
+    warn 'Usage: riddim watch-notifications --nonce <hex> --exclude-stdin'
+    exit 2
+  end
+
+  begin
+    bytes = $stdin.read(1_048_577)
+    raise ArgumentError, 'watcher exclusions oversized' if bytes.bytesize > 1_048_576
+
+    exclude = JSON.parse(bytes)
+    raise ArgumentError, 'invalid watcher exclusions' unless exclude.is_a?(Array) &&
+                                                             exclude.all? do |id|
+                                                               id.is_a?(String) && id.match?(Riddim::Watcher::IDENTITY)
+                                                             end
+
+    Riddim::Watcher.run(nonce: ARGV[2], exclude: exclude)
+  rescue Riddim::Ownership::Error, ArgumentError, JSON::ParserError, SystemCallError => e
+    warn "riddim: watcher FAILED: #{e.message}"
     exit 1
   end
   exit

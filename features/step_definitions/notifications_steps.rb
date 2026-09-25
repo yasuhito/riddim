@@ -1,6 +1,70 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'securerandom'
+require 'timeout'
+
+After do
+  next unless @watchers
+
+  @watchers.each do |stdin, stdout, stderr, wait|
+    Process.kill('TERM', wait.pid) if wait.alive?
+    wait.join(3)
+    [stdin, stdout, stderr].each(&:close)
+  end
+end
+
+When('a notification watcher is armed') do
+  @watchers = []
+  start_notification_watcher([])
+end
+
+def watcher_frame(stdout)
+  Timeout.timeout(5) { JSON.parse(stdout.gets || raise('watcher exited before frame')) }
+end
+
+# rubocop:disable-next Metrics/MethodLength
+def start_notification_watcher(excluded)
+  env = { 'HERDR_SESSION' => nil }.merge(@environment.compact)
+  stdin, stdout, stderr, wait = Bundler.with_unbundled_env do
+    Open3.popen3(env, RiddimWorld::RIDDIM, 'watch-notifications', '--nonce',
+                 SecureRandom.hex(16), '--exclude-stdin')
+  end
+  @watchers << [stdin, stdout, stderr, wait]
+  stdin.write(JSON.generate(excluded))
+  stdin.close
+  frame = watcher_frame(stdout)
+  assert_equal 'ready', frame.fetch('type')
+  assert wait.alive?, 'watcher failed after readiness'
+  @watcher_output = stdout
+end
+
+Then('another watcher fails to arm without claiming readiness') do
+  output, error, status = Bundler.with_unbundled_env do
+    Open3.capture3(@environment.compact, RiddimWorld::RIDDIM, 'watch-notifications', '--nonce',
+                   SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
+  end
+  assert_equal [false, '', true], [status.success?, output, error.include?('watcher already bound')]
+end
+
+When('the watcher reports a pending notification without changing the worker') do
+  @first_ids = watcher_frame(@watcher_output).fetch('ids')
+  assert_equal [worker_notification_id(1)], @first_ids
+  assert_equal 1, File.readlines(@result_path).length
+  assert(herdr_invocations.none? { |invocation| invocation.include?('send') || invocation.include?('key') })
+  Timeout.timeout(5) { sleep 0.01 while @watchers.last.last.alive? }
+end
+
+When('a successor watcher is armed excluding the first report') do
+  start_notification_watcher(@first_ids)
+end
+
+Then('the successor reports only the new notification') do
+  assert_equal [worker_notification_id(2)], watcher_frame(@watcher_output).fetch('ids')
+  output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [true, [worker_notification_id(2)]],
+               [status.success?, JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
 
 Given('notifications were scanned') do
   _out, error, status = run_riddim('notifications', 'scan')

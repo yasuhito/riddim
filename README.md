@@ -547,7 +547,9 @@ status evidence fails closed instead of yielding `ready`. This is a snapshot,
 not permission to merge: independently review code and tests and recheck Git
 before merging. It does not infer completion from Herdr idle, validate test
 claims, automatically merge, clean up, or implement Firstmate's reconciled
-current crew-state, inbox, or watcher. Existing starts without `--mode` retain
+current crew-state or inbox. The opt-in notification watcher below does not
+monitor Pi activity or replace Firstmate's general watcher. Existing starts
+without `--mode` retain
 their previous briefs and delivery behavior.
 
 #### Drain and acknowledge local-only reports
@@ -566,9 +568,17 @@ progress. The private queue retains handled receipts for provenance. Scanning
 fails rather than claiming an empty drain when current status or previously
 classified queue evidence is missing or invalid. `notifications` without
 `scan` inspects the existing queue without reconciling current workers.
-This is a manually drained local-only subset of Firstmate's generation-bound
-wake queue: it does not inject a Pi message, interrupt workers, approve
-landing, or infer current Worker state.
+For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
+`RIDDIM_STATE_DIR` and load `.pi/extensions/riddim-notifications.ts` (as a
+trusted project extension or with `pi -e`). It binds one observer per home,
+reconciles actionable reports, and sends only stable notification IDs and
+handling instructions via Pi's non-interrupting `followUp` API. The extension
+checks a fresh successor before claiming continuity; failures leave the queue
+inspectable and require repair via `/riddim-watch-arm`. After handling, drain
+with `notifications scan` and acknowledge individual presented IDs. Pi accepting
+or consuming a follow-up never acknowledges it. Restarts re-present unhandled
+reports. This smaller subset of Firstmate's watcher never interrupts workers,
+approves landing, or infers current Worker state.
 
 #### Review a local-only worker's committed diff
 

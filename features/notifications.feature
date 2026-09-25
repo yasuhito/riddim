@@ -15,6 +15,19 @@ Feature: Inspect durable actionable reports from the selected local-only home
       """
     And a local-only task was started
 
+  Scenario: Only one watcher can bind the selected home
+    When a notification watcher is armed
+    Then another watcher fails to arm without claiming readiness
+
+  Scenario: A watcher publishes, wakes, and a successor stays live for later reports
+    When a notification watcher is armed
+    And the worker reports "done [at=1]: first claim"
+    And the watcher reports a pending notification without changing the worker
+    When a successor watcher is armed excluding the first report
+    And I acknowledge the first worker notification
+    And the worker reports "blocked [at=2]: second claim"
+    Then the successor reports only the new notification
+
   Scenario: Reconcile a masked actionable event and distinct later claims after downtime
     Given the worker reports "needs-decision [at=1]: choose A"
     And the worker reports "working [at=2]: thinking"
