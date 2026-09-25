@@ -55,6 +55,20 @@ When('the watcher reports a pending notification without changing the worker') d
   Timeout.timeout(5) { sleep 0.01 while @watchers.last.last.alive? }
 end
 
+When('the watcher crashes before the worker reports {string}') do |report|
+  Process.kill('KILL', @watchers.last.last.pid)
+  @watchers.last.last.join(3)
+  step %(the worker reports "#{report}")
+end
+
+When('a successor watcher is armed without exclusions') do
+  start_notification_watcher([])
+end
+
+Then('the successor reports the report written during downtime') do
+  assert_equal [worker_notification_id(1)], watcher_frame(@watcher_output).fetch('ids')
+end
+
 When('a successor watcher is armed excluding the first report') do
   start_notification_watcher(@first_ids)
 end

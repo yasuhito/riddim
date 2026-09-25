@@ -91,6 +91,29 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
+  # Replacement during a busy turn must re-present any unhandled ID,
+  # whether Pi accepted the first follow-up yet or not.
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_replacement_replays_unhandled_report_during_busy_turn
+    @input.puts JSON.generate(type: 'prompt', message: 'Keep streaming')
+    busy = request
+    report('blocked [at=1]: private body')
+    sleep 0.7
+    @input.puts JSON.generate(type: 'get_state', id: 'busy')
+    state = until_event { |item| item['type'] == 'response' && item['id'] == 'busy' }
+
+    assert state.dig('data', 'isStreaming')
+    @input.puts JSON.generate(type: 'new_session', id: 'replacement')
+    until_event { |item| item['type'] == 'response' && item['id'] == 'replacement' }
+    replay = notification
+
+    assert_includes replay.to_s, "worker.#{GEN}.1"
+    busy.close
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
+  end
+
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity, Minitest/MultipleAssertions
   def test_idle_and_busy_follow_ups_are_consumed_but_not_acknowledged
     report('blocked [at=1]: private arbitrary body')

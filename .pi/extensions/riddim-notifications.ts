@@ -19,18 +19,20 @@ export default function (pi: ExtensionAPI) {
   let arming: Promise<boolean> | null = null;
   let active = false;
   let serial = 0;
-  let inFlight = false;
+  let inFlight: number | null = null;
   const batches: string[][] = [];
   const accepted = new Set<string>();
 
-  function failure(reason: string): void {
+  function failure(reason: string, epoch = serial): void {
+    if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
-    if (!active) return;
     // Failure is a Supervisor follow-up, never an acknowledgement.
     try {
-      pi.sendUserMessage("Riddim watcher FAILED in selected home. " +
+      void Promise.resolve(pi.sendUserMessage("Riddim watcher FAILED in selected home. " +
         "Inspect riddim notifications scan and repair with /riddim-watch-arm.",
-      { deliverAs: "followUp" });
+      { deliverAs: "followUp" })).catch((error: unknown) => {
+        console.error(`riddim failure follow-up rejected: ${String(error)}`);
+      });
     } catch (error) {
       console.error(`riddim failure follow-up rejected: ${String(error)}`);
     }
@@ -46,7 +48,7 @@ export default function (pi: ExtensionAPI) {
 
   async function startArm(): Promise<boolean> {
     if (!active || !home) return false;
-    if (child) return readyChild === child && child.exitCode === null;
+    if (child) return readyChild === child && child.exitCode === null && child.signalCode === null;
     const epoch = serial;
     const nonce = randomBytes(16).toString("hex");
     const proc = spawn("ruby", [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"], {
@@ -93,9 +95,9 @@ export default function (pi: ExtensionAPI) {
       if (!active || serial !== epoch) return;
       if (pending) {
         batches.push(pending);
-        void deliver();
+        void deliver(epoch);
       } else if (!failureReported) {
-        failure(stderr.trim() || (ready ? "observer stopped without a report" : "observer failed before readiness"));
+        failure(stderr.trim() || (ready ? "observer stopped without a report" : "observer failed before readiness"), epoch);
       }
     });
     const signaled = await readiness;
@@ -103,26 +105,26 @@ export default function (pi: ExtensionAPI) {
     // A printed ready frame by itself is not evidence of a live watcher.
     await new Promise<void>((done) => setImmediate(done));
     if (!active || serial !== epoch) return false;
-    const healthy = signaled && child === proc && proc.exitCode === null && Boolean(proc.pid);
+    const healthy = signaled && child === proc && proc.exitCode === null && proc.signalCode === null && Boolean(proc.pid);
     if (!healthy && child === proc) {
       failureReported = true;
-      failure(stderr.trim() || "readiness or liveness unverified");
+      failure(stderr.trim() || "readiness or liveness unverified", epoch);
       proc.kill();
     }
     if (healthy) readyChild = proc;
     return healthy;
   }
 
-  async function deliver(): Promise<void> {
-    if (inFlight || !active) return;
-    inFlight = true;
+  async function deliver(epoch: number): Promise<void> {
+    if (inFlight === epoch || !active || serial !== epoch) return;
+    inFlight = epoch;
     try {
-      while (active && batches.length > 0) {
+      while (active && serial === epoch && batches.length > 0) {
         const ids = [...new Set(batches.splice(0).flat())];
         // Suppression is session-local; a restart replays all unhandled rows.
         ids.forEach((id) => accepted.add(id));
         const healthy = await arm();
-        if (!active) return;
+        if (!active || serial !== epoch) return;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
         const content = `Riddim Supervisor notification in selected home. Pending IDs: ${ids.join(", ")}. ` +
@@ -132,13 +134,17 @@ export default function (pi: ExtensionAPI) {
         try {
           await Promise.resolve(pi.sendUserMessage(content, { deliverAs: "followUp" }));
         } catch (error) {
+          if (serial !== epoch) return;
           ids.forEach((id) => accepted.delete(id));
-          failure(`follow-up rejected: ${String(error)}`);
+          // The successor inherited exclusions for these IDs. It cannot be
+          // trusted to retry them: stop it before allowing an operator rearm.
+          child?.kill();
+          failure(`follow-up rejected: ${String(error)}`, epoch);
         }
       }
     } finally {
-      inFlight = false;
-      if (active && batches.length > 0) void deliver();
+      if (inFlight === epoch) inFlight = null;
+      if (active && serial === epoch && batches.length > 0) void deliver(epoch);
     }
   }
 

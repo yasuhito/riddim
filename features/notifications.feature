@@ -19,6 +19,12 @@ Feature: Inspect durable actionable reports from the selected local-only home
     When a notification watcher is armed
     Then another watcher fails to arm without claiming readiness
 
+  Scenario: A crashed watcher leaves its report for a new owner to reconcile
+    When a notification watcher is armed
+    And the watcher crashes before the worker reports "blocked [at=1]: waiting"
+    And a successor watcher is armed without exclusions
+    Then the successor reports the report written during downtime
+
   Scenario: A watcher publishes, wakes, and a successor stays live for later reports
     When a notification watcher is armed
     And the worker reports "done [at=1]: first claim"
