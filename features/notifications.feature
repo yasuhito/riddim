@@ -1,0 +1,109 @@
+Feature: Inspect durable actionable reports from the selected local-only home
+
+  Background:
+    Given a local Git project for worktree start
+    And the project checkout is on main
+    And a config directory with agent profile:
+      """
+      pi openrouter/z-ai/glm-5.3-flash max
+      """
+    And Herdr starts the agent only in the linked worktree
+    And a fake Pi executable is on PATH for the task launch
+    And a task file containing:
+      """
+      Work in the local-only branch.
+      """
+    And a local-only task was started
+
+  Scenario: Reconcile a masked actionable event and distinct later claims after downtime
+    Given the worker reports "needs-decision [at=1]: choose A"
+    And the worker reports "working [at=2]: thinking"
+    And the worker reports "blocked [at=3]: waiting"
+    And the worker reports "done [at=4]: claim"
+    When I scan pending notifications twice
+    Then pending notifications retain three separate report identities without changing the worker
+
+  Scenario: An actionable event after an earlier routine scan is retained
+    Given the worker reports "working [at=1]: progress"
+    And notifications were scanned
+    And the worker reports "needs-decision [at=2]: choose"
+    And the worker reports "paused [at=3]: waiting"
+    When I scan pending notifications twice
+    Then the appended decision stays pending with its own sequence
+
+  Scenario: Routine progress alone does not notify
+    Given the worker reports "working [at=1]: started"
+    And the worker reports "paused [at=2]: later"
+    When I scan pending notifications twice
+    Then no notifications were published
+
+  Scenario: Historical pending evidence remains bound to its original generation
+    Given the worker reports "failed [at=1]: original"
+    And notifications were scanned
+    And the ownership record names a replacement generation
+    When I scan pending notifications twice
+    Then the old notification remains historical and the successor has no claim
+
+  Scenario: A replacement generation reports its own event without adopting an old report
+    Given the worker reports "done [at=1]: original"
+    And the ownership record names a replacement generation
+    And a new generation status file is published
+    And the worker reports "failed [at=2]: replacement"
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then only the replacement generation report is pending
+
+  Scenario: A replacement generation cannot adopt an unobserved old report
+    Given the worker reports "done [at=1]: original"
+    And the ownership record names a replacement generation
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning refuses the missing successor status without publishing the old report
+
+  Scenario: Invalid ownership cannot produce a positive claim
+    Given the worker reports "done [at=1]: original"
+    And the ownership record is invalid for notification scanning
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
+  Scenario: Symlinked status cannot produce a positive claim
+    Given the worker reports "done [at=1]: original"
+    And the worker status file is replaced with a symlink
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
+  Scenario: A world-readable status cannot produce a positive claim
+    Given the worker reports "done [at=1]: original"
+    And the worker status is world-readable
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
+  Scenario: An incomplete event cannot produce a positive claim
+    Given the status ends in an incomplete event
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
+  Scenario: A cursor publication failure leaves a durable notification to replay
+    Given the worker reports "blocked [at=1]: hold"
+    And the notification cursor cannot be replaced
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then the failed scan leaves the same pending identity recoverable

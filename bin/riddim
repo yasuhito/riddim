@@ -9,6 +9,7 @@ require_relative '../lib/riddim/fleet'
 require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/merge_local'
+require_relative '../lib/riddim/notifications'
 require_relative '../lib/riddim/ownership'
 require_relative '../lib/riddim/profile'
 require_relative '../lib/riddim/report'
@@ -295,6 +296,22 @@ if ARGV.first == 'report'
   exit
 end
 
+if ARGV.first == 'notifications'
+  unless ARGV == ['notifications'] || ARGV == %w[notifications scan]
+    warn 'Usage: riddim notifications [scan]'
+    exit 2
+  end
+
+  begin
+    entries = ARGV.last == 'scan' ? Riddim::Notifications.scan : Riddim::Notifications.pending
+    puts JSON.generate(entries.map(&:to_h))
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'result'
   unless ARGV.length == 2 && ARGV[1].match?(Riddim::Ownership::NAME_PATTERN)
     warn 'Usage: riddim result <name>'
@@ -417,6 +434,7 @@ puts <<~HELP
     report <name> --generation <spawn-gen> <status-event>
                             Append a worker report under the task name lock
     result <name>           Read a local-only worker event and verify a ready branch
+    notifications [scan]    Inspect pending reports; scan selected local state for new ones
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main
     merge-local <name> --head <reviewed-commit>
