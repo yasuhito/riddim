@@ -34,6 +34,29 @@ Given('the status ends in an incomplete event') do
   File.open(@result_path, 'a') { |file| file.write('done [at=1]: partial') }
 end
 
+Given('the notification directory is unavailable') do
+  File.symlink(@project, File.join(scenario_state_dir, '.notifications'))
+end
+
+Given('ownership changes during status classification') do
+  fixture = File.join(new_temporary_directory, 'change_owner.rb')
+  File.write(fixture, <<~RUBY)
+    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    module Riddim::Result
+      class << self
+        alias_method :original_parse_events, :parse_events
+        def parse_events(bytes)
+          status = original_parse_events(bytes)
+          path = Riddim::Ownership.record_path('worker')
+          File.write(path, File.read(path).sub(/^spawn_gen=.+$/, 'spawn_gen=s9999.9999.9999'))
+          status
+        end
+      end
+    end
+  RUBY
+  @environment['RUBYOPT'] = "-r#{fixture}"
+end
+
 Given('the notification cursor cannot be replaced') do
   fixture = File.join(new_temporary_directory, 'break_cursor.rb')
   File.write(fixture, <<~RUBY)
@@ -104,6 +127,13 @@ end
 Then('scanning fails without publishing a notification') do
   inspected, = run_riddim('notifications')
   assert_equal [false, true, "[]\n"], [@status.success?, !@stderr.empty?, inspected]
+end
+
+Then('reporting succeeds even though observation cannot publish') do
+  _output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [true, true, false, true],
+               [@report_status.success?, File.readlines(@result_path).size == 1,
+                status.success?, error.include?('notification directory')], @report_stderr
 end
 
 Then('the failed scan leaves the same pending identity recoverable') do

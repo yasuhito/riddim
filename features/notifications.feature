@@ -116,6 +116,20 @@ Feature: Inspect durable actionable reports from the selected local-only home
       """
     Then scanning fails without publishing a notification
 
+  Scenario: Worker reporting succeeds when the notification directory is unavailable
+    Given the notification directory is unavailable
+    When the current worker reports "done [at=1]: claim" through riddim
+    Then reporting succeeds even though observation cannot publish
+
+  Scenario: Replacement during observation cannot attribute an old report to a successor
+    Given the worker reports "done [at=1]: original"
+    And ownership changes during status classification
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning fails without publishing a notification
+
   Scenario: A cursor publication failure leaves a durable notification to replay
     Given the worker reports "blocked [at=1]: hold"
     And the notification cursor cannot be replaced
