@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -10,22 +11,26 @@ const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim")
 const home = process.env.RIDDIM_STATE_DIR;
 const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.([1-9]\d*)$/;
 const READY_TIMEOUT = 5000;
+const BEAT_TIMEOUT = 4000;
 
 type Frame = { type: string; nonce: string; ids?: string[] };
 
 export default function (pi: ExtensionAPI) {
   let child: ChildProcess | null = null;
   let readyChild: ChildProcess | null = null;
+  let verifiedAt = 0;
   let arming: Promise<boolean> | null = null;
   let active = false;
   let serial = 0;
   let inFlight: number | null = null;
   const batches: string[][] = [];
   const accepted = new Set<string>();
+  let notifyFailure: ((message: string) => void) | null = null;
 
   function failure(reason: string, epoch = serial): void {
     if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
+    notifyFailure?.(`Riddim watcher FAILED: ${reason}. Run riddim notifications scan.`);
     // Failure is a Supervisor follow-up, never an acknowledgement.
     try {
       void Promise.resolve(pi.sendUserMessage("Riddim watcher FAILED in selected home. " +
@@ -48,7 +53,8 @@ export default function (pi: ExtensionAPI) {
 
   async function startArm(): Promise<boolean> {
     if (!active || !home) return false;
-    if (child) return readyChild === child && child.exitCode === null && child.signalCode === null;
+    if (child) return readyChild === child && child.exitCode === null && child.signalCode === null &&
+      performance.now() - verifiedAt <= BEAT_TIMEOUT;
     const epoch = serial;
     const nonce = randomBytes(16).toString("hex");
     const proc = spawn("ruby", [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"], {
@@ -63,6 +69,13 @@ export default function (pi: ExtensionAPI) {
     let ready = false;
     let pending: string[] | null = null;
     let failureReported = false;
+    const watchdog = setInterval(() => {
+      if (!active || serial !== epoch || !ready || failureReported || child !== proc ||
+        performance.now() - verifiedAt <= BEAT_TIMEOUT) return;
+      failureReported = true;
+      failure("watcher heartbeat stale; ownership unverified", epoch);
+      proc.kill("SIGKILL");
+    }, 1000);
     let finishReady: (value: boolean) => void = () => {};
     const readiness = new Promise<boolean>((done) => { finishReady = done; });
     const timeout = setTimeout(() => finishReady(false), READY_TIMEOUT);
@@ -80,7 +93,10 @@ export default function (pi: ExtensionAPI) {
         if (frame.nonce !== nonce) { proc.kill(); return; }
         if (frame.type === "ready" && !ready) {
           ready = true;
+          verifiedAt = performance.now();
           finishReady(true);
+        } else if (frame.type === "beat" && ready) {
+          verifiedAt = performance.now();
         } else if (frame.type === "pending" && ready && Array.isArray(frame.ids) &&
           frame.ids.length > 0 && frame.ids.every((id) => identity.test(id))) {
           pending = frame.ids;
@@ -89,9 +105,10 @@ export default function (pi: ExtensionAPI) {
     });
     proc.on("error", (error) => { stderr += error.message; finishReady(false); });
     proc.on("close", () => {
+      clearInterval(watchdog);
       finishReady(false);
       if (child === proc) child = null;
-      if (readyChild === proc) readyChild = null;
+      if (readyChild === proc) { readyChild = null; verifiedAt = 0; }
       if (!active || serial !== epoch) return;
       if (pending) {
         batches.push(pending);
@@ -125,6 +142,7 @@ export default function (pi: ExtensionAPI) {
         ids.forEach((id) => accepted.add(id));
         const healthy = await arm();
         if (!active || serial !== epoch) return;
+        const successor = healthy ? readyChild : null;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
         const content = `Riddim Supervisor notification in selected home. Pending IDs: ${ids.join(", ")}. ` +
@@ -136,9 +154,13 @@ export default function (pi: ExtensionAPI) {
         } catch (error) {
           if (serial !== epoch) return;
           ids.forEach((id) => accepted.delete(id));
-          // The successor inherited exclusions for these IDs. It cannot be
-          // trusted to retry them: stop it before allowing an operator rearm.
-          child?.kill();
+          // Stop only this delivery's successor, not a later operator rearm.
+          // Withdraw readiness before signaling: close is asynchronous.
+          if (successor && child === successor) {
+            readyChild = null;
+            verifiedAt = 0;
+            successor.kill();
+          }
           failure(`follow-up rejected: ${String(error)}`, epoch);
         }
       }
@@ -148,13 +170,15 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     if (!home) return;
     active = true;
+    notifyFailure = (message) => ctx.ui.notify(message, "error");
     void arm();
   });
   pi.on("session_shutdown", async () => {
     active = false;
+    notifyFailure = null;
     serial += 1;
     const predecessor = child;
     predecessor?.kill();
@@ -164,9 +188,17 @@ export default function (pi: ExtensionAPI) {
         new Promise<void>((done) => predecessor.once("close", () => done())),
         new Promise<void>((done) => setTimeout(done, READY_TIMEOUT)),
       ]);
+      if (predecessor.exitCode === null && predecessor.signalCode === null) {
+        predecessor.kill("SIGKILL");
+        await Promise.race([
+          new Promise<void>((done) => predecessor.once("close", () => done())),
+          new Promise<void>((done) => setTimeout(done, READY_TIMEOUT)),
+        ]);
+      }
     }
     child = null;
     readyChild = null;
+    verifiedAt = 0;
     arming = null;
     accepted.clear(); // Restart replays every unacknowledged report.
     batches.length = 0;

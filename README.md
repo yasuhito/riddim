@@ -573,12 +573,18 @@ For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 trusted project extension or with `pi -e`). It binds one observer per home,
 reconciles actionable reports, and sends only stable notification IDs and
 handling instructions via Pi's non-interrupting `followUp` API. The extension
-checks a fresh successor before claiming continuity; failures leave the queue
-inspectable and require repair via `/riddim-watch-arm`. After handling, drain
-with `notifications scan` and acknowledge individual presented IDs. Pi accepting
-or consuming a follow-up never acknowledges it. Restarts re-present unhandled
-reports. This smaller subset of Firstmate's watcher never interrupts workers,
-approves landing, or infers current Worker state.
+checks a fresh successor and periodic liveness beacons before claiming
+continuity; missing beacons fail closed. Failures leave the queue inspectable
+and require repair via `/riddim-watch-arm`. On a failure, run
+`notifications scan` first to inspect reports written during downtime. Repair the
+selected home or competing watcher before using `/riddim-watch-arm`; a refused
+arm is not a healthy watcher. If Pi cannot deliver a failure follow-up, inspect
+Pi stderr and drain manually. After handling, drain with `notifications scan`
+and acknowledge individual presented IDs. Pi accepting or consuming a follow-up
+never acknowledges it. Session replacements re-present unhandled reports,
+including IDs accepted into the previous Pi session's pending queue. This
+smaller subset of Firstmate's watcher never interrupts workers, approves
+landing, or infers current Worker state.
 
 #### Review a local-only worker's committed diff
 

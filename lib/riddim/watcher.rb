@@ -12,28 +12,39 @@ module Riddim
 
     module_function
 
-    # rubocop:disable-next Metrics/MethodLength
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
     def run(nonce:, exclude: [], interval: 0.25)
       raise ArgumentError, 'invalid watcher nonce' unless nonce.match?(/\A[0-9a-f]{32}\z/)
       raise ArgumentError, 'invalid interval' unless interval.positive?
 
       Ownership.verify_state_dir(Ownership.state_dir)
-      lock = File.join(Ownership.state_dir, '.notification-watcher.lock')
-      File.open(lock, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
-        Result.verify_private_file!(file)
-        unless file.flock(File::LOCK_EX | File::LOCK_NB)
-          raise Notifications::Error, 'watcher already bound to this home'
+      # The directory lock survives unlink/replacement of the visible lock
+      # file. Both are held for the observer's lifetime, never just at arm.
+      File.open(Ownership.state_dir, File::RDONLY | File::NOFOLLOW) do |directory|
+        bind!(directory)
+        lock = File.join(Ownership.state_dir, '.notification-watcher.lock')
+        File.open(lock, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
+          Result.verify_private_file!(file)
+          bind!(file)
+          observe(nonce, exclude, interval, directory, file)
         end
-
-        observe(nonce, exclude, interval)
       end
     end
 
-    # rubocop:disable-next Metrics/MethodLength
-    def observe(nonce, exclude, interval)
+    def bind!(file)
+      return if file.flock(File::LOCK_EX | File::LOCK_NB)
+
+      raise Notifications::Error, 'watcher already bound to this home'
+    end
+
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    def observe(nonce, exclude, interval, directory, lock)
       ready = false
+      last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       loop do
+        verify_owner!(directory, lock)
         entries = Notifications.scan.reject { |entry| exclude.include?(entry.id) }
+        verify_owner!(directory, lock)
         unless ready
           announce('ready', nonce)
           ready = true
@@ -42,8 +53,26 @@ module Riddim
           announce('pending', nonce, ids: entries.map(&:id))
           break
         end
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        if now - last_beat >= 1
+          announce('beat', nonce)
+          last_beat = now
+        end
         sleep interval
       end
+    end
+
+    def verify_owner!(directory, lock)
+      verify_binding!(directory, Ownership.state_dir)
+      verify_binding!(lock, File.join(Ownership.state_dir, '.notification-watcher.lock'))
+    end
+
+    def verify_binding!(file, path)
+      current = File.lstat(path)
+      original = file.stat
+      return if current.dev == original.dev && current.ino == original.ino && !current.symlink?
+
+      raise Notifications::Error, 'watcher ownership changed during observation'
     end
 
     def announce(type, nonce, **extra)

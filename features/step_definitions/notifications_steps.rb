@@ -8,7 +8,11 @@ After do
   next unless @watchers
 
   @watchers.each do |stdin, stdout, stderr, wait|
-    Process.kill('TERM', wait.pid) if wait.alive?
+    begin
+      Process.kill('TERM', wait.pid) if wait.alive?
+    rescue Errno::ESRCH
+      # It may exit between the liveness check and the signal.
+    end
     wait.join(3)
     [stdin, stdout, stderr].each(&:close)
   end
@@ -41,8 +45,8 @@ end
 
 Then('another watcher fails to arm without claiming readiness') do
   output, error, status = Bundler.with_unbundled_env do
-    Open3.capture3(@environment.compact, RiddimWorld::RIDDIM, 'watch-notifications', '--nonce',
-                   SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
+    Open3.capture3(@environment.compact, 'timeout', '3', RiddimWorld::RIDDIM,
+                   'watch-notifications', '--nonce', SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
   end
   assert_equal [false, '', true], [status.success?, output, error.include?('watcher already bound')]
 end
@@ -53,6 +57,24 @@ When('the watcher reports a pending notification without changing the worker') d
   assert_equal 1, File.readlines(@result_path).length
   assert(herdr_invocations.none? { |invocation| invocation.include?('send') || invocation.include?('key') })
   Timeout.timeout(5) { sleep 0.01 while @watchers.last.last.alive? }
+end
+
+When('the watcher lock file is replaced') do
+  lock = File.join(@environment.fetch('RIDDIM_STATE_DIR'), '.notification-watcher.lock')
+  File.unlink(lock)
+  File.write(lock, '', perm: 0o600)
+end
+
+When('the old watcher loses its binding') do
+  old = @watchers.last
+  Timeout.timeout(5) { sleep 0.01 while old.last.alive? }
+  assert_includes old[2].read, 'watcher ownership changed'
+end
+
+Then('a successor can arm without discarding reports') do
+  step 'the worker reports "blocked [at=1]: waiting"'
+  start_notification_watcher([])
+  assert_equal [worker_notification_id(1)], watcher_frame(@watcher_output).fetch('ids')
 end
 
 When('the watcher crashes before the worker reports {string}') do |report|

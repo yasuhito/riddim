@@ -19,6 +19,17 @@ Feature: Inspect durable actionable reports from the selected local-only home
     When a notification watcher is armed
     Then another watcher fails to arm without claiming readiness
 
+  Scenario: Replacing the lock file cannot create a second watcher owner
+    When a notification watcher is armed
+    And the watcher lock file is replaced
+    Then another watcher fails to arm without claiming readiness
+
+  Scenario: A replaced lock marker makes the old watcher fail before a new one arms
+    When a notification watcher is armed
+    And the watcher lock file is replaced
+    And the old watcher loses its binding
+    Then a successor can arm without discarding reports
+
   Scenario: A crashed watcher leaves its report for a new owner to reconcile
     When a notification watcher is armed
     And the watcher crashes before the worker reports "blocked [at=1]: waiting"

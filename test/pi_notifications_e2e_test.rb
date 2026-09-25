@@ -35,6 +35,7 @@ class PiNotificationsE2ETest < Minitest::Test
     File.write(@status_path, '', mode: 'w', perm: 0o600)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
             'RIDDIM_STATE_DIR' => @state }
+    env['PATH'] = "#{watcher_ruby_bin}:#{ENV.fetch('PATH')}"
     @input, @output, @error, @wait = Bundler.with_unbundled_env do
       Open3.popen3(env, 'pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
                    '--no-prompt-templates', '--no-context-files', '--extension', EXT, '--session-dir', @root,
@@ -42,9 +43,38 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
+  # A local Ruby shim refuses the second watcher launch only. Pi and the
+  # provider are real; no user credentials or remote API are involved.
+  def watcher_ruby_bin
+    dir = File.join(@root, 'bin')
+    FileUtils.mkdir_p(dir)
+    executable = File.join(dir, 'ruby')
+    count = File.join(@root, 'watcher-spawns')
+    deny = File.join(@root, 'deny-watcher-rearm')
+    File.write(executable, <<~SH)
+      #!/bin/sh
+      if [ "$1" = "#{CLI}" ] && [ "$2" = "watch-notifications" ]; then
+        if [ -e "#{count}" ] && [ -e "#{deny}" ]; then
+          echo 'injected watcher rearm failure' >&2
+          exit 1
+        fi
+        touch "#{count}"
+      fi
+      exec "#{RbConfig.ruby}" "$@"
+    SH
+    File.chmod(0o700, executable)
+    dir
+  end
+
   # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
   # rubocop:disable-next Metrics/CyclomaticComplexity
+  # rubocop:disable-next Metrics/MethodLength, Metrics/PerceivedComplexity
   def teardown
+    begin
+      Process.kill('CONT', @paused_watcher) if @paused_watcher
+    rescue Errno::ESRCH
+      # The watchdog already reaped the stopped watcher.
+    end
     @input&.close
     if @wait&.alive?
       Process.kill('TERM', @wait.pid)
@@ -91,6 +121,58 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_stopped_watcher_is_reported_failed_not_healthy
+    @paused_watcher = Timeout.timeout(10) do
+      loop do
+        child = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first
+        break Integer(child) if child
+
+        sleep 0.05
+      end
+    end
+    sleep 1.5 # Wait for readiness and at least one observer heartbeat.
+    Process.kill('STOP', @paused_watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
+        item['message'].to_s.include?('heartbeat stale')
+    end
+
+    assert_equal 'error', alarm['notifyType']
+    report('blocked [at=1]: waiting during watcher failure')
+    out, err, status = cli('scan')
+
+    assert_predicate status, :success?, err
+    assert_equal(["worker.#{GEN}.1"], JSON.parse(out).map { |row| row.fetch('id') })
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_failed_rearm_reports_failure_and_retains_report
+    Timeout.timeout(5) { sleep 0.01 until File.exist?(File.join(@root, 'watcher-spawns')) }
+    File.write(File.join(@root, 'deny-watcher-rearm'), '')
+    report('blocked [at=1]: private body')
+    alarm = until_event do |item|
+      item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
+        item.dig('message', 'content').to_s.include?('Riddim watcher FAILED')
+    end
+
+    assert_includes alarm.to_s, 'repair with /riddim-watch-arm'
+    first = request
+    PiStallLab::LabServer.send_ok(first)
+    first.close
+    message = notification
+
+    assert_includes message.to_s, "worker.#{GEN}.1"
+    assert_includes message.to_s, 'Watcher FAILED'
+    out, err, status = cli('scan')
+
+    assert_predicate status, :success?, err
+    assert_equal(["worker.#{GEN}.1"], JSON.parse(out).map { |row| row.fetch('id') })
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
+  end
+
   # Replacement during a busy turn must re-present any unhandled ID,
   # whether Pi accepted the first follow-up yet or not.
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
@@ -98,11 +180,19 @@ class PiNotificationsE2ETest < Minitest::Test
     @input.puts JSON.generate(type: 'prompt', message: 'Keep streaming')
     busy = request
     report('blocked [at=1]: private body')
-    sleep 0.7
-    @input.puts JSON.generate(type: 'get_state', id: 'busy')
-    state = until_event { |item| item['type'] == 'response' && item['id'] == 'busy' }
+    state = nil
+    Timeout.timeout(10) do
+      loop do
+        @input.puts JSON.generate(type: 'get_state', id: 'busy')
+        state = until_event { |item| item['type'] == 'response' && item['id'] == 'busy' }
+        break if state.dig('data', 'pendingMessageCount').positive?
+
+        sleep 0.05
+      end
+    end
 
     assert state.dig('data', 'isStreaming')
+    assert_equal 1, state.dig('data', 'pendingMessageCount')
     @input.puts JSON.generate(type: 'new_session', id: 'replacement')
     until_event { |item| item['type'] == 'response' && item['id'] == 'replacement' }
     replay = notification
