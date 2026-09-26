@@ -60,14 +60,14 @@ export default function (pi: ExtensionAPI) {
     if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
     try {
-      notifyFailure?.(`Riddim watcher FAILED: ${reason}. Run riddim notifications scan.`);
+      notifyFailure?.(`Riddim watcher FAILED: ${reason}. Verify the original home before running riddim notifications scan.`);
     } catch (error) {
       console.error(`riddim failure UI notification rejected: ${String(error)}`);
     }
     // Failure is a Supervisor follow-up, never an acknowledgement.
     try {
-      void Promise.resolve(pi.sendUserMessage("Riddim watcher FAILED in selected home. " +
-        "Inspect riddim notifications scan and repair with /riddim-watch-arm.",
+      void Promise.resolve(pi.sendUserMessage("Riddim watcher FAILED. " +
+        "Verify the original home before running riddim notifications scan; repair with /riddim-watch-arm.",
       { deliverAs: "followUp" })).catch((error: unknown) => {
         console.error(`riddim failure follow-up rejected: ${String(error)}`);
       });
@@ -210,8 +210,10 @@ export default function (pi: ExtensionAPI) {
         const successor = healthy ? readyChild : null;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
-        const content = `Riddim Supervisor notification in selected home. Pending IDs: ${ids.join(", ")}. ` +
-          "Run riddim notifications scan to drain; handle the reports, then explicitly ack each presented ID. " +
+        const content = `Riddim Supervisor notification from home ${batch.home}, watcher lock ${batch.lock}. ` +
+          `Pending IDs: ${ids.join(", ")}. Verify both identities in the selected home before running ` +
+          "riddim notifications scan; if changed, recover from the original home manually. " +
+          "Handle the reports, then explicitly ack each presented ID. " +
           `This is a Worker claim, not Git readiness or Landing approval. ${detail}`;
         if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;

@@ -21,7 +21,7 @@ module Riddim
     def path(name, generation)
       raise Error, 'invalid result generation' unless generation.is_a?(String) && generation.match?(GENERATION)
 
-      File.join(File.expand_path(Ownership.state_dir), "#{Ownership.validated_name(name)}.#{generation}.status")
+      File.join(Ownership.state_dir, "#{Ownership.validated_name(name)}.#{generation}.status")
     end
 
     def publish(name, generation)

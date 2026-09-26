@@ -17,16 +17,24 @@ module Riddim
       raise ArgumentError, 'invalid watcher nonce' unless nonce.match?(/\A[0-9a-f]{32}\z/)
       raise ArgumentError, 'invalid interval' unless interval.positive?
 
-      Ownership.verify_state_dir(Ownership.state_dir)
+      selected_home = File.expand_path(Ownership.state_dir)
+      Ownership.verify_state_dir(selected_home)
       # The directory lock survives unlink/replacement of the visible lock
       # file. Both are held for the observer's lifetime, never just at arm.
-      File.open(Ownership.state_dir, File::RDONLY | File::NOFOLLOW) do |directory|
+      File.open(selected_home, File::RDONLY | File::NOFOLLOW) do |directory|
         bind!(directory)
-        lock = File.join(Ownership.state_dir, '.notification-watcher.lock')
-        File.open(lock, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
-          Result.verify_private_file!(file)
-          bind!(file)
-          observe(nonce, exclude, interval, directory, file)
+        Dir.fchdir(directory.fileno) do
+          previous_home = ENV.fetch('RIDDIM_STATE_DIR', nil)
+          ENV['RIDDIM_STATE_DIR'] = '.'
+          begin
+            File.open('.notification-watcher.lock', File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
+              Result.verify_private_file!(file)
+              bind!(file)
+              observe(nonce, exclude, interval, directory, file, selected_home)
+            end
+          ensure
+            ENV['RIDDIM_STATE_DIR'] = previous_home
+          end
         end
       end
     end
@@ -38,13 +46,13 @@ module Riddim
     end
 
     # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-    def observe(nonce, exclude, interval, directory, lock)
+    def observe(nonce, exclude, interval, directory, lock, selected_home)
       ready = false
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       loop do
-        verify_owner!(directory, lock)
+        verify_owner!(directory, lock, selected_home)
         entries = Notifications.scan.reject { |entry| exclude.include?(entry.id) }
-        verify_owner!(directory, lock)
+        verify_owner!(directory, lock, selected_home)
         unless ready
           stat = lock.stat
           announce('ready', nonce, lock: "#{stat.dev}:#{stat.ino}")
@@ -66,9 +74,9 @@ module Riddim
       end
     end
 
-    def verify_owner!(directory, lock)
-      verify_binding!(directory, Ownership.state_dir)
-      verify_binding!(lock, File.join(Ownership.state_dir, '.notification-watcher.lock'))
+    def verify_owner!(directory, lock, selected_home)
+      verify_binding!(directory, selected_home)
+      verify_binding!(lock, File.join(selected_home, '.notification-watcher.lock'))
       Result.verify_private_file!(lock)
       # File handles have size, not empty?. Inspect the locked inode itself.
       # rubocop:disable-next Style/ZeroLengthPredicate

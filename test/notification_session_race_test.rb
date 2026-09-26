@@ -31,6 +31,39 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_pending_home_replacement.mjs', expected: [])
   end
 
+  def test_delivery_keeps_source_identity_when_home_changes_at_acceptance
+    run_scenario('notification_delivery_home_replacement.mjs', expected: [])
+  end
+
+  def test_watcher_scan_stays_with_held_home_after_path_replacement
+    Dir.mktmpdir('riddim-scan-race-') do |root|
+      state = File.join(root, 'state')
+      replacement = File.join(root, 'replacement')
+      [state, replacement].each do |path|
+        FileUtils.mkdir_p(path)
+        write_notification_worker(path, GEN)
+        File.write(File.join(path, "worker.#{GEN}.status"), "blocked [at=1]: claim\n", perm: 0o600)
+      end
+      env = { 'RIDDIM_STATE_DIR' => state, 'RIDDIM_REPLACED_HOME' => state,
+              'RIDDIM_REPLACEMENT_HOME' => replacement,
+              'RUBYOPT' => "-r#{File.expand_path('support/watch_scan_replacement', __dir__)}" }
+      _output, error, result = Bundler.with_unbundled_env do
+        Open3.capture3(env, File.expand_path('../bin/riddim', __dir__),
+                       'watch-notifications', '--nonce', '0' * 32, '--exclude-stdin', stdin_data: '[]')
+      end
+      refute_predicate result, :success?, error
+      assert File.directory?("#{state}-old"), "old home missing after swap: #{error}"
+      refute File.exist?(File.join(state, '.notifications')),
+             'replacement home must remain untouched by the watcher scan'
+      pending, scan_error, scan_status = Bundler.with_unbundled_env do
+        Open3.capture3({ 'RIDDIM_STATE_DIR' => "#{state}-old" }, File.expand_path('../bin/riddim', __dir__),
+                       'notifications', 'scan')
+      end
+      assert_predicate scan_status, :success?, scan_error
+      assert_equal ["worker.#{GEN}.1"], JSON.parse(pending).map { |entry| entry.fetch('id') }
+    end
+  end
+
   def test_replaced_lock_marker_cannot_claim_old_watch_as_ready
     run_scenario('notification_home_replacement.mjs', expected: [], marker: 'RIDDIM_REPLACE_LOCK')
   end

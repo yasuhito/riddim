@@ -20,7 +20,7 @@ module Riddim
     module_function
 
     def directory
-      File.join(File.expand_path(Ownership.state_dir), '.notifications')
+      File.join(Ownership.state_dir, '.notifications')
     end
 
     def scan
