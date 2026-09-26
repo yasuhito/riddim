@@ -30,7 +30,7 @@ module Riddim
             File.open('.notification-watcher.lock', File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
               Result.verify_private_file!(file)
               bind!(file)
-              observe(nonce, exclude, interval, directory, file, selected_home)
+              observe(nonce, exclude, interval, directory, file)
             end
           ensure
             ENV['RIDDIM_STATE_DIR'] = previous_home
@@ -46,7 +46,8 @@ module Riddim
     end
 
     # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-    def observe(nonce, exclude, interval, directory, lock, selected_home)
+    def observe(nonce, exclude, interval, directory, lock)
+      selected_home = directory.path
       ready = false
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       loop do
@@ -61,8 +62,10 @@ module Riddim
         unless entries.empty?
           home_stat = directory.stat
           lock_stat = lock.stat
-          announce('pending', nonce, ids: entries.map(&:id),
-                   home: "#{home_stat.dev}:#{home_stat.ino}", lock: "#{lock_stat.dev}:#{lock_stat.ino}")
+          announce('pending', nonce,
+                   ids: entries.map(&:id),
+                   home: "#{home_stat.dev}:#{home_stat.ino}",
+                   lock: "#{lock_stat.dev}:#{lock_stat.ino}")
           break
         end
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)

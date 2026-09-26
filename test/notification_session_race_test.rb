@@ -35,6 +35,7 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_delivery_home_replacement.mjs', expected: [])
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
   def test_watcher_scan_stays_with_held_home_after_path_replacement
     Dir.mktmpdir('riddim-scan-race-') do |root|
       state = File.join(root, 'state')
@@ -51,16 +52,18 @@ class NotificationSessionRaceTest < Minitest::Test
         Open3.capture3(env, File.expand_path('../bin/riddim', __dir__),
                        'watch-notifications', '--nonce', '0' * 32, '--exclude-stdin', stdin_data: '[]')
       end
+
       refute_predicate result, :success?, error
       assert File.directory?("#{state}-old"), "old home missing after swap: #{error}"
-      refute File.exist?(File.join(state, '.notifications')),
-             'replacement home must remain untouched by the watcher scan'
+      refute_path_exists File.join(state, '.notifications'),
+                         'replacement home must remain untouched by the watcher scan'
       pending, scan_error, scan_status = Bundler.with_unbundled_env do
         Open3.capture3({ 'RIDDIM_STATE_DIR' => "#{state}-old" }, File.expand_path('../bin/riddim', __dir__),
                        'notifications', 'scan')
       end
+
       assert_predicate scan_status, :success?, scan_error
-      assert_equal ["worker.#{GEN}.1"], JSON.parse(pending).map { |entry| entry.fetch('id') }
+      assert_equal(["worker.#{GEN}.1"], JSON.parse(pending).map { |entry| entry.fetch('id') })
     end
   end
 
