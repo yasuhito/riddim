@@ -8,13 +8,15 @@ require 'socket'
 require 'timeout'
 require 'tmpdir'
 require 'fileutils'
-require_relative '../lib/riddim/ownership'
 require_relative '../scripts/pi_stall_server'
+require_relative 'support/notification_worker_fixture'
 
 # A real Pi process, isolated home and loopback-only model API. No fake Pi
 # stdout: the assertion is Pi's own RPC user message and model HTTP request.
 # rubocop:disable-next Metrics/ClassLength
 class PiNotificationsE2ETest < Minitest::Test
+  include NotificationWorkerFixture
+
   CLI = File.expand_path('../bin/riddim', __dir__)
   EXT = File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__)
   GEN = 's1767200000.4242.7'
@@ -26,11 +28,7 @@ class PiNotificationsE2ETest < Minitest::Test
     FileUtils.mkdir_p(@state)
     @server = TCPServer.new('127.0.0.1', 0)
     PiStallLab::LabServer.config(@root, @server.addr[1])
-    fields = { 'harness' => 'pi', 'model' => 'stall-lab/test', 'effort' => 'off', 'spawn_gen' => GEN,
-               'backend' => 'herdr', 'herdr_workspace_id' => 'w9', 'herdr_tab_id' => 'w9:t1',
-               'window' => 'test:w9:p1', 'endpoint_task_id' => 'worker', 'herdr_session' => 'test',
-               'herdr_pane_id' => 'w9:p1', 'task_mode' => 'local-only', 'status_protocol' => 'locked-v1' }
-    File.write(File.join(@state, 'worker.meta'), Riddim::Ownership.serialize(fields), mode: 'w', perm: 0o600)
+    write_notification_worker(@state, GEN)
     @status_path = File.join(@state, "worker.#{GEN}.status")
     File.write(@status_path, '', mode: 'w', perm: 0o600)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
@@ -123,15 +121,14 @@ class PiNotificationsE2ETest < Minitest::Test
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
   def test_stopped_watcher_is_reported_failed_not_healthy
-    @paused_watcher = Timeout.timeout(10) do
-      loop do
-        child = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first
-        break Integer(child) if child
-
-        sleep 0.05
-      end
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'probe')
+    verdict = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
+        item['message'] == 'Riddim watcher ready'
     end
-    sleep 1.5 # Wait for readiness and at least one observer heartbeat.
+
+    assert_equal 'info', verdict['notifyType']
+    @paused_watcher = Integer(File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first)
     Process.kill('STOP', @paused_watcher)
     alarm = until_event do |item|
       item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&

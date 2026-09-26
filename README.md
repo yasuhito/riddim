@@ -562,7 +562,10 @@ bin/riddim notifications ack '<id-from-scan>'
 `scan` reconciles current local-only status files and prints pending notifications
 as JSON with task, source generation, sequence, event and stable id. Handle each
 report before acknowledging its exact id; acknowledgement is repeatable and
-never consumes a later report or another generation. A restart can replay
+never consumes a later report or another generation. An acknowledgement whose
+receipt could not be durably published stays pending for retry; a crash after
+a durable receipt may replay an ID rather than promising exactly-once delivery.
+A restart can replay
 unacknowledged reports, including an actionable event followed by routine
 progress. The private queue retains handled receipts for provenance. Scanning
 fails rather than claiming an empty drain when current status or previously
@@ -573,8 +576,9 @@ For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 trusted project extension or with `pi -e`). It binds one observer per home,
 reconciles actionable reports, and sends only stable notification IDs and
 handling instructions via Pi's non-interrupting `followUp` API. The extension
-checks a fresh successor and periodic liveness beacons before claiming
-continuity; missing beacons fail closed. Failures leave the queue inspectable
+checks a fresh successor, the selected home's identity, and periodic liveness
+beacons before claiming continuity; a replaced home or missing beacons fail
+closed. Failures leave the queue inspectable
 and require repair via `/riddim-watch-arm`. On a failure, run
 `notifications scan` first to inspect reports written during downtime. Repair the
 selected home or competing watcher before using `/riddim-watch-arm`; a refused

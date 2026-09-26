@@ -46,7 +46,8 @@ module Riddim
         entries = Notifications.scan.reject { |entry| exclude.include?(entry.id) }
         verify_owner!(directory, lock)
         unless ready
-          announce('ready', nonce)
+          stat = lock.stat
+          announce('ready', nonce, lock: "#{stat.dev}:#{stat.ino}")
           ready = true
         end
         unless entries.empty?
@@ -65,6 +66,10 @@ module Riddim
     def verify_owner!(directory, lock)
       verify_binding!(directory, Ownership.state_dir)
       verify_binding!(lock, File.join(Ownership.state_dir, '.notification-watcher.lock'))
+      Result.verify_private_file!(lock)
+      # File handles have size, not empty?. Inspect the locked inode itself.
+      # rubocop:disable-next Style/ZeroLengthPredicate
+      raise Notifications::Error, 'watcher lock marker is corrupt' unless lock.size.zero?
     end
 
     def verify_binding!(file, path)
