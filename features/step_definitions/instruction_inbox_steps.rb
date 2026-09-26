@@ -68,6 +68,34 @@ Then('the instruction {string} is stored despite notification failure') do |text
   assert_equal [text], inbox_bodies(current_inbox)
 end
 
+When('I run the instruction watcher after the grace period') do
+  # A second home simulates a restarted watcher without racing the daemon
+  # that the send command started in the original home.
+  restarted = File.join(new_temporary_directory, 'state')
+  FileUtils.cp_r(scenario_state_dir, restarted)
+  copy = Dir.glob(File.join(restarted, '*.inbox', '*.msg')).fetch(0)
+  File.utime(Time.at(100), Time.at(100), copy)
+  @environment['RIDDIM_STATE_DIR'] = restarted
+  install_fake_herdr(<<~RUBY)
+    require 'json'
+    if ARGV[0, 2] == %w[pane get]
+      puts JSON.generate(result: { type: 'pane', pane: { pane_id: 'w9:p1' } })
+    elsif ARGV[0, 2] == %w[agent get]
+      puts JSON.generate(result: { agent: { agent: 'pi', pane_id: 'w9:p1', agent_status: 'idle' } })
+    elsif ARGV[0, 2] == %w[pane read]
+      puts "╭─╮\\n│ │\\n╰─╯"
+    else
+      puts [*session_argv, *ARGV].join(' ')
+    end
+  RUBY
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+end
+
+Then('the watcher has retried the stored instruction') do
+  assert @status.success?, @stderr
+  assert herdr_invocations.any? { |call| call.include?('agent prompt') }, herdr_invocations.inspect
+end
+
 Then('the native command reaches Herdr without an inbox') do
   assert_equal "--session riddim agent prompt w9:p1 /help\n", @stdout
   refute File.exist?(current_inbox)
