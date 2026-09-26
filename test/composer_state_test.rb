@@ -109,6 +109,22 @@ class ComposerVerdictTest < Minitest::Test
     end
   end
 
+  def test_recognizes_the_exact_pending_doorbell
+    screen = "────────────\n: Riddim instruction waiting\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', ': Riddim instruction waiting', session: 'riddim')
+    end
+  end
+
+  def test_does_not_identify_a_different_pending_draft_as_our_doorbell
+    screen = "────────────\na different draft\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', ': Riddim instruction waiting', session: 'riddim')
+    end
+  end
+
   def test_proves_empty_for_an_idle_live_pi
     with_screen("pi\tidle") do
       assert_equal :empty, Riddim::Herdr.composer_state('w9:p1', session: 'riddim')

@@ -30,6 +30,24 @@ module Riddim
       verdict
     end
 
+    # Positive proof that a pending composer contains exactly our previously
+    # typed doorbell. Unreadable or competing composer shapes never license an
+    # Enter, even if the same text appears elsewhere in the transcript.
+    # rubocop:disable-next Metrics/AbcSize
+    def composer_holds_line?(pane, line, session:)
+      screen, styled = composer_capture(pane, session: session)
+      return false unless screen
+
+      pair = bottom_most_pi_pair(screen)
+      return false unless pair&.fetch(:valid)
+
+      rows = screen_rows(screen)
+      content = ((pair.fetch(:open) + 1)...pair.fetch(:close)).map do |index|
+        composer_row_content(rows.fetch(index, ''), styled)
+      end.join
+      !content.empty? && content.gsub(/\s/, '') == line.gsub(/\s/, '')
+    end
+
     def composer_identity_verdict(screen, styled, pane, session:)
       identity = composer_identity(pane, session: session) || 'probe-absent'
 

@@ -96,6 +96,19 @@ Then('the watcher has retried the stored instruction') do
   assert herdr_invocations.any? { |call| call.include?('agent prompt') }, herdr_invocations.inspect
 end
 
+When('I acknowledge the stored instruction and restart the watcher') do
+  record = Dir.glob(File.join(current_inbox, '*.msg')).fetch(0)
+  File.rename(record, File.join(current_inbox, 'handled', File.basename(record)))
+  @prompt_count_before_restart = herdr_invocations.count { |call| call.include?('agent prompt') }
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+end
+
+Then('the restarted watcher does not re-notify the handled instruction') do
+  assert @status.success?, @stderr
+  prompt_count = herdr_invocations.count { |call| call.include?('agent prompt') }
+  assert_equal @prompt_count_before_restart, prompt_count
+end
+
 Then('the native command reaches Herdr without an inbox') do
   assert_equal "--session riddim agent prompt w9:p1 /help\n", @stdout
   refute File.exist?(current_inbox)

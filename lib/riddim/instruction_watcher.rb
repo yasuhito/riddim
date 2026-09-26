@@ -66,7 +66,9 @@ module Riddim
     # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
     def scan_owner(name, endpoint, generation, now, herdr)
       # rubocop:disable-next Metrics/BlockLength
-      Ownership.with_lock(name) do
+      # Herdr's notification subprocess inherits the same lifecycle lock as
+      # Send.run, even if this observer dies during prompt delivery.
+      Ownership.with_lock(name, inherit_on_exec: true) do
         return unless Ownership::Endpoint.resolve_snapshot(name) == [endpoint, generation]
 
         dir = InstructionInbox.path(name, generation)
@@ -81,7 +83,7 @@ module Riddim
 
         ring_state = File.join(dir, '.ring-state')
         base = File.basename(record)
-        previous, count, last = read_ladder(ring_state)
+        previous, count, last = read_retry_state(ring_state)
         if previous != base
           count = 0
           last = 0
@@ -96,7 +98,11 @@ module Riddim
         if %i[dead missing].include?(state)
           raise InstructionInbox::Error, "unhandled instruction has no live endpoint: #{record}"
         end
-        return unless state == :alive && herdr.busy_state(endpoint.pane_id, session: endpoint.session) == :idle
+        raise InstructionInbox::Error, "instruction endpoint unverifiable: #{record}" unless state == :alive
+
+        activity = herdr.busy_state(endpoint.pane_id, session: endpoint.session)
+        return if activity == :busy
+        raise InstructionInbox::Error, "worker activity unverifiable: #{record}" unless activity == :idle
 
         # No other lifecycle writer may rebind the endpoint while this lock is
         # held. Recheck the file after the backend probes: handled/ is the only
@@ -106,7 +112,7 @@ module Riddim
 
         bell = InstructionInbox.notification(dir)
         Send.notify_worker(herdr, endpoint, bell, record)
-        write_ladder(ring_state, base, count + 1, now)
+        write_retry_state(ring_state, base, count + 1, now)
       end
     rescue InstructionInbox::Error
       raise
@@ -115,7 +121,7 @@ module Riddim
     end
 
     # rubocop:disable-next Metrics/CyclomaticComplexity
-    def read_ladder(path)
+    def read_retry_state(path)
       return [nil, 0, 0] unless File.exist?(path)
 
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
@@ -126,7 +132,7 @@ module Riddim
       [base, count.to_i, last.to_i]
     end
 
-    def write_ladder(path, base, count, now)
+    def write_retry_state(path, base, count, now)
       temp = "#{path}.#{Process.pid}.tmp"
       File.open(temp, File::WRONLY | File::CREAT | File::EXCL | File::NOFOLLOW, 0o600) do |file|
         file.write("#{base}\t#{count}\t#{now}\n")

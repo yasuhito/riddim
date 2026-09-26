@@ -81,16 +81,34 @@ module Riddim
             "(may remain open; inspect status and repair): #{e.message}"
     end
 
+    # rubocop:disable-next Metrics/CyclomaticComplexity
     def notify_worker(herdr, endpoint, bell, record)
       state = herdr.agent_state(endpoint.pane_id, session: endpoint.session)
       composer = herdr.composer_state(endpoint.pane_id, session: endpoint.session) unless %i[dead
                                                                                              missing].include?(state)
-      return if !%i[dead missing].include?(state) && composer != :pending &&
-                herdr.notify?(endpoint.pane_id, bell, session: endpoint.session)
+      unless %i[dead missing].include?(state)
+        return if composer == :pending && submit_existing_doorbell?(herdr, endpoint, bell)
+        return if composer != :pending && herdr.notify?(endpoint.pane_id, bell, session: endpoint.session)
+      end
 
       warn "riddim: notification skipped or unconfirmed; instruction stored at #{record}; do not resend"
     rescue StandardError
       warn "riddim: notification skipped or unconfirmed; instruction stored at #{record}; do not resend"
+    end
+
+    # An earlier notification may have been typed but not submitted. Only a
+    # positively identified copy of our own doorbell may receive Enter; a
+    # different pending draft is never submitted or overwritten.
+    def submit_existing_doorbell?(herdr, endpoint, bell)
+      pane = endpoint.pane_id
+      session = endpoint.session
+      return false if herdr.busy_state(pane, session: session) == :busy
+      return false unless herdr.composer_holds_line?(pane, bell, session: session)
+
+      herdr.send_key(pane, 'Enter', session: session)
+      sleep 0.3
+      herdr.send_key(pane, 'Enter', session: session) if herdr.composer_holds_line?(pane, bell, session: session)
+      true
     end
   end
 end

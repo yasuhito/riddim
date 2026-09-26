@@ -495,6 +495,8 @@ puts <<~HELP
                             Append a worker report under the task name lock
     result <name>           Read a local-only worker event and verify a ready branch
     notifications [scan]    Inspect pending reports; scan selected local state for new ones
+    watch-instructions [--once]
+                            Retry unhandled local-only instructions independently of Pi notifications
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main
     merge-local <name> --head <reviewed-commit>

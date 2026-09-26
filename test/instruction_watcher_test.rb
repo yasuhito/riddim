@@ -4,11 +4,12 @@ require 'minitest/autorun'
 require_relative 'endpoint_test'
 require_relative '../lib/riddim/instruction_watcher'
 
+# rubocop:disable-next Metrics/ClassLength
 class InstructionWatcherTest < Minitest::Test
   include EndpointStateEnv
 
   class FakeHerdr
-    attr_accessor :busy, :composer, :state
+    attr_accessor :busy, :composer, :state, :held_line
     attr_reader :bells
 
     def initialize
@@ -36,6 +37,17 @@ class InstructionWatcherTest < Minitest::Test
       composer
     end
 
+    def composer_holds_line?(_pane, _line, session:)
+      raise 'wrong session' unless session == 'lab'
+
+      held_line
+    end
+
+    def send_key(pane, key, session:)
+      @bells << [pane, key, session]
+      @held_line = false
+    end
+
     def notify?(pane, bell, session:)
       @bells << [pane, bell, session]
       true
@@ -43,6 +55,31 @@ class InstructionWatcherTest < Minitest::Test
   end
 
   # rubocop:disable Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_notification_child_keeps_ownership_lock_if_watcher_exits
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      def herdr.notify?(_pane, _bell, session:)
+        raise 'wrong session' unless session == 'lab'
+
+        @child = Process.spawn(RbConfig.ruby, '-e', 'sleep 10', close_others: false)
+        true
+      end
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      lock_path = Riddim::Ownership.lock_path('worker')
+
+      File.open(lock_path, File::RDWR | File::NOFOLLOW) do |lock|
+        refute lock.flock(File::LOCK_EX | File::LOCK_NB)
+      end
+    ensure
+      if (child = herdr.instance_variable_get(:@child))
+        Process.kill('TERM', child)
+        Process.wait(child)
+      end
+    end
+  end
+
   def test_grace_spacing_oldest_and_acknowledgement_survive_restart
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -118,6 +155,30 @@ class InstructionWatcherTest < Minitest::Test
       [190, 280, 370].each { |time| poll(time, herdr) }
 
       assert_raises(Riddim::InstructionInbox::Error) { poll(460, herdr) }
+    end
+  end
+
+  def test_own_pending_doorbell_is_submitted_without_retyping
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      herdr.composer = :pending
+      herdr.held_line = true
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+
+      assert_equal [['w9:p2', 'Enter', 'lab']], herdr.bells
+    end
+  end
+
+  def test_unverifiable_activity_fails_instead_of_appearing_healthy
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      herdr.busy = :unknown
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
     end
   end
 

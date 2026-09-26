@@ -435,10 +435,12 @@ For diagnostics, `bin/riddim watch-instructions --once` performs one scan when
 no watcher holds the lock. It waits 90 seconds after the oldest pending record,
 then at least 90 seconds between attempts, with a maximum of three attempts.
 A busy worker waits without consuming the budget; a proven pending composer
-is never submitted. The worker's move to `handled/` alone stops retries.
-An exhausted budget terminates the watcher with an error (the automatically
-started process logs to `state/.instruction-watcher.log`), not a healthy
-heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
+holding different text is never submitted. When it holds exactly an earlier
+copy of this doorbell, the watcher retries Enter without retyping the line.
+The worker's move to `handled/` alone stops retries.
+An exhausted budget or an unverifiable endpoint/activity verdict terminates
+the watcher with an error (the automatically started process logs to
+`state/.instruction-watcher.log`), not a healthy heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
 as a supervisor wake or monitor remote workers. Inspect the saved inbox and
 worker pane when retries fail; a notification is not a receipt or completion.
 
