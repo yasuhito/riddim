@@ -23,6 +23,10 @@ class PiNotificationsE2ETest < Minitest::Test
 
   # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
   def setup
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
+
     @root = Dir.mktmpdir('riddim-pi-notifications-')
     @state = File.join(@root, 'state')
     FileUtils.mkdir_p(@state)

@@ -23,7 +23,7 @@ module Riddim
       # file. Both are held for the observer's lifetime, never just at arm.
       File.open(selected_home, File::RDONLY | File::NOFOLLOW) do |directory|
         bind!(directory)
-        Dir.fchdir(directory.fileno) do
+        Dir.chdir("/proc/self/fd/#{directory.fileno}") do
           previous_home = ENV.fetch('RIDDIM_STATE_DIR', nil)
           ENV['RIDDIM_STATE_DIR'] = '.'
           begin
