@@ -171,6 +171,18 @@ Feature: Land an approved local-only worker branch into local main
     When I run riddim merge-local with the approved head
     Then merge-local refuses the open decision gate
 
+  Scenario: Land the exact reviewed tip after an explicit answer and later done
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "needs-decision [at=122]: unclear base"
+    And the supervisor answers key "default" with "Use main"
+    And the worker reports "done [at=123]: work committed"
+    And the operator approves the reviewed worker branch tip
+    And Git records every invocation during the merge
+    When I run riddim merge-local with the approved head
+    Then merge-local lands the tip while Herdr, remotes, and worker assets stay untouched
+
   Scenario: Refuse a direct status append after the first read but before landing
     Given a local-only task was started
     And the task input is removed after launch

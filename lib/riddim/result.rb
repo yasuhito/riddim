@@ -120,7 +120,7 @@ module Riddim
         raise Error, 'status file contains an invalid event' unless content.match?(EVENT) || content.match?(RESOLUTION)
 
         kind = content.split(' ', 2).first
-        key = content[/\[key=([A-Za-z0-9._-]+)\]/, 1] || 'default'
+        key = content.split(': ', 2).first[/\[key=([A-Za-z0-9._-]+)\]/, 1] || 'default'
         Event.new(sequence: sequence, kind: kind, key: key, end_offset: position)
       end
     end

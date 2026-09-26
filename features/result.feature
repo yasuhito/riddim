@@ -182,6 +182,40 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then the answer is stored but its decision remains open for repair
 
+  Scenario: A key mentioned in question prose cannot impersonate its decision key
+    Given a local-only task was started
+    And the worker reports "needs-decision [at=16]: Should docs mention [key=alpha]?"
+    When I run riddim with:
+      """
+      send worker --resolve-key alpha Choose A
+      """
+    Then the wrong key is refused without storing an answer
+
+  Scenario: A slash-prefixed keyed answer is stored as text, not run as a command
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "needs-decision [at=16]: Which path?"
+    And the supervisor answers key "default" with "/usr/local/bin"
+    And the worker reports "done [at=17]: tests passed"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then the local-only result is "ready: done [at=17]: tests passed"
+
+  Scenario: A failure remains a gate after an unrelated keyed answer
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "failed [at=15]: tests failed"
+    And the worker reports "needs-decision [at=16]: Which path?"
+    And the supervisor answers key "default" with "/usr/local/bin"
+    And the worker reports "done [at=17]: tests passed"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then the local-only result is "reported (not ready): done [at=17]: tests passed"
+
   Scenario: An already answered key cannot deliver a duplicate answer
     Given a local-only task was started
     And the worker reports "needs-decision [at=16] [key=alpha]: choose A"

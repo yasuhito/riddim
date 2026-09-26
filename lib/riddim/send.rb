@@ -21,7 +21,7 @@ module Riddim
     def route_locked(name, message, endpoint_records, herdr, resolve_key = nil)
       endpoint, generation = endpoint_records.resolve_snapshot(name)
       fields = Ownership.parse(endpoint_records.read_bytes(Ownership.record_path(name)))
-      if inbox_target?(fields, message)
+      if inbox_target?(fields, message) || (resolve_key && fields['task_mode'] == 'local-only')
         verify_instruction_owner!(name, endpoint, generation, fields)
         verify_open_key!(name, generation, resolve_key) if resolve_key
         return deliver_instruction(name, generation, endpoint, message, herdr, resolve_key)
