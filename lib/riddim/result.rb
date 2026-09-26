@@ -14,7 +14,8 @@ module Riddim
     EVENT = /\A(done|blocked|failed|needs-decision|working|paused) \[at=\d+\]: ([^\n\r\x00]+)\z/
     MAX_BYTES = 65_536
     STATUS_PROTOCOL = 'locked-v1'
-    Status = Data.define(:last, :open_gate)
+    Event = Data.define(:sequence, :kind, :end_offset)
+    Status = Data.define(:last, :open_gate, :events)
 
     module_function
 
@@ -93,14 +94,21 @@ module Riddim
     end
 
     def parse_events(bytes)
-      text = valid_status_text(bytes)
-      return Status.new(last: nil, open_gate: false) if text.empty?
+      lines = valid_status_text(bytes).lines
+      events = validated_events(lines)
+      gate = events.any? { |event| %w[blocked needs-decision failed].include?(event.kind) }
+      Status.new(last: lines.last&.delete_suffix("\n"), open_gate: gate, events: events)
+    end
 
-      events = text.lines.map { |line| line.delete_suffix("\n") }
-      raise Error, 'status file contains an invalid event' unless events.all? { |line| line.match?(EVENT) }
+    def validated_events(lines)
+      position = 0
+      lines.map.with_index(1) do |line, sequence|
+        position += line.bytesize
+        content = line.delete_suffix("\n")
+        raise Error, 'status file contains an invalid event' unless content.match?(EVENT)
 
-      gate = events.any? { |line| line.match?(/\A(?:blocked|needs-decision|failed) /) }
-      Status.new(last: events.last, open_gate: gate)
+        Event.new(sequence: sequence, kind: content.split(' ', 2).first, end_offset: position)
+      end
     end
 
     def valid_status_text(bytes)

@@ -67,6 +67,14 @@ Feature: Inspect durable actionable reports from the selected local-only home
     When I scan pending notifications twice
     Then the appended decision stays pending with its own sequence
 
+  Scenario: A multibyte routine report does not shift the next actionable report's cursor
+    Given the worker reports "working [at=1]: 進行中"
+    And notifications were scanned
+    And the worker reports "needs-decision [at=2]: 判断待ち"
+    And the worker reports "paused [at=3]: waiting"
+    When I scan pending notifications twice
+    Then the appended decision stays pending with its own sequence
+
   Scenario: Acknowledgement handles only a presented identity and survives replay
     Given the worker reports "blocked [at=1]: hold"
     And notifications were scanned
