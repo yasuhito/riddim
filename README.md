@@ -565,30 +565,32 @@ report before acknowledging its exact id; acknowledgement is repeatable and
 never consumes a later report or another generation. An acknowledgement whose
 receipt could not be durably published stays pending for retry; a crash after
 a durable receipt may replay an ID rather than promising exactly-once delivery.
-A restart can replay
-unacknowledged reports, including an actionable event followed by routine
-progress. The private queue retains handled receipts for provenance. Scanning
-fails rather than claiming an empty drain when current status or previously
-classified queue evidence is missing or invalid. `notifications` without
-`scan` inspects the existing queue without reconciling current workers.
+A restart can replay unacknowledged reports, including an actionable event
+followed by routine progress. The private queue retains handled receipts for
+provenance. Scanning fails rather than claiming an empty drain when current
+status or previously classified queue evidence is missing or invalid.
+`notifications` without `scan` inspects the existing queue without reconciling
+current workers.
 For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 `RIDDIM_STATE_DIR` and load `.pi/extensions/riddim-notifications.ts` (as a
 trusted project extension or with `pi -e`). It binds one observer per home,
-reconciles actionable reports, and sends only stable notification IDs and
-handling instructions via Pi's non-interrupting `followUp` API. The extension
-checks a fresh successor, the selected home's identity, and periodic liveness
-beacons before claiming continuity; a replaced home or missing beacons fail
-closed. Failures leave the queue inspectable
-and require repair via `/riddim-watch-arm`. On a failure, run
-`notifications scan` first to inspect reports written during downtime. Repair the
-selected home or competing watcher before using `/riddim-watch-arm`; a refused
-arm is not a healthy watcher. If Pi cannot deliver a failure follow-up, inspect
-Pi stderr and drain manually. After handling, drain with `notifications scan`
-and acknowledge individual presented IDs. Pi accepting or consuming a follow-up
-never acknowledges it. Session replacements re-present unhandled reports,
-including IDs accepted into the previous Pi session's pending queue. This
-smaller subset of Firstmate's watcher never interrupts workers, approves
-landing, or infers current Worker state.
+reconciles actionable reports, and sends stable notification IDs, source home
+and watcher-lock identities, and handling instructions via Pi's
+non-interrupting `followUp` API. The extension checks a fresh successor, the
+selected home's identity, and periodic liveness beacons before claiming
+continuity; a replaced home, replaced lock, or missing beacons fail closed.
+Before scanning after a failure, verify the original selected home and watcher
+lock; actionable follow-ups include their identities. If either changed,
+recover reports from the original home manually; never scan the replacement as
+though it were the source. Otherwise run `notifications scan` to inspect reports
+written during downtime. Repair the selected home or competing watcher before
+using `/riddim-watch-arm`; a refused arm is not a healthy watcher. If Pi cannot
+deliver a failure follow-up, inspect Pi stderr and drain manually. After
+handling, drain with `notifications scan` and acknowledge individual presented
+IDs. Pi accepting or consuming a follow-up never acknowledges it. Session
+replacements re-present unhandled reports, including IDs accepted into the
+previous Pi session's pending queue. This smaller subset of Firstmate's watcher
+never interrupts workers, approves landing, or infers current Worker state.
 
 #### Review a local-only worker's committed diff
 
