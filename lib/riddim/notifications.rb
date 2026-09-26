@@ -141,11 +141,10 @@ module Riddim
       generation = snapshot.last
       path = Result.path(name, generation)
       # Result's parser refuses partial, malformed, oversized, or symlinked input.
-      text = File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
+      text, events = File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
         Result.verify_private_file!(file)
         content = file.read(Result::MAX_BYTES + 1) || ''
-        Result.parse_events(content)
-        content
+        [content, Result.parse_events(content).events]
       end
       cursor_path = File.join(directory, ".cursor-#{name}-#{generation}")
       cursor = read_cursor(cursor_path)
@@ -162,26 +161,23 @@ module Riddim
         raise Error, "ownership changed during notification scan for #{name}"
       end
 
-      position = 0
-      text.lines.each_with_index do |line, index|
-        position += line.bytesize
-        event = line.split(' ', 2).first
-        next unless ACTIONABLE.include?(event)
+      events.each do |event|
+        next unless ACTIONABLE.include?(event.kind)
 
-        entry = Entry.new(id: identity(name, generation, index + 1), task: name,
-                          generation: generation, sequence: index + 1, event: event)
+        entry = Entry.new(id: identity(name, generation, event.sequence), task: name,
+                          generation: generation, sequence: event.sequence, event: event.kind)
         queue_path = File.join(directory, "#{entry.id}.json")
-        if position <= offset && !File.exist?(queue_path) && !File.symlink?(queue_path)
+        if event.end_offset <= offset && !File.exist?(queue_path) && !File.symlink?(queue_path)
           raise Error, "missing notification at #{queue_path}"
         end
 
         publish(queue_path, "#{JSON.generate(entry.to_h)}\n")
       end
-      return if position == offset
+      return if text.bytesize == offset
 
       # The cursor is only an optimization. The queue is durable first; on a
       # crash before this replacement, replay sees the same event identities.
-      replace(cursor_path, "#{JSON.generate(offset: position, digest: Digest::SHA256.hexdigest(text))}\n")
+      replace(cursor_path, "#{JSON.generate(offset: text.bytesize, digest: Digest::SHA256.hexdigest(text))}\n")
     end
 
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
