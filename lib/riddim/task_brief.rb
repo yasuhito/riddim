@@ -2,6 +2,7 @@
 
 require 'shellwords'
 require_relative 'ownership'
+require_relative 'instruction_inbox'
 
 module Riddim
   # One immutable launch instruction: a private copy of the human's task,
@@ -66,7 +67,12 @@ module Riddim
     end
 
     def render(name, task, status_path: nil, spawn_gen: nil)
-      role = <<~ROLE
+      "#{worker_role(name)}#{local_contract(name, status_path, spawn_gen)}" \
+        "#{InstructionInbox.receive_contract(name, spawn_gen) if status_path}\n# Human's task\n#{task}"
+    end
+
+    def worker_role(name)
+      <<~ROLE
         # Riddim worker role
         You are a coding worker assigned by Riddim for task #{name}, not the supervisor.
         Do the assigned work yourself in your isolated Git worktree and branch. Do not manage other agents or their endpoints.
@@ -74,7 +80,6 @@ module Riddim
         Do not push, open or merge a PR, or discard work without the human's explicit authorization.
         Report your changes, test results, and any unfinished work in your response in this pane.
       ROLE
-      "#{role}#{local_contract(name, status_path, spawn_gen)}\n# Human's task\n#{task}"
     end
 
     def report_executable

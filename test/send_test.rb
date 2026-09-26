@@ -8,6 +8,20 @@ EventRecords = Struct.new(:events, :endpoints) do
     events << [:resolve, name]
     endpoints.shift
   end
+
+  def resolve_snapshot(name)
+    [resolve(name), 's1767200000.4242.7']
+  end
+
+  def read_bytes(_path)
+    profile = Struct.new(:harness, :model, :effort).new('pi', 'test', 'max')
+    workspace = Struct.new(:workspace_id, :tab_id, :root_pane_id).new('w9', 'w9:t1', 'w9:p1')
+    fields = Riddim::Ownership::Endpoint.fields(
+      name: 'worker', profile: profile, spawn_gen: 's1767200000.4242.7',
+      session: 'recorded', workspace: workspace
+    )
+    Riddim::Ownership.serialize(fields)
+  end
 end
 
 EventLocks = Struct.new(:events) do

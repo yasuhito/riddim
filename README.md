@@ -418,15 +418,25 @@ the name during delivery.
 bin/riddim send worker Fix the failing tests
 ```
 
-This remains deliberately smaller than Firstmate's send. It is a direct Herdr
-native prompt (`herdr agent prompt`), not a durable steering inbox: Riddim
-records no sequenced inbox entry, rings no retryable doorbell, tracks no reply,
-and provides no acknowledgement or idempotent retry contract. A successful
-command proves only that Herdr accepted the prompt. A failed Herdr prompt
-returns status 3 and a delivery-unconfirmed warning rather than
-claiming no delivery; a child killed by a signal retains signal termination
-with the same warning. No retry is automatically safe because an instruction
-might already have reached the pane. Read what the agent answered separately
+For a local-only task started with `--task-file`, ordinary text is saved first
+in `state/<name>.<spawn-gen>.inbox/NNNNNNNNN.msg` (owner-only), then a short
+notification is sent to Pi. The worker's launch brief describes how to read
+pending messages in numeric order and move each acted-on message into
+`handled/`. A duplicate notification creates no duplicate instruction. A
+successful send proves storage only, not receipt, reply, or completion. If
+notification fails, the command still succeeds and reports the saved path;
+do not resend blindly. The inbox is generation-scoped: an old task's pending
+instructions are never presented to a replacement using the same name.
+Riddim does not yet re-ring missed notifications or track replies as Firstmate
+does. Check the saved inbox or the worker pane when a notification is missed.
+
+For other agents, and for Pi-native `/` commands, send remains a direct Herdr
+native prompt (`herdr agent prompt`). A successful direct send proves only
+that Herdr accepted the prompt. A failed direct prompt returns status 3 and a
+delivery-unconfirmed warning rather than claiming no delivery; a child killed
+by a signal retains signal termination with the same warning. No retry is
+automatically safe because an instruction might already have reached the pane.
+Read what the agent answered separately
 with `bin/riddim peek worker`, and inspect the pane before any retry.
 
 ### Start a background Pi agent
@@ -500,8 +510,8 @@ retains the pane, record, brief, launch file, and worktree for inspection:
 Riddim cannot prove the task did not already run and never automatically
 retries it. A symlinked, non-regular, empty, invalid UTF-8, or NUL-containing
 task file refuses before allocation. This remains a Pi-only subset of Firstmate's launch brief: there is no typed
-Firstmate operational-input marker, durable inbox, acknowledgement, reply
-tracking, or PR delivery. Without `--task-file`, `start --worktree` retains
+Firstmate operational-input marker, automatic inbox re-ring, reply tracking,
+or PR delivery. Local-only tasks do have a durable inbox and handled receipt. Without `--task-file`, `start --worktree` retains
 its previous native `agent start` behavior.
 
 #### Local-only result handoff

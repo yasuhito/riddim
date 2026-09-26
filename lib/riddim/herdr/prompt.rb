@@ -5,6 +5,15 @@ module Riddim
   module Herdr
     module_function
 
+    # Best-effort doorbell, retaining the ownership lock in Herdr if the
+    # controller exits while the subprocess is still submitting.
+    def notify?(target, text, session:)
+      args = command('agent', 'prompt', target, text, session: session)
+      pid = Process.spawn(environment(session), 'herdr', *args,
+                          close_others: false, out: File::NULL, err: File::NULL)
+      Process.wait2(pid).last.success?
+    end
+
     # The Herdr child inherits the per-name lock across exec. A dead parent
     # cannot release ownership while Herdr still delivers the prompt.
     def prompt(target, message, session: nil)
