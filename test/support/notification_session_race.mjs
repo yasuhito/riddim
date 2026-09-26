@@ -13,7 +13,7 @@ const messages = [];
 let rejectOld;
 let oldOffered = false;
 
-function fakePi(deferFirst = false) {
+function fakePi() {
   const events = new Map();
   let command;
   const pi = {
@@ -22,7 +22,7 @@ function fakePi(deferFirst = false) {
     sendUserMessage(text, options) {
       assert.equal(options.deliverAs, "followUp");
       messages.push(text);
-      if (deferFirst && text.includes(first) && !oldOffered) {
+      if (text.includes(first) && !oldOffered) {
         oldOffered = true;
         return new Promise((_resolve, reject) => { rejectOld = reject; });
       }
@@ -45,7 +45,7 @@ async function until(predicate) {
   throw new Error(`timed out waiting for notification: ${JSON.stringify({ messages, notices })}`);
 }
 
-const old = fakePi(true);
+const old = fakePi();
 old.start();
 appendFileSync(status, "blocked [at=1]: first claim\n");
 await until(() => oldOffered);

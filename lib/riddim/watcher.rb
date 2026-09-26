@@ -51,7 +51,10 @@ module Riddim
           ready = true
         end
         unless entries.empty?
-          announce('pending', nonce, ids: entries.map(&:id))
+          home_stat = directory.stat
+          lock_stat = lock.stat
+          announce('pending', nonce, ids: entries.map(&:id),
+                   home: "#{home_stat.dev}:#{home_stat.ino}", lock: "#{lock_stat.dev}:#{lock_stat.ino}")
           break
         end
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)

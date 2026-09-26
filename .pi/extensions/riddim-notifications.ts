@@ -16,7 +16,8 @@ const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
 const BEAT_TIMEOUT = 4000;
 
-type Frame = { type: string; nonce: string; ids?: string[]; lock?: string };
+type Frame = { type: string; nonce: string; ids?: string[]; home?: string; lock?: string };
+type Batch = { ids: string[]; home: string; lock: string };
 
 function lockIdentity(): string | null {
   if (!home) return null;
@@ -51,8 +52,8 @@ export default function (pi: ExtensionAPI) {
   let active = false;
   let serial = 0;
   let inFlight: number | null = null;
-  const batches: string[][] = [];
-  const accepted = new Set<string>();
+  const batches: Batch[] = [];
+  const accepted = new Map<string, Set<string>>();
   let notifyFailure: ((message: string) => void) | null = null;
 
   function failure(reason: string, epoch = serial): void {
@@ -108,11 +109,12 @@ export default function (pi: ExtensionAPI) {
     });
     child = proc;
     proc.stdin?.on("error", () => { /* An early watcher refusal closes stdin. */ });
-    proc.stdin?.end(JSON.stringify([...accepted]));
+    const currentLock = lockIdentity();
+    proc.stdin?.end(JSON.stringify([...(accepted.get(`${binding}/${currentLock}`) ?? [])]));
     let stdout = "";
     let stderr = "";
     let ready = false;
-    let pending: string[] | null = null;
+    let pending: Batch | null = null;
     let failureReported = false;
     const watchdog = setInterval(() => {
       if (!active || serial !== epoch || !ready || failureReported || child !== proc ||
@@ -146,8 +148,9 @@ export default function (pi: ExtensionAPI) {
         } else if (frame.type === "beat" && ready) {
           verifiedAt = performance.now();
         } else if (frame.type === "pending" && ready && Array.isArray(frame.ids) &&
-          frame.ids.length > 0 && frame.ids.every((id) => identity.test(id))) {
-          pending = frame.ids;
+          frame.ids.length > 0 && frame.ids.every((id) => identity.test(id)) &&
+          frame.home === binding && frame.lock === boundLock) {
+          pending = { ids: frame.ids, home: frame.home, lock: frame.lock };
         } else { proc.kill(); return; }
       }
     });
@@ -187,18 +190,30 @@ export default function (pi: ExtensionAPI) {
     inFlight = epoch;
     try {
       while (active && serial === epoch && batches.length > 0) {
-        const ids = [...new Set(batches.splice(0).flat())];
+        const batch = batches.shift()!;
+        const ids = [...new Set(batch.ids)];
+        const source = `${batch.home}/${batch.lock}`;
+        if (batch.home !== homeIdentity() || batch.lock !== lockIdentity()) {
+          failure("selected home or watcher lock changed; report remains in its original home", epoch);
+          continue;
+        }
         // Suppression is session-local; a restart replays all unhandled rows.
-        ids.forEach((id) => accepted.add(id));
+        if (!accepted.has(source)) accepted.set(source, new Set());
+        ids.forEach((id) => accepted.get(source)!.add(id));
         const healthy = await arm();
         if (!active || serial !== epoch) return;
+        if (batch.home !== homeIdentity() || batch.lock !== lockIdentity()) {
+          ids.forEach((id) => accepted.get(source)!.delete(id));
+          failure("selected home or watcher lock changed; report remains in its original home", epoch);
+          continue;
+        }
         const successor = healthy ? readyChild : null;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
         const content = `Riddim Supervisor notification in selected home. Pending IDs: ${ids.join(", ")}. ` +
           "Run riddim notifications scan to drain; handle the reports, then explicitly ack each presented ID. " +
           `This is a Worker claim, not Git readiness or Landing approval. ${detail}`;
-        if (!healthy) ids.forEach((id) => accepted.delete(id));
+        if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
@@ -209,7 +224,7 @@ export default function (pi: ExtensionAPI) {
           ]);
         } catch (error) {
           if (serial !== epoch) return;
-          ids.forEach((id) => accepted.delete(id));
+          ids.forEach((id) => accepted.get(source)!.delete(id));
           // Stop only this delivery's successor, not a later operator rearm.
           // Withdraw readiness before signaling: close is asynchronous.
           if (successor && child === successor) {

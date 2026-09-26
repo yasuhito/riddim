@@ -27,6 +27,10 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_home_replacement.mjs', expected: [])
   end
 
+  def test_pending_report_stays_with_replaced_home
+    run_scenario('notification_pending_home_replacement.mjs', expected: [])
+  end
+
   def test_replaced_lock_marker_cannot_claim_old_watch_as_ready
     run_scenario('notification_home_replacement.mjs', expected: [], marker: 'RIDDIM_REPLACE_LOCK')
   end
