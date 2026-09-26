@@ -140,7 +140,6 @@ module Riddim
 
       generation = snapshot.last
       path = Result.path(name, generation)
-      # Result's parser refuses partial, malformed, oversized, or symlinked input.
       text, events = File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
         Result.verify_private_file!(file)
         content = file.read(Result::MAX_BYTES + 1) || ''
