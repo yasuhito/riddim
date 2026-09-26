@@ -11,11 +11,13 @@ module Riddim
     class Error < Ownership::Error; end
 
     GENERATION = /\As\d+\.\d+\.\d+\z/
-    EVENT = /\A(done|blocked|failed|needs-decision|working|paused) \[at=\d+\]: ([^\n\r\x00]+)\z/
+    EVENT = /\A(done|blocked|failed|needs-decision|working|paused)\x20\[at=\d+\](?:\x20\[key=[A-Za-z0-9._-]+\])?:
+             \x20([^\n\r\x00]+)\z/x
+    RESOLUTION = /\Aresolved \[key=([A-Za-z0-9._-]+)\] \[at=\d+\]: answered: ([^\n\r\x00]+)\z/
     MAX_BYTES = 65_536
     STATUS_PROTOCOL = 'locked-v1'
-    Event = Data.define(:sequence, :kind, :end_offset)
-    Status = Data.define(:last, :open_gate, :events)
+    Event = Data.define(:sequence, :kind, :key, :end_offset)
+    Status = Data.define(:last, :open_gate, :events, :open_keys)
 
     module_function
 
@@ -96,8 +98,18 @@ module Riddim
     def parse_events(bytes)
       lines = valid_status_text(bytes).lines
       events = validated_events(lines)
-      gate = events.any? { |event| %w[blocked needs-decision failed].include?(event.kind) }
-      Status.new(last: lines.last&.delete_suffix("\n"), open_gate: gate, events: events)
+      open = open_decisions(events)
+      gate = !open.empty? || events.any? { |event| event.kind == 'failed' }
+      Status.new(last: lines.last&.delete_suffix("\n"), open_gate: gate, events: events, open_keys: open)
+    end
+
+    def open_decisions(events)
+      events.each_with_object({}) do |event, open|
+        case event.kind
+        when 'blocked', 'needs-decision' then open[event.key] = event.kind
+        when 'resolved' then open.delete(event.key)
+        end
+      end
     end
 
     def validated_events(lines)
@@ -105,9 +117,11 @@ module Riddim
       lines.map.with_index(1) do |line, sequence|
         position += line.bytesize
         content = line.delete_suffix("\n")
-        raise Error, 'status file contains an invalid event' unless content.match?(EVENT)
+        raise Error, 'status file contains an invalid event' unless content.match?(EVENT) || content.match?(RESOLUTION)
 
-        Event.new(sequence: sequence, kind: content.split(' ', 2).first, end_offset: position)
+        kind = content.split(' ', 2).first
+        key = content[/\[key=([A-Za-z0-9._-]+)\]/, 1] || 'default'
+        Event.new(sequence: sequence, kind: kind, key: key, end_offset: position)
       end
     end
 

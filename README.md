@@ -551,13 +551,21 @@ linked worktree is still in the same repository, its branch has a commit past
 the recorded start HEAD, that commit is the branch tip, its worktree has no
 tracked or untracked changes, and `main` is an ancestor of that tip. Otherwise
 it remains `reported (not ready)`. An earlier `blocked`, `failed`, or
-`needs-decision` event cannot be cleared by a later `done` in this subset;
-resolve it explicitly and start a new task. Missing, symlinked, unreadable, or malformed
+`needs-decision` event cannot be cleared by a later `done`. For an open
+`blocked` or `needs-decision` key, use
+`bin/riddim send <name> --resolve-key <key> <answer...>` to store the answer
+in the current generation's instruction inbox and explicitly close just that
+key. Events without `[key=<slug>]` use `default`; keyed events put the tag
+after `[at=<epoch>]`. A failed event still gates readiness. A missing or
+already closed key is refused before delivery. If the answer is stored but
+closing fails, do not resend: inspect the printed inbox record and repair the
+still-open status under the per-name lock. The answer is not a worker receipt
+or completion, and a ready claim still requires a later `done`. Missing, symlinked, unreadable, or malformed
 status evidence fails closed instead of yielding `ready`. This is a snapshot,
 not permission to merge: independently review code and tests and recheck Git
 before merging. It does not infer completion from Herdr idle, validate test
 claims, automatically merge, clean up, or implement Firstmate's reconciled
-current crew-state or inbox. The opt-in notification watcher below does not
+current crew-state or general watcher. The opt-in notification watcher below does not
 monitor Pi activity or replace Firstmate's general watcher. Existing starts
 without `--mode` retain
 their previous briefs and delivery behavior.

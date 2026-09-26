@@ -326,7 +326,7 @@ Feature: Send a direct prompt to a started agent
         """
         send
         """
-      Then standard error is "Usage: riddim send <name> <message...>"
+      Then standard error is "Usage: riddim send <name> [--resolve-key <key>] <message...>"
 
     Scenario: Reject a missing message
       When I run riddim with:
@@ -340,7 +340,7 @@ Feature: Send a direct prompt to a started agent
         """
         send worker
         """
-      Then standard error is "Usage: riddim send <name> <message...>"
+      Then standard error is "Usage: riddim send <name> [--resolve-key <key>] <message...>"
 
     Scenario: Reject a name outside the agent-name shape
       When I run riddim with:

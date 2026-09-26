@@ -58,7 +58,7 @@ Feature: Discover available commands
     When I run riddim with:
       """
       """
-    Then standard output includes "send <name> <message...>"
+    Then standard output includes "send <name> [--resolve-key <key>] <message...>"
 
   Scenario: Exit successfully when showing help for send
     When I run riddim with:

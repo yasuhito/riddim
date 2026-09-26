@@ -3,6 +3,7 @@
 require_relative 'herdr'
 require_relative 'ownership'
 require_relative 'instruction_inbox'
+require_relative 'report'
 
 module Riddim
   # The ownership-safe send corridor. The unlocked read refuses missing
@@ -12,18 +13,21 @@ module Riddim
   module Send
     module_function
 
-    def run(name, message, endpoint_records: Ownership::Endpoint, locks: Ownership, herdr: Herdr)
+    def run(name, message, resolve_key: nil, endpoint_records: Ownership::Endpoint, locks: Ownership, herdr: Herdr) # rubocop:disable Metrics/ParameterLists
       endpoint_records.resolve(name)
-      locks.with_lock(name, inherit_on_exec: true) { route_locked(name, message, endpoint_records, herdr) }
+      locks.with_lock(name, inherit_on_exec: true) { route_locked(name, message, endpoint_records, herdr, resolve_key) }
     end
 
-    def route_locked(name, message, endpoint_records, herdr)
+    def route_locked(name, message, endpoint_records, herdr, resolve_key = nil)
       endpoint, generation = endpoint_records.resolve_snapshot(name)
       fields = Ownership.parse(endpoint_records.read_bytes(Ownership.record_path(name)))
       if inbox_target?(fields, message)
         verify_instruction_owner!(name, endpoint, generation, fields)
-        return deliver_instruction(name, generation, endpoint, message, herdr)
+        verify_open_key!(name, generation, resolve_key) if resolve_key
+        return deliver_instruction(name, generation, endpoint, message, herdr, resolve_key)
       end
+      raise InstructionInbox::Error, 'keyed answers require a local-only instruction' if resolve_key
+
       herdr.prompt(endpoint.pane_id, message, session: endpoint.session)
     end
 
@@ -38,13 +42,43 @@ module Riddim
       fields['task_mode'] == 'local-only' && !message.start_with?('/')
     end
 
-    def deliver_instruction(name, generation, endpoint, message, herdr)
+    def verify_open_key!(name, generation, key)
+      status = Result.read_status(Result.path(name, generation))
+      raise InstructionInbox::Error, "decision key #{key} is not open" unless status.open_keys.key?(key)
+    end
+
+    def close_answer!(name, generation, key, message)
+      snapshot, _fields, bytes = Result.task_record(name)
+      raise InstructionInbox::Error, 'answer generation changed' unless snapshot.last == generation
+
+      event = answer_event(key, message)
+      File.open(Result.path(name, generation), File::RDWR | File::APPEND | File::NOFOLLOW) do |file|
+        Report.append_event!(file, name, snapshot, bytes, event)
+      end
+      status = Result.read_status(Result.path(name, generation))
+      raise InstructionInbox::Error, 'decision remains open after answer' if status.open_keys.key?(key)
+    end
+
+    def answer_event(key, message)
+      "resolved [key=#{key}] [at=#{Time.now.to_i}]: answered: #{message.gsub(/[\r\n\x00]/, ' ')[0, 256]}"
+    end
+
+    def deliver_instruction(name, generation, endpoint, message, herdr, resolve_key = nil) # rubocop:disable Metrics/ParameterLists
       dir = InstructionInbox.path(name, generation)
       bell = InstructionInbox.notification(dir)
       record = InstructionInbox.enqueue(name, generation, message)
+      close_delivered_answer!(name, generation, resolve_key, message, record) if resolve_key
       notify_worker(herdr, endpoint, bell, record)
       puts "instruction stored at #{record} (not a receipt or completion)"
       nil
+    end
+
+    def close_delivered_answer!(name, generation, key, message, record)
+      close_answer!(name, generation, key, message)
+    rescue StandardError => e
+      raise InstructionInbox::Error,
+            "answer stored at #{record}; do not resend; decision #{key} close unconfirmed " \
+            "(may remain open; inspect status and repair): #{e.message}"
     end
 
     def notify_worker(herdr, endpoint, bell, record)

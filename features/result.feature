@@ -142,6 +142,72 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then the local-only result is "reported (not ready): done [at=17]: tests passed"
 
+  Scenario: A keyed answer closes only its own decision after durable delivery
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "needs-decision [at=16] [key=alpha]: choose A"
+    And the worker reports "blocked [at=17] [key=beta]: wait for B"
+    When I run riddim with:
+      """
+      send worker --resolve-key alpha Choose A
+      """
+    When the worker reports "done [at=18]: tests passed"
+    And I run riddim with:
+      """
+      result worker
+      """
+    Then the local-only result is "reported (not ready): done [at=18]: tests passed"
+
+  Scenario: A resolved decision permits a subsequent done and exact-tip review
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "needs-decision [at=16]: choose A"
+    When I run riddim with:
+      """
+      send worker --resolve-key default Choose A
+      """
+    When the worker reports "done [at=18]: tests passed"
+    And I run riddim with:
+      """
+      result worker
+      """
+    Then the local-only result is "ready: done [at=18]: tests passed"
+
+  Scenario: A durable answer whose close cannot fit stays visible and must not be resent
+    Given a local-only task was started
+    And the worker status is nearly full with an open decision
+    When I run riddim with:
+      """
+      send worker --resolve-key default Choose A
+      """
+    Then the answer is stored but its decision remains open for repair
+
+  Scenario: An already answered key cannot deliver a duplicate answer
+    Given a local-only task was started
+    And the worker reports "needs-decision [at=16] [key=alpha]: choose A"
+    And the supervisor answers key "alpha" with "Choose A"
+    When I run riddim with:
+      """
+      send worker --resolve-key alpha Choose A again
+      """
+    Then the wrong key is refused without storing another answer
+
+  Scenario: A report concurrent with a keyed answer cannot erase an unrelated blocker
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "needs-decision [at=16] [key=alpha]: choose A"
+    When the worker reports a blocker while the supervisor answers key "alpha"
+    Then the unrelated blocker remains open
+
+  Scenario: A wrong key refuses before delivery
+    Given a local-only task was started
+    And the worker reports "needs-decision [at=16] [key=alpha]: choose A"
+    When I run riddim with:
+      """
+      send worker --resolve-key beta Choose B
+      """
+    Then the wrong key is refused without storing an answer
+
   Scenario: An old generation's report is not attributed to a replacement record
     Given a local-only task was started
     And the worker commits a change in its own branch

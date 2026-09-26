@@ -112,8 +112,10 @@ if ARGV.first == 'send'
   end
 
   rest = ARGV.drop(1)
-  unless rest.length >= 2
-    warn 'Usage: riddim send <name> <message...>'
+  keyed = rest[1] == '--resolve-key'
+  unless rest.length >= (keyed ? 4 : 2) &&
+         (!keyed || rest[2]&.match?(/\A[A-Za-z0-9._-]+\z/))
+    warn 'Usage: riddim send <name> [--resolve-key <key>] <message...>'
     exit 2
   end
 
@@ -123,7 +125,7 @@ if ARGV.first == 'send'
     exit 2
   end
 
-  message = rest.drop(1).join(' ')
+  message = rest.drop(keyed ? 3 : 1).join(' ')
   if message.strip.empty?
     warn 'riddim: message must not be blank'
     exit 2
@@ -134,7 +136,7 @@ if ARGV.first == 'send'
     # the per-name lock and re-resolve while holding it. The second snapshot is
     # the routing authority, and the lock stays held until Herdr returns, so a
     # cooperating lifecycle writer cannot rebind the name during delivery.
-    result = Riddim::Send.run(name, message)
+    result = Riddim::Send.run(name, message, resolve_key: keyed ? rest[2] : nil)
     if result.respond_to?(:success?) && !result.success?
       warn 'riddim: prompt delivery is unconfirmed; inspect the pane before retrying'
       Riddim::Herdr.terminate_like(Riddim::Herdr::CommandFailed.new('', '', result)) if result.signaled?
@@ -458,7 +460,8 @@ puts <<~HELP
     peek <name> [lines|--visible]
                             Show recent output or the visible viewport of a recorded pane
     interrupt <name>            Interrupt a started Pi agent with one Escape
-    send <name> <message...>    Prompt a started agent's recorded pane
+    send <name> [--resolve-key <key>] <message...>
+                            Store an answer and close its open local-only decision key
     start <name> [--worktree [--task-file <path> [--mode local-only]]]
                             Start Pi in the cwd or a fresh isolated Git worktree with a task brief
     report <name> --generation <spawn-gen> <status-event>

@@ -26,6 +26,12 @@ Given('the worker reports {string}') do |event|
   raise "worker report failed: #{errors}" unless status.success?
 end
 
+Given('the worker status is nearly full with an open decision') do
+  decision = "needs-decision [at=16]: choose A\n"
+  filler = "working [at=1]: #{'x' * (Riddim::Result::MAX_BYTES - decision.bytesize - 17)}\n"
+  File.write(@result_path, filler + decision)
+end
+
 Given('the worker status contains a malformed event') do
   File.open(@result_path, 'a') { |file| file.puts('done: trust me') }
 end
@@ -102,6 +108,55 @@ end
 
 Then('the local-only result is {string}') do |outcome|
   assert_equal [true, "#{outcome}\n"], [@status.success?, @stdout], @stderr
+end
+
+Given('the supervisor answers key {string} with {string}') do |key, text|
+  _output, errors, status = run_riddim('send', 'worker', '--resolve-key', key, text)
+  raise "answer failed: #{errors}" unless status.success?
+end
+
+When('the worker reports a blocker while the supervisor answers key {string}') do |key|
+  generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  results = [Thread.new { run_riddim('send', 'worker', '--resolve-key', key, 'Choose A') },
+             Thread.new do
+               run_riddim('report', 'worker', '--generation', generation,
+                          'blocked [at=17] [key=beta]: wait for B')
+             end].map(&:value)
+  assert results.all? { |_out, _err, status| status.success? }, results.inspect
+end
+
+Then('the unrelated blocker remains open') do
+  generation = File.read(scenario_record_path('worker'))[/^spawn_gen=(.+)$/, 1]
+  _out, errors, status = run_riddim('report', 'worker', '--generation', generation, 'done [at=18]: tested')
+  assert_predicate status, :success?, errors
+  @stdout, @stderr, @status = run_riddim('result', 'worker')
+  assert_equal "reported (not ready): done [at=18]: tested\n", @stdout
+  @stdout, @stderr, @status = run_riddim('send', 'worker', '--resolve-key', 'beta', 'Proceed')
+  assert_predicate @status, :success?, @stderr
+  _out, errors, status = run_riddim('report', 'worker', '--generation', generation, 'done [at=19]: tested')
+  assert_predicate status, :success?, errors
+  @stdout, @stderr, @status = run_riddim('result', 'worker')
+  assert_equal "ready: done [at=19]: tested\n", @stdout
+end
+
+Then('the wrong key is refused without storing another answer') do
+  count = Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg')).length
+  assert_equal [1, true, 1], [@status.exitstatus, @stderr.include?('not open'), count]
+end
+
+Then('the wrong key is refused without storing an answer') do
+  assert_equal [1, true, []], [@status.exitstatus, @stderr.include?('not open'),
+                               Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg'))]
+end
+
+Then('the answer is stored but its decision remains open for repair') do
+  sent_status = @status.exitstatus
+  warning = @stderr
+  records = Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg'))
+  @stdout, @stderr, @status = run_riddim('result', 'worker')
+  assert_equal [1, true, true, 0, "reported: needs-decision [at=16]: choose A\n"],
+               [sent_status, warning.include?('do not resend; decision default close unconfirmed'),
+                records.length == 1 && File.read(records.first).include?('Choose A'), @status.exitstatus, @stdout]
 end
 
 Then('the result command refuses a regular task') do
