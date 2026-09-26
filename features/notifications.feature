@@ -19,6 +19,29 @@ Feature: Inspect durable actionable reports from the selected local-only home
     When a notification watcher is armed
     Then another watcher fails to arm without claiming readiness
 
+  Scenario: Replacing the lock file cannot create a second watcher owner
+    When a notification watcher is armed
+    And the watcher lock file is replaced
+    Then another watcher fails to arm without claiming readiness
+
+  Scenario: A replaced lock marker makes the old watcher fail before a new one arms
+    When a notification watcher is armed
+    And the watcher lock file is replaced
+    And the old watcher loses its binding
+    Then a successor can arm without discarding reports
+
+  Scenario: A stale home cannot keep watching a replacement directory
+    When a notification watcher is armed
+    And the selected state directory is replaced
+    And the old watcher loses its binding
+    Then a watcher can arm only in the new empty home
+
+  Scenario: A crashed watcher leaves its report for a new owner to reconcile
+    When a notification watcher is armed
+    And the watcher crashes before the worker reports "blocked [at=1]: waiting"
+    And a successor watcher is armed without exclusions
+    Then the successor reports the report written during downtime
+
   Scenario: A watcher publishes, wakes, and a successor stays live for later reports
     When a notification watcher is armed
     And the worker reports "done [at=1]: first claim"
@@ -51,6 +74,28 @@ Feature: Inspect durable actionable reports from the selected local-only home
     And the worker reports "done [at=2]: later"
     And notifications were scanned
     Then only the later notification remains pending
+
+  Scenario: Failed acknowledgement leaves the presented report recoverable
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    And acknowledgement receipt publication fails
+    When I acknowledge the first worker notification
+    Then the report remains pending and can be acknowledged on retry
+
+  Scenario: Repeating a confirmed acknowledgement does not create new uncertainty
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    And the first notification is acknowledged
+    And acknowledgement receipt publication fails
+    When I acknowledge the first worker notification
+    Then the previously handled report stays handled
+
+  Scenario: Failed acknowledgement after receipt publication does not hide uncertain work
+    Given the worker reports "blocked [at=1]: hold"
+    And notifications were scanned
+    And acknowledgement directory sync fails after receipt publication
+    When I acknowledge the first worker notification
+    Then acknowledgement remains recoverable after the sync failure
 
   Scenario: A replacement cannot be acknowledged using its predecessor's identity
     Given the worker reports "done [at=1]: original"

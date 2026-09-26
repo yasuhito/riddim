@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'io/wait'
 require 'securerandom'
 require 'timeout'
 
@@ -8,7 +9,11 @@ After do
   next unless @watchers
 
   @watchers.each do |stdin, stdout, stderr, wait|
-    Process.kill('TERM', wait.pid) if wait.alive?
+    begin
+      Process.kill('TERM', wait.pid) if wait.alive?
+    rescue Errno::ESRCH
+      # It may exit between the liveness check and the signal.
+    end
     wait.join(3)
     [stdin, stdout, stderr].each(&:close)
   end
@@ -41,8 +46,8 @@ end
 
 Then('another watcher fails to arm without claiming readiness') do
   output, error, status = Bundler.with_unbundled_env do
-    Open3.capture3(@environment.compact, RiddimWorld::RIDDIM, 'watch-notifications', '--nonce',
-                   SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
+    Open3.capture3(@environment.compact, 'timeout', '3', RiddimWorld::RIDDIM,
+                   'watch-notifications', '--nonce', SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
   end
   assert_equal [false, '', true], [status.success?, output, error.include?('watcher already bound')]
 end
@@ -53,6 +58,49 @@ When('the watcher reports a pending notification without changing the worker') d
   assert_equal 1, File.readlines(@result_path).length
   assert(herdr_invocations.none? { |invocation| invocation.include?('send') || invocation.include?('key') })
   Timeout.timeout(5) { sleep 0.01 while @watchers.last.last.alive? }
+end
+
+When('the watcher lock file is replaced') do
+  lock = File.join(@environment.fetch('RIDDIM_STATE_DIR'), '.notification-watcher.lock')
+  File.unlink(lock)
+  File.write(lock, '', perm: 0o600)
+end
+
+When('the selected state directory is replaced') do
+  state = @environment.fetch('RIDDIM_STATE_DIR')
+  File.rename(state, "#{state}-predecessor")
+  FileUtils.mkdir_p(state, mode: 0o700)
+end
+
+Then('a watcher can arm only in the new empty home') do
+  start_notification_watcher([])
+  assert_nil @watcher_output.wait_readable(0.2), 'replacement watcher published a stale pending ID'
+end
+
+When('the old watcher loses its binding') do
+  old = @watchers.last
+  Timeout.timeout(5) { sleep 0.01 while old.last.alive? }
+  assert_includes old[2].read, 'watcher ownership changed'
+end
+
+Then('a successor can arm without discarding reports') do
+  step 'the worker reports "blocked [at=1]: waiting"'
+  start_notification_watcher([])
+  assert_equal [worker_notification_id(1)], watcher_frame(@watcher_output).fetch('ids')
+end
+
+When('the watcher crashes before the worker reports {string}') do |report|
+  Process.kill('KILL', @watchers.last.last.pid)
+  @watchers.last.last.join(3)
+  step %(the worker reports "#{report}")
+end
+
+When('a successor watcher is armed without exclusions') do
+  start_notification_watcher([])
+end
+
+Then('the successor reports the report written during downtime') do
+  assert_equal [worker_notification_id(1)], watcher_frame(@watcher_output).fetch('ids')
 end
 
 When('a successor watcher is armed excluding the first report') do
@@ -139,6 +187,49 @@ def worker_notification_id(sequence)
   "worker.#{generation}.#{sequence}"
 end
 
+Given('the first notification is acknowledged') do
+  _out, error, status = run_riddim('notifications', 'ack', worker_notification_id(1))
+  assert_predicate status, :success?, error
+end
+
+Given('acknowledgement receipt publication fails') do
+  fixture = File.join(new_temporary_directory, 'break_ack.rb')
+  File.write(fixture, <<~RUBY)
+    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    module Riddim::Notifications
+      class << self
+        alias_method :publish_before_failed_ack, :publish
+        def publish(path, content)
+          raise Errno::EIO, 'injected acknowledgement failure' if File.basename(path).start_with?('.handled-')
+
+          publish_before_failed_ack(path, content)
+        end
+      end
+    end
+  RUBY
+  @environment['RUBYOPT'] = "-r#{fixture}"
+end
+
+Given('acknowledgement directory sync fails after receipt publication') do
+  fixture = File.join(new_temporary_directory, 'break_ack_sync.rb')
+  File.write(fixture, <<~RUBY)
+    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    module Riddim::Notifications
+      class << self
+        alias_method :sync_before_failed_ack, :sync_directory
+        def sync_directory
+          if Dir.children(directory).any? { |name| name.start_with?('.handled-') }
+            raise Errno::EIO, 'injected acknowledgement directory sync failure'
+          end
+
+          sync_before_failed_ack
+        end
+      end
+    end
+  RUBY
+  @environment['RUBYOPT'] = "-r#{fixture}"
+end
+
 When('I acknowledge the presented worker notification twice') do
   id = worker_notification_id(1)
   @acks = [run_riddim('notifications', 'ack', id), run_riddim('notifications', 'ack', id)]
@@ -179,6 +270,38 @@ Then('only the later notification remains pending') do
   assert_equal [true, true, [worker_notification_id(2)]],
                [@acks.all? { |_out, _err, ack_status| ack_status.success? }, status.success?,
                 JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
+
+Then('the previously handled report stays handled') do
+  @environment.delete('RUBYOPT')
+  output, error, status = run_riddim('notifications', 'scan')
+  assert_equal [true, true, []],
+               [@ack[2].success?, status.success?, JSON.parse(output).map { |entry| entry.fetch('id') }], error
+end
+
+Then('acknowledgement remains recoverable after the sync failure') do
+  @environment.delete('RUBYOPT')
+  first, error, status = run_riddim('notifications', 'scan')
+  assert_equal [false, true, [worker_notification_id(1)]],
+               [@ack[2].success?, status.success?, JSON.parse(first).map { |entry| entry.fetch('id') }],
+               [@ack[1], error].join
+  retry_output, retry_error, retry_status = run_riddim('notifications', 'ack', worker_notification_id(1))
+  remaining, remaining_error, remaining_status = run_riddim('notifications', 'scan')
+  assert_equal [true, worker_notification_id(1), true, []],
+               [retry_status.success?, JSON.parse(retry_output).fetch('id'), remaining_status.success?,
+                JSON.parse(remaining).map { |entry| entry.fetch('id') }], [retry_error, remaining_error].join
+end
+
+Then('the report remains pending and can be acknowledged on retry') do
+  @environment.delete('RUBYOPT')
+  first, error, status = run_riddim('notifications', 'scan')
+  retry_output, retry_error, retry_status = run_riddim('notifications', 'ack', worker_notification_id(1))
+  remaining, remaining_error, remaining_status = run_riddim('notifications', 'scan')
+  assert_equal [false, true, [worker_notification_id(1)], true, worker_notification_id(1), true, []],
+               [@ack[2].success?, status.success?, JSON.parse(first).map { |entry| entry.fetch('id') },
+                retry_status.success?, JSON.parse(retry_output).fetch('id'), remaining_status.success?,
+                JSON.parse(remaining).map { |entry| entry.fetch('id') }],
+               [@ack[1], error, retry_error, remaining_error].join
 end
 
 Then('acknowledgement fails and scanning recovers the report') do

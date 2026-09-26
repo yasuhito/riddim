@@ -20,7 +20,7 @@ module Riddim
     module_function
 
     def directory
-      File.join(File.expand_path(Ownership.state_dir), '.notifications')
+      File.join(Ownership.state_dir, '.notifications')
     end
 
     def scan
@@ -45,19 +45,22 @@ module Riddim
     def pending
       verify_directory
       files = Dir.children(directory)
-      files.grep(/\A\.(?:handled|presented)-.*\.json\z/).each do |filename|
+      files.grep(/\A\.(?:handled|presented|ack-pending)-.*\.json\z/).each do |filename|
         verify_marker_queue(filename, files)
       end
       files.grep(/\A[^.].*\.json\z/).sort.filter_map do |filename|
         entry = read_entry(File.join(directory, filename), filename)
-        next if marker?(marker_path('handled', entry.id), entry)
-
-        entry
+        entry unless handled?(entry)
       end
     end
 
+    def handled?(entry)
+      marker?(marker_path('handled', entry.id), entry) &&
+        !marker?(marker_path('ack-pending', entry.id), entry)
+    end
+
     def verify_marker_queue(filename, files)
-      entry = read_entry(File.join(directory, filename), filename.sub(/\A\.(?:handled|presented)-/, ''))
+      entry = read_entry(File.join(directory, filename), filename.sub(/\A\.(?:handled|presented|ack-pending)-/, ''))
       queue_path = File.join(directory, "#{entry.id}.json")
       raise Error, "missing notification at #{queue_path}" unless files.include?("#{entry.id}.json")
       raise Error, "notification marker mismatch at #{queue_path}" unless
@@ -99,7 +102,16 @@ module Riddim
         entry = read_entry(path, "#{id}.json")
         raise Error, 'notification was not presented' unless marker?(marker_path('presented', id), entry)
 
-        publish(marker_path('handled', id), "#{JSON.generate(entry.to_h)}\n")
+        content = "#{JSON.generate(entry.to_h)}\n"
+        intent = marker_path('ack-pending', id)
+        handled = marker_path('handled', id)
+        return entry if marker?(handled, entry) && !marker?(intent, entry)
+
+        publish(intent, content)
+        publish(handled, content)
+        # The receipt is durable before withdrawing the intent. An unsynced
+        # deletion may replay the report after a crash, but cannot lose it.
+        File.unlink(intent)
         entry
       end
     end

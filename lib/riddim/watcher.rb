@@ -12,38 +12,86 @@ module Riddim
 
     module_function
 
-    # rubocop:disable-next Metrics/MethodLength
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
     def run(nonce:, exclude: [], interval: 0.25)
       raise ArgumentError, 'invalid watcher nonce' unless nonce.match?(/\A[0-9a-f]{32}\z/)
       raise ArgumentError, 'invalid interval' unless interval.positive?
 
-      Ownership.verify_state_dir(Ownership.state_dir)
-      lock = File.join(Ownership.state_dir, '.notification-watcher.lock')
-      File.open(lock, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
-        Result.verify_private_file!(file)
-        unless file.flock(File::LOCK_EX | File::LOCK_NB)
-          raise Notifications::Error, 'watcher already bound to this home'
+      selected_home = File.expand_path(Ownership.state_dir)
+      Ownership.verify_state_dir(selected_home)
+      # The directory lock survives unlink/replacement of the visible lock
+      # file. Both are held for the observer's lifetime, never just at arm.
+      File.open(selected_home, File::RDONLY | File::NOFOLLOW) do |directory|
+        bind!(directory)
+        Dir.chdir("/proc/self/fd/#{directory.fileno}") do
+          previous_home = ENV.fetch('RIDDIM_STATE_DIR', nil)
+          ENV['RIDDIM_STATE_DIR'] = '.'
+          begin
+            File.open('.notification-watcher.lock', File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
+              Result.verify_private_file!(file)
+              bind!(file)
+              observe(nonce, exclude, interval, directory, file)
+            end
+          ensure
+            ENV['RIDDIM_STATE_DIR'] = previous_home
+          end
         end
-
-        observe(nonce, exclude, interval)
       end
     end
 
-    # rubocop:disable-next Metrics/MethodLength
-    def observe(nonce, exclude, interval)
+    def bind!(file)
+      return if file.flock(File::LOCK_EX | File::LOCK_NB)
+
+      raise Notifications::Error, 'watcher already bound to this home'
+    end
+
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    def observe(nonce, exclude, interval, directory, lock)
+      selected_home = directory.path
       ready = false
+      last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       loop do
+        verify_owner!(directory, lock, selected_home)
         entries = Notifications.scan.reject { |entry| exclude.include?(entry.id) }
+        verify_owner!(directory, lock, selected_home)
         unless ready
-          announce('ready', nonce)
+          stat = lock.stat
+          announce('ready', nonce, lock: "#{stat.dev}:#{stat.ino}")
           ready = true
         end
         unless entries.empty?
-          announce('pending', nonce, ids: entries.map(&:id))
+          home_stat = directory.stat
+          lock_stat = lock.stat
+          announce('pending', nonce,
+                   ids: entries.map(&:id),
+                   home: "#{home_stat.dev}:#{home_stat.ino}",
+                   lock: "#{lock_stat.dev}:#{lock_stat.ino}")
           break
+        end
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        if now - last_beat >= 1
+          announce('beat', nonce)
+          last_beat = now
         end
         sleep interval
       end
+    end
+
+    def verify_owner!(directory, lock, selected_home)
+      verify_binding!(directory, selected_home)
+      verify_binding!(lock, File.join(selected_home, '.notification-watcher.lock'))
+      Result.verify_private_file!(lock)
+      # File handles have size, not empty?. Inspect the locked inode itself.
+      # rubocop:disable-next Style/ZeroLengthPredicate
+      raise Notifications::Error, 'watcher lock marker is corrupt' unless lock.size.zero?
+    end
+
+    def verify_binding!(file, path)
+      current = File.lstat(path)
+      original = file.stat
+      return if current.dev == original.dev && current.ino == original.ino && !current.symlink?
+
+      raise Notifications::Error, 'watcher ownership changed during observation'
     end
 
     def announce(type, nonce, **extra)

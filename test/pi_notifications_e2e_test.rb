@@ -8,33 +8,36 @@ require 'socket'
 require 'timeout'
 require 'tmpdir'
 require 'fileutils'
-require_relative '../lib/riddim/ownership'
 require_relative '../scripts/pi_stall_server'
+require_relative 'support/notification_worker_fixture'
 
 # A real Pi process, isolated home and loopback-only model API. No fake Pi
 # stdout: the assertion is Pi's own RPC user message and model HTTP request.
 # rubocop:disable-next Metrics/ClassLength
 class PiNotificationsE2ETest < Minitest::Test
+  include NotificationWorkerFixture
+
   CLI = File.expand_path('../bin/riddim', __dir__)
   EXT = File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__)
   GEN = 's1767200000.4242.7'
 
   # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
   def setup
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
+
     @root = Dir.mktmpdir('riddim-pi-notifications-')
     @state = File.join(@root, 'state')
     FileUtils.mkdir_p(@state)
     @server = TCPServer.new('127.0.0.1', 0)
     PiStallLab::LabServer.config(@root, @server.addr[1])
-    fields = { 'harness' => 'pi', 'model' => 'stall-lab/test', 'effort' => 'off', 'spawn_gen' => GEN,
-               'backend' => 'herdr', 'herdr_workspace_id' => 'w9', 'herdr_tab_id' => 'w9:t1',
-               'window' => 'test:w9:p1', 'endpoint_task_id' => 'worker', 'herdr_session' => 'test',
-               'herdr_pane_id' => 'w9:p1', 'task_mode' => 'local-only', 'status_protocol' => 'locked-v1' }
-    File.write(File.join(@state, 'worker.meta'), Riddim::Ownership.serialize(fields), mode: 'w', perm: 0o600)
+    write_notification_worker(@state, GEN)
     @status_path = File.join(@state, "worker.#{GEN}.status")
     File.write(@status_path, '', mode: 'w', perm: 0o600)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
             'RIDDIM_STATE_DIR' => @state }
+    env['PATH'] = "#{watcher_ruby_bin}:#{ENV.fetch('PATH')}"
     @input, @output, @error, @wait = Bundler.with_unbundled_env do
       Open3.popen3(env, 'pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
                    '--no-prompt-templates', '--no-context-files', '--extension', EXT, '--session-dir', @root,
@@ -42,9 +45,38 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
+  # A local Ruby shim refuses the second watcher launch only. Pi and the
+  # provider are real; no user credentials or remote API are involved.
+  def watcher_ruby_bin
+    dir = File.join(@root, 'bin')
+    FileUtils.mkdir_p(dir)
+    executable = File.join(dir, 'ruby')
+    count = File.join(@root, 'watcher-spawns')
+    deny = File.join(@root, 'deny-watcher-rearm')
+    File.write(executable, <<~SH)
+      #!/bin/sh
+      if [ "$1" = "#{CLI}" ] && [ "$2" = "watch-notifications" ]; then
+        if [ -e "#{count}" ] && [ -e "#{deny}" ]; then
+          echo 'injected watcher rearm failure' >&2
+          exit 1
+        fi
+        touch "#{count}"
+      fi
+      exec "#{RbConfig.ruby}" "$@"
+    SH
+    File.chmod(0o700, executable)
+    dir
+  end
+
   # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
   # rubocop:disable-next Metrics/CyclomaticComplexity
+  # rubocop:disable-next Metrics/MethodLength, Metrics/PerceivedComplexity
   def teardown
+    begin
+      Process.kill('CONT', @paused_watcher) if @paused_watcher
+    rescue Errno::ESRCH
+      # The watchdog already reaped the stopped watcher.
+    end
     @input&.close
     if @wait&.alive?
       Process.kill('TERM', @wait.pid)
@@ -89,6 +121,88 @@ class PiNotificationsE2ETest < Minitest::Test
       item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
         item.dig('message', 'content').to_s.include?('Riddim Supervisor notification')
     end
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_stopped_watcher_is_reported_failed_not_healthy
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'probe')
+    verdict = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
+        item['message'] == 'Riddim watcher ready'
+    end
+
+    assert_equal 'info', verdict['notifyType']
+    @paused_watcher = Integer(File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first)
+    Process.kill('STOP', @paused_watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
+        item['message'].to_s.include?('heartbeat stale')
+    end
+
+    assert_equal 'error', alarm['notifyType']
+    report('blocked [at=1]: waiting during watcher failure')
+    out, err, status = cli('scan')
+
+    assert_predicate status, :success?, err
+    assert_equal(["worker.#{GEN}.1"], JSON.parse(out).map { |row| row.fetch('id') })
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_failed_rearm_reports_failure_and_retains_report
+    Timeout.timeout(5) { sleep 0.01 until File.exist?(File.join(@root, 'watcher-spawns')) }
+    File.write(File.join(@root, 'deny-watcher-rearm'), '')
+    report('blocked [at=1]: private body')
+    alarm = until_event do |item|
+      item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
+        item.dig('message', 'content').to_s.include?('Riddim watcher FAILED')
+    end
+
+    assert_includes alarm.to_s, 'repair with /riddim-watch-arm'
+    first = request
+    PiStallLab::LabServer.send_ok(first)
+    first.close
+    message = notification
+
+    assert_includes message.to_s, "worker.#{GEN}.1"
+    assert_includes message.to_s, 'Watcher FAILED'
+    out, err, status = cli('scan')
+
+    assert_predicate status, :success?, err
+    assert_equal(["worker.#{GEN}.1"], JSON.parse(out).map { |row| row.fetch('id') })
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
+  end
+
+  # Replacement during a busy turn must re-present any unhandled ID,
+  # whether Pi accepted the first follow-up yet or not.
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_replacement_replays_unhandled_report_during_busy_turn
+    @input.puts JSON.generate(type: 'prompt', message: 'Keep streaming')
+    busy = request
+    report('blocked [at=1]: private body')
+    state = nil
+    Timeout.timeout(10) do
+      loop do
+        @input.puts JSON.generate(type: 'get_state', id: 'busy')
+        state = until_event { |item| item['type'] == 'response' && item['id'] == 'busy' }
+        break if state.dig('data', 'pendingMessageCount').positive?
+
+        sleep 0.05
+      end
+    end
+
+    assert state.dig('data', 'isStreaming')
+    assert_equal 1, state.dig('data', 'pendingMessageCount')
+    @input.puts JSON.generate(type: 'new_session', id: 'replacement')
+    until_event { |item| item['type'] == 'response' && item['id'] == 'replacement' }
+    replay = notification
+
+    assert_includes replay.to_s, "worker.#{GEN}.1"
+    busy.close
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity, Minitest/MultipleAssertions
