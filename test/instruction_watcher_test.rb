@@ -147,14 +147,25 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
-  def test_exhausted_budget_fails_instead_of_claiming_healthy_observation
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def test_exhausted_budget_requests_action_once_and_survives_restart
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
       record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
       File.utime(Time.at(100), Time.at(100), record)
       [190, 280, 370].each { |time| poll(time, herdr) }
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(460, herdr) }
+      _, first = capture_io { poll(460, herdr) }
+      _, repeat = capture_io { Riddim::InstructionWatcher.scan(now: 550, herdr: herdr) }
+
+      assert_match(/ACTION REQUIRED.*unhandled after 3.*#{File.basename(record)}/, first)
+      assert_empty repeat
+      assert_equal 3, herdr.bells.size
+      assert File.file?(record)
+      _, restart = capture_io { poll(600, herdr) }
+
+      assert_match(/ACTION REQUIRED.*#{File.basename(record)}/, restart)
+      assert File.file?(File.join(File.dirname(record), '.escalated'))
     end
   end
 
@@ -367,14 +378,18 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
-  def test_dead_endpoint_fails_instead_of_claiming_healthy_observation
+  def test_dead_endpoint_requests_action_without_typing
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
       herdr.state = :dead
       record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
       File.utime(Time.at(100), Time.at(100), record)
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      _, alert = capture_io { poll(190, herdr) }
+
+      assert_match(/ACTION REQUIRED.*endpoint dead or missing/, alert)
+      assert_empty herdr.bells
+      assert File.file?(record)
     end
   end
 

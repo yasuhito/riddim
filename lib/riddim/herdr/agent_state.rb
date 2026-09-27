@@ -6,8 +6,7 @@ module Riddim
     module_function
 
     # Read-only, Pi-only subset of Firstmate's recovery-grade Herdr verdicts.
-    # :missing covers an absent pane OR a stopped server: it does not prove an
-    # endpoint was destroyed and never licenses a lifecycle mutation by itself.
+    # A stopped server is unverifiable, not proof that the endpoint died.
     def agent_state(pane, session:)
       observe_pi_agent(pane, session: session).first
     end
@@ -30,7 +29,7 @@ module Riddim
       case pane_presence(pane, stdout, stderr)
       when :gone then [:missing, nil]
       when :present then registered_pi_observation(pane, session: session)
-      else [stopped_server?(session) ? :missing : :unreadable, nil]
+      else [:unreadable, nil]
       end
     rescue SystemCallError
       [:unreadable, nil]
@@ -64,10 +63,6 @@ module Riddim
     def registered_pi?(agent, pane)
       agent.is_a?(Hash) && agent['agent'] == 'pi' && agent['pane_id'] == pane &&
         %w[working idle done blocked].include?(agent['agent_status'])
-    end
-
-    def stopped_server?(session)
-      server_running_state(session: session) == :stopped
     end
 
     def response_document(stdout, stderr)

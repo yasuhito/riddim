@@ -438,12 +438,18 @@ A busy worker waits without consuming the budget; a proven pending composer
 holding different text is never submitted. When the watcher can prove it holds
 this doorbell, it retries Enter without retyping the line.
 The worker's move to `handled/` alone stops retries.
-An exhausted budget or an unverifiable endpoint/activity verdict terminates
-the watcher with an error (the automatically started process logs to
-`.instruction-watcher.log` in the selected state directory), not a healthy
-heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
-as a supervisor wake or monitor remote workers. Inspect the saved inbox and
-worker pane when retries fail; a notification is not a receipt or completion.
+After three unacknowledged notification attempts with an idle worker, or when
+Herdr proves the endpoint dead or missing, the watcher writes a per-instruction
+`.escalated` marker and logs `ACTION REQUIRED` once. It never types into a dead
+endpoint. `watch-instructions --once` shows unresolved alerts again on demand,
+even after a watcher restart. A stopped server or otherwise unverifiable
+endpoint/activity is not proof of death: the watcher exits with an error instead.
+Retry-state write failures also stop the watcher rather than silently resetting
+its budget. The automatically started process logs to `.instruction-watcher.log`
+in the selected state directory; supervise it for restarts. Unlike Firstmate's
+general watcher, Riddim does not wake the supervisor or monitor remote workers.
+Inspect the saved inbox and worker pane when alerted; an alert is not a receipt,
+reply, or Landing approval.
 
 For other agents, and for Pi-native `/` commands, send remains a direct Herdr
 native prompt (`herdr agent prompt`). A successful direct send proves only
