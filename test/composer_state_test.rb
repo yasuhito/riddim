@@ -162,6 +162,31 @@ class ComposerVerdictTest < Minitest::Test
     assert_equal [['recent-unwrapped', 'riddim']], sources
   end
 
+  def test_recognizes_padded_carriage_return_rows_from_a_wrapped_pi_composer
+    line = ': Riddim instruction waiting: list /state/worker/*.msg in numeric order; ' \
+           'read each after --, act on it, then mv it to /state/worker/handled/. If none remain, do nothing.'
+    first = ': Riddim instruction waiting: list /state/worker/*.msg in '
+    second = 'numeric order; read each after --, act on it, then mv it to '
+    third = '/state/worker/handled/. If none remain, do nothing.'
+    assert_equal line, first + second + third
+    screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n#{third}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_refuses_a_padded_wrapped_draft_with_a_space_removed_inside_a_path
+    line = ': Riddim instruction waiting: list /state/worker name/*.msg in numeric order; do nothing.'
+    first = ': Riddim instruction waiting: list /state/workername/*.msg in '
+    second = 'numeric order; do nothing.'
+    screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
   def test_proves_empty_for_an_idle_live_pi
     with_screen("pi\tidle") do
       assert_equal :empty, Riddim::Herdr.composer_state('w9:p1', session: 'riddim')

@@ -42,11 +42,29 @@ module Riddim
       return false unless pair&.fetch(:valid)
 
       rows = screen_rows(screen)
-      content = ((pair.fetch(:open) + 1)...pair.fetch(:close)).map do |index|
+      content_rows = ((pair.fetch(:open) + 1)...pair.fetch(:close)).map do |index|
         raw = rows.fetch(index, '')
         styled ? strip_ghost(raw) : strip_ansi(raw)
-      end.join
-      !content.empty? && content == line
+      end
+      composer_rows_hold_line?(content_rows, line)
+    end
+
+    # Pane captures end each display row with CR and may pad it to the pane
+    # width. Match every visible byte in order; only a row's terminal spaces
+    # can be padding, and an expected space at that boundary must be present
+    # in the captured row.
+    def composer_rows_hold_line?(rows, line)
+      remaining = line
+      rows.each do |row|
+        visible = row.delete_suffix("\r").sub(/ +\z/, '')
+        return false unless remaining.start_with?(visible)
+
+        remaining = remaining.delete_prefix(visible)
+        padding = row.delete_suffix("\r").length - visible.length
+        boundary_spaces = remaining[/\A */].length
+        remaining = remaining[boundary_spaces..] if padding.positive? && boundary_spaces <= padding
+      end
+      !line.empty? && remaining.empty?
     end
 
     def composer_identity_verdict(screen, styled, pane, session:)
