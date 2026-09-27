@@ -144,6 +144,7 @@ class ComposerVerdictTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/MethodLength, Minitest/MultipleAssertions
   def test_uses_unwrapped_capture_to_prove_a_doorbell_split_at_a_space
     line = ': Riddim instruction waiting: list /state/worker/*.msg'
     wrapped = "────────────\n: Riddim instruction\nwaiting: list /state/worker/*.msg\n────────────\n"
@@ -159,15 +160,17 @@ class ComposerVerdictTest < Minitest::Test
     with_herdr_method(:capture, capture) do
       assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
     end
-    assert_equal [['recent-unwrapped', 'riddim']], sources
+    assert_equal [%w[recent-unwrapped riddim]], sources
   end
 
+  # rubocop:disable-next Minitest/MultipleAssertions
   def test_recognizes_padded_carriage_return_rows_from_a_wrapped_pi_composer
     line = ': Riddim instruction waiting: list /state/worker/*.msg in numeric order; ' \
            'read each after --, act on it, then mv it to /state/worker/handled/. If none remain, do nothing.'
     first = ': Riddim instruction waiting: list /state/worker/*.msg in'
     second = ' numeric order; read each after --, act on it, then mv it to'
     third = ' /state/worker/handled/. If none remain, do nothing.'
+
     assert_equal line, first + second + third
     screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n#{third}#{' ' * 60}\r\n────────────\r\n"
 

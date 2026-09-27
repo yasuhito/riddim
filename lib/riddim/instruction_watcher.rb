@@ -98,7 +98,11 @@ module Riddim
         records = Dir.glob(File.join(dir, '*.msg')).grep(%r{/\d+\.msg\z})
         record = records.min_by { |path| File.basename(path).to_i }
         return unless record
-        raise InstructionInbox::Error, "instruction record is not a regular file: #{record}" if File.symlink?(record) || !File.file?(record)
+
+        if File.symlink?(record) || !File.file?(record)
+          raise InstructionInbox::Error, "instruction record is not a regular file: #{record}"
+        end
+
         mode = Ownership.parse(Ownership::Endpoint.read_bytes(Ownership.record_path(name)))['task_mode']
         raise InstructionInbox::Error, "pending instruction owner mode changed: #{record}" unless mode == 'local-only'
 
@@ -144,7 +148,6 @@ module Riddim
       raise InstructionInbox::Error, "instruction watcher cannot check #{name}: #{e.message}"
     end
 
-    # rubocop:disable-next Metrics/CyclomaticComplexity
     def read_retry_state(path)
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
       fields = /\A(\d+\.msg)\t(\d+)\t(\d+)\n\z/.match(raw)
@@ -153,10 +156,13 @@ module Riddim
       [fields[1], fields[2].to_i, fields[3].to_i]
     end
 
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
     def ensure_retry_state!(path)
       marker = "#{path}.required"
       if File.exist?(marker) || File.symlink?(marker)
-        raise InstructionInbox::Error, "invalid instruction retry marker: #{marker}" unless File.file?(marker) && !File.symlink?(marker)
+        unless File.file?(marker) && !File.symlink?(marker)
+          raise InstructionInbox::Error, "invalid instruction retry marker: #{marker}"
+        end
 
         return
       end

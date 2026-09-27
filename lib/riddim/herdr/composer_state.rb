@@ -33,7 +33,6 @@ module Riddim
     # Positive proof that a pending composer contains exactly our previously
     # typed doorbell. Unreadable or competing composer shapes never license an
     # Enter, even if the same text appears elsewhere in the transcript.
-    # rubocop:disable-next Metrics/AbcSize
     def composer_holds_line?(pane, line, session:)
       screen, styled = composer_capture(pane, session: session, source: 'recent-unwrapped')
       return false unless screen

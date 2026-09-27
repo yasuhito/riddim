@@ -171,6 +171,7 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_pending_doorbell_needs_verified_idle_before_each_enter
     endpoint = Riddim::Ownership::Endpoint::Resolved.new('lab', 'w9', 'w9:t1', 'w9:p2')
     herdr = FakeHerdr.new
@@ -187,6 +188,7 @@ class InstructionWatcherTest < Minitest::Test
       @busy_reads += 1
       @busy_reads == 1 ? :idle : :unknown
     end
+
     def herdr.send_key(pane, key, session:)
       @bells << [pane, key, session]
     end
@@ -195,6 +197,7 @@ class InstructionWatcherTest < Minitest::Test
     assert_equal [['w9:p2', 'Enter', 'lab']], herdr.bells
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_invalid_retry_state_fails_without_resetting_attempts
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -248,6 +251,7 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_missing_oldest_record_does_not_advance_to_next_pending_instruction
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -263,6 +267,7 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/MethodLength
   def test_disappearance_during_backend_probe_requires_a_receipt
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -280,6 +285,7 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_handling_during_backend_probe_stops_notification
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -333,6 +339,7 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  # rubocop:disable-next Metrics/MethodLength
   def test_unverifiable_pending_inbox_and_record_fail
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
