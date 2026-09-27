@@ -30,21 +30,53 @@ module Riddim
       verdict
     end
 
+    # Positive proof that a pending composer contains exactly our previously
+    # typed doorbell. Unreadable or competing composer shapes never license an
+    # Enter, even if the same text appears elsewhere in the transcript.
+    def composer_holds_line?(pane, line, session:)
+      screen, styled = composer_capture(pane, session: session, source: 'recent-unwrapped')
+      return false unless screen
+
+      pair = bottom_most_pi_pair(screen)
+      return false unless pair&.fetch(:valid)
+
+      rows = screen_rows(screen)
+      content_rows = ((pair.fetch(:open) + 1)...pair.fetch(:close)).map do |index|
+        raw = rows.fetch(index, '')
+        styled ? strip_ghost(raw) : strip_ansi(raw)
+      end
+      composer_rows_hold_line?(content_rows, line)
+    end
+
+    # Pane captures end each display row with CR and may pad it to the pane
+    # width. Match every visible byte in order; only a row's terminal spaces
+    # can be padding. Padding cannot prove an expected space at a row boundary.
+    def composer_rows_hold_line?(rows, line)
+      remaining = line
+      rows.each do |row|
+        visible = row.delete_suffix("\r").sub(/ +\z/, '')
+        return false unless remaining.start_with?(visible)
+
+        remaining = remaining.delete_prefix(visible)
+      end
+      !line.empty? && remaining.empty?
+    end
+
     def composer_identity_verdict(screen, styled, pane, session:)
       identity = composer_identity(pane, session: session) || 'probe-absent'
 
       pi_composer_verdict(screen, styled: styled, identity: identity)
     end
 
-    def composer_capture(pane, session:)
+    def composer_capture(pane, session:, source: 'recent')
       stdout, _stderr, status = capture(
-        'pane', 'read', pane, '--source', 'recent', '--lines', composer_fetch_lines.to_s,
+        'pane', 'read', pane, '--source', source, '--lines', composer_fetch_lines.to_s,
         '--format', 'ansi', session: session
       )
       return [tail(stdout, COMPOSER_CAPTURE_LINES), true] if status.success?
 
       stdout, _stderr, status = capture(
-        'pane', 'read', pane, '--source', 'recent', '--lines', composer_fetch_lines.to_s, session: session
+        'pane', 'read', pane, '--source', source, '--lines', composer_fetch_lines.to_s, session: session
       )
       return [tail(stdout, COMPOSER_CAPTURE_LINES), false] if status.success?
 

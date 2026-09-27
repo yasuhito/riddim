@@ -109,6 +109,98 @@ class ComposerVerdictTest < Minitest::Test
     end
   end
 
+  def test_recognizes_the_exact_pending_doorbell
+    screen = "────────────\n: Riddim instruction waiting\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', ': Riddim instruction waiting', session: 'riddim')
+    end
+  end
+
+  def test_does_not_identify_a_different_pending_draft_as_our_doorbell
+    screen = "────────────\na different draft\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', ': Riddim instruction waiting', session: 'riddim')
+    end
+  end
+
+  def test_refuses_a_draft_with_different_whitespace
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    screen = "────────────\n: Riddim instruction waiting: list /state/worker/*.msg\n────────────\n"
+    changed = screen.sub('instruction waiting', 'instructionwaiting')
+
+    with_herdr_method(:composer_capture, ->(*) { [changed, false] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_recognizes_an_exact_doorbell_wrapped_across_rows
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    screen = "────────────\n: Riddim instruction waiting: list /state/\nworker/*.msg\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  # rubocop:disable-next Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_uses_unwrapped_capture_to_prove_a_doorbell_split_at_a_space
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    wrapped = "────────────\n: Riddim instruction\nwaiting: list /state/worker/*.msg\n────────────\n"
+    unwrapped = "────────────\n#{line}\n────────────\n"
+    status = Struct.new(:success?).new(true)
+    sources = []
+    capture = lambda do |*arguments, session:|
+      source = arguments[arguments.index('--source') + 1]
+      sources << [source, session]
+      [source == 'recent-unwrapped' ? unwrapped : wrapped, '', status]
+    end
+
+    with_herdr_method(:capture, capture) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+    assert_equal [%w[recent-unwrapped riddim]], sources
+  end
+
+  # rubocop:disable-next Minitest/MultipleAssertions
+  def test_recognizes_padded_carriage_return_rows_from_a_wrapped_pi_composer
+    line = ': Riddim instruction waiting: list /state/worker/*.msg in numeric order; ' \
+           'read each after --, act on it, then mv it to /state/worker/handled/. If none remain, do nothing.'
+    first = ': Riddim instruction waiting: list /state/worker/*.msg in'
+    second = ' numeric order; read each after --, act on it, then mv it to'
+    third = ' /state/worker/handled/. If none remain, do nothing.'
+
+    assert_equal line, first + second + third
+    screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n#{third}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_refuses_a_padded_wrapped_draft_with_a_space_removed_inside_a_path
+    line = ': Riddim instruction waiting: list /state/worker name/*.msg in numeric order; do nothing.'
+    first = ': Riddim instruction waiting: list /state/workername/*.msg in '
+    second = 'numeric order; do nothing.'
+    screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_refuses_padding_that_mimics_a_missing_space_at_a_wrap_boundary
+    line = ': Riddim instruction waiting: list /state/worker name/*.msg'
+    first = ': Riddim instruction waiting: list /state/worker'
+    second = 'name/*.msg'
+    screen = "────────────\r\n#{first}#{' ' * 60}\r\n#{second}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
   def test_proves_empty_for_an_idle_live_pi
     with_screen("pi\tidle") do
       assert_equal :empty, Riddim::Herdr.composer_state('w9:p1', session: 'riddim')

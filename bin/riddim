@@ -7,6 +7,7 @@ require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/exit'
 require_relative '../lib/riddim/fleet'
 require_relative '../lib/riddim/interrupt'
+require_relative '../lib/riddim/instruction_watcher'
 require_relative '../lib/riddim/list'
 require_relative '../lib/riddim/merge_local'
 require_relative '../lib/riddim/notifications'
@@ -137,6 +138,13 @@ if ARGV.first == 'send'
     # the routing authority, and the lock stays held until Herdr returns, so a
     # cooperating lifecycle writer cannot rebind the name during delivery.
     result = Riddim::Send.run(name, message, resolve_key: keyed ? rest[2] : nil)
+    if result.nil?
+      begin
+        Riddim::InstructionWatcher.start
+      rescue SystemCallError => e
+        warn "riddim: instruction stored but watcher could not start: #{e.message}; start watch-instructions manually"
+      end
+    end
     if result.respond_to?(:success?) && !result.success?
       warn 'riddim: prompt delivery is unconfirmed; inspect the pane before retrying'
       Riddim::Herdr.terminate_like(Riddim::Herdr::CommandFailed.new('', '', result)) if result.signaled?
@@ -294,6 +302,25 @@ if ARGV.first == 'report'
     puts Riddim::Report.run(ARGV[1], ARGV[3], ARGV[4])
   rescue Riddim::Ownership::Error, SystemCallError => e
     warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
+if ARGV.first == 'watch-instructions'
+  unless ARGV == ['watch-instructions'] || ARGV == %w[watch-instructions --once]
+    warn 'Usage: riddim watch-instructions [--once]'
+    exit 2
+  end
+
+  begin
+    armed = Riddim::InstructionWatcher.run(once: ARGV.last == '--once')
+    unless armed
+      warn 'riddim: instruction watcher already bound to this home'
+      exit 1
+    end
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: instruction watcher FAILED: #{e.message}"
     exit 1
   end
   exit
@@ -468,6 +495,8 @@ puts <<~HELP
                             Append a worker report under the task name lock
     result <name>           Read a local-only worker event and verify a ready branch
     notifications [scan]    Inspect pending reports; scan selected local state for new ones
+    watch-instructions [--once]
+                            Retry unhandled local-only instructions independently of Pi notifications
     review-diff <name> [--stat]
                             Show the committed local-only branch diff against local main
     merge-local <name> --head <reviewed-commit>

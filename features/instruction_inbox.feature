@@ -24,6 +24,23 @@ Feature: Durable local-only worker instructions
       """
     Then the instruction "First instruction" is stored despite notification failure
 
+  Scenario: The independent watcher can rescan stored instructions without the Pi watcher
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    Then the watcher has retried the stored instruction
+
+  Scenario: A restarted watcher does not notify after the worker acknowledges the record
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And I acknowledge the stored instruction and restart the watcher
+    Then the restarted watcher does not re-notify the handled instruction
+
   Scenario: A native Pi command still reaches the direct prompt
     When I run riddim with:
       """
