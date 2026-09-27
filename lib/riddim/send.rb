@@ -102,12 +102,15 @@ module Riddim
     def submit_existing_doorbell?(herdr, endpoint, bell)
       pane = endpoint.pane_id
       session = endpoint.session
-      return false if herdr.busy_state(pane, session: session) == :busy
       return false unless herdr.composer_holds_line?(pane, bell, session: session)
+      return false unless herdr.busy_state(pane, session: session) == :idle
 
       herdr.send_key(pane, 'Enter', session: session)
       sleep 0.3
-      herdr.send_key(pane, 'Enter', session: session) if herdr.composer_holds_line?(pane, bell, session: session)
+      return true unless herdr.composer_holds_line?(pane, bell, session: session)
+      return false unless herdr.busy_state(pane, session: session) == :idle
+
+      herdr.send_key(pane, 'Enter', session: session)
       true
     end
   end

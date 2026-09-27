@@ -58,7 +58,7 @@ module Riddim
         rescue InstructionInbox::Error
           raise
         rescue Ownership::Error => e
-          warn "riddim: instruction watcher skipped #{name}: #{e.message}"
+          raise InstructionInbox::Error, "instruction watcher cannot check #{name}: #{e.message}"
         end
       end
     end
@@ -72,18 +72,18 @@ module Riddim
         return unless Ownership::Endpoint.resolve_snapshot(name) == [endpoint, generation]
 
         dir = InstructionInbox.path(name, generation)
-        return unless File.directory?(dir)
+        return unless File.exist?(dir) || File.symlink?(dir)
 
         InstructionInbox.verify_directory!(dir)
         records = Dir.glob(File.join(dir, '*.msg')).grep(%r{/\d+\.msg\z})
         record = records.min_by { |path| File.basename(path).to_i }
         return unless record
-        return if File.symlink?(record) || !File.file?(record)
-        return if now - File.stat(record).mtime.to_i < GRACE
-
+        raise InstructionInbox::Error, "instruction record is not a regular file: #{record}" if File.symlink?(record) || !File.file?(record)
         ring_state = File.join(dir, '.ring-state')
         base = File.basename(record)
         previous, count, last = read_retry_state(ring_state)
+        return if now - File.stat(record).mtime.to_i < GRACE
+
         if previous != base
           count = 0
           last = 0
@@ -122,14 +122,13 @@ module Riddim
 
     # rubocop:disable-next Metrics/CyclomaticComplexity
     def read_retry_state(path)
-      return [nil, 0, 0] unless File.exist?(path)
+      return [nil, 0, 0] unless File.exist?(path) || File.symlink?(path)
 
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
-      base, count, last = raw.chomp.split("\t", -1)
-      return [nil, 0, 0] unless base&.match?(/\A\d+\.msg\z/) && count&.match?(/\A\d+\z/) &&
-                                last&.match?(/\A\d+\z/)
+      fields = /\A(\d+\.msg)\t(\d+)\t(\d+)\n\z/.match(raw)
+      raise InstructionInbox::Error, "invalid instruction retry state: #{path}" unless fields
 
-      [base, count.to_i, last.to_i]
+      [fields[1], fields[2].to_i, fields[3].to_i]
     end
 
     def write_retry_state(path, base, count, now)

@@ -171,6 +171,74 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  def test_pending_doorbell_needs_verified_idle_before_each_enter
+    endpoint = Riddim::Ownership::Endpoint::Resolved.new('lab', 'w9', 'w9:t1', 'w9:p2')
+    herdr = FakeHerdr.new
+    herdr.held_line = true
+    herdr.busy = :unknown
+
+    refute Riddim::Send.submit_existing_doorbell?(herdr, endpoint, 'bell')
+    assert_empty herdr.bells
+
+    def herdr.busy_state(_pane, session:)
+      raise 'wrong session' unless session == 'lab'
+
+      @busy_reads ||= 0
+      @busy_reads += 1
+      @busy_reads == 1 ? :idle : :unknown
+    end
+    def herdr.send_key(pane, key, session:)
+      @bells << [pane, key, session]
+    end
+
+    refute Riddim::Send.submit_existing_doorbell?(herdr, endpoint, 'bell')
+    assert_equal [['w9:p2', 'Enter', 'lab']], herdr.bells
+  end
+
+  def test_invalid_retry_state_fails_without_resetting_attempts
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      state = File.join(File.dirname(record), '.ring-state')
+
+      ["bad\n", "#{File.basename(record)}\t1\t190\nextra\n"].each do |invalid|
+        File.write(state, invalid)
+        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      end
+      assert_equal 1, herdr.bells.size
+    end
+  end
+
+  def test_unverifiable_owner_with_pending_instruction_fails
+    with_started_record('task_mode' => 'local-only') do |path|
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      File.write(path, "invalid\n")
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
+  def test_unverifiable_pending_inbox_and_record_fail
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      dir = Riddim::InstructionInbox.path('worker', ENDPOINT_FIELDS.fetch('spawn_gen'))
+      File.symlink('missing', dir)
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      File.delete(dir)
+
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.delete(record)
+      File.symlink('missing', record)
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
   def test_unverifiable_activity_fails_instead_of_appearing_healthy
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
