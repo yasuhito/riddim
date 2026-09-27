@@ -165,9 +165,9 @@ class ComposerVerdictTest < Minitest::Test
   def test_recognizes_padded_carriage_return_rows_from_a_wrapped_pi_composer
     line = ': Riddim instruction waiting: list /state/worker/*.msg in numeric order; ' \
            'read each after --, act on it, then mv it to /state/worker/handled/. If none remain, do nothing.'
-    first = ': Riddim instruction waiting: list /state/worker/*.msg in '
-    second = 'numeric order; read each after --, act on it, then mv it to '
-    third = '/state/worker/handled/. If none remain, do nothing.'
+    first = ': Riddim instruction waiting: list /state/worker/*.msg in'
+    second = ' numeric order; read each after --, act on it, then mv it to'
+    third = ' /state/worker/handled/. If none remain, do nothing.'
     assert_equal line, first + second + third
     screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n#{third}#{' ' * 60}\r\n────────────\r\n"
 
@@ -181,6 +181,17 @@ class ComposerVerdictTest < Minitest::Test
     first = ': Riddim instruction waiting: list /state/workername/*.msg in '
     second = 'numeric order; do nothing.'
     screen = "────────────\r\n#{first}\r\n#{second}#{' ' * 60}\r\n────────────\r\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_refuses_padding_that_mimics_a_missing_space_at_a_wrap_boundary
+    line = ': Riddim instruction waiting: list /state/worker name/*.msg'
+    first = ': Riddim instruction waiting: list /state/worker'
+    second = 'name/*.msg'
+    screen = "────────────\r\n#{first}#{' ' * 60}\r\n#{second}#{' ' * 60}\r\n────────────\r\n"
 
     with_herdr_method(:composer_capture, ->(*) { [screen, true] }) do
       refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')

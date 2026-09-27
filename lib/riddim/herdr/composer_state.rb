@@ -51,8 +51,7 @@ module Riddim
 
     # Pane captures end each display row with CR and may pad it to the pane
     # width. Match every visible byte in order; only a row's terminal spaces
-    # can be padding, and an expected space at that boundary must be present
-    # in the captured row.
+    # can be padding. Padding cannot prove an expected space at a row boundary.
     def composer_rows_hold_line?(rows, line)
       remaining = line
       rows.each do |row|
@@ -60,9 +59,6 @@ module Riddim
         return false unless remaining.start_with?(visible)
 
         remaining = remaining.delete_prefix(visible)
-        padding = row.delete_suffix("\r").length - visible.length
-        boundary_spaces = remaining[/\A */].length
-        remaining = remaining[boundary_spaces..] if padding.positive? && boundary_spaces <= padding
       end
       !line.empty? && remaining.empty?
     end
