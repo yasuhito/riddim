@@ -122,10 +122,10 @@ session and pane. Unlike `status`, this read corroborates Herdr registration
 with pane presence and the OS process view: `alive` requires a registered Pi
 process, and `dead` requires a present pane with no registered agent or a
 shell-only process view behind a stale Pi registration. A confirmed missing
-pane, or a recorded session whose server is positively stopped, reads
-`missing`. **Missing does not prove the endpoint was destroyed:** a stopped
-server can restore it. Unreadable and unfamiliar process states remain
-`unreadable` rather than being guessed into `dead` or `alive`. If the ownership
+pane reads `missing`. A stopped server with an unreadable pane reads
+`unreadable`; the endpoint may return when the server restarts. Unreadable and
+unfamiliar process states remain `unreadable` rather than being guessed into
+`dead` or `alive`. If the ownership
 record's `spawn_gen` or exact endpoint changes during observation, Riddim
 returns `unreadable` rather than attributing the old observation to a new
 incarnation.
@@ -166,9 +166,8 @@ pane. This is the small, read-only Herdr subset of Firstmate's
 `fm_backend_herdr_pane_presence_state`: a matching structured `pane get`
 response establishes `present`; only a structured `pane_not_found` response
 establishes `gone`. Exit status alone and an unreachable or stopped server
-leave the result `unknown`. Unlike `agent-state`'s `missing`, `gone` is **not**
-reported merely because the recorded server is stopped. Riddim checks that
-ownership has not changed during the read and otherwise returns `unknown`.
+leave the result `unknown`. Riddim checks that ownership has not changed
+during the read and otherwise returns `unknown`.
 
 Pane presence says nothing about whether Pi is running or a turn has finished.
 It never closes a pane or removes an ownership record. Even `gone` is a
@@ -224,7 +223,7 @@ bin/riddim server-state <name>
 Reports `running`, `stopped`, or `unknown` from the recorded session's
 `status --json` alone, without touching any pane. This is a smaller subset of
 Firstmate's `fm_backend_herdr_server_running_state`; it tells you whether a
-`missing` from `agent-state` is explained by a server that is not running.
+`unreadable` from `agent-state` is explained by a server that is not running.
 Herdr preserves pane, tab, and workspace ids across a server restart while
 harness processes and registrations die, so `stopped` means unreachable right
 now: it is **not** evidence an endpoint was destroyed and licenses no
@@ -438,12 +437,19 @@ A busy worker waits without consuming the budget; a proven pending composer
 holding different text is never submitted. When the watcher can prove it holds
 this doorbell, it retries Enter without retyping the line.
 The worker's move to `handled/` alone stops retries.
-An exhausted budget or an unverifiable endpoint/activity verdict terminates
-the watcher with an error (the automatically started process logs to
-`.instruction-watcher.log` in the selected state directory), not a healthy
-heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
-as a supervisor wake or monitor remote workers. Inspect the saved inbox and
-worker pane when retries fail; a notification is not a receipt or completion.
+After three unacknowledged notification attempts with an idle worker, or when
+Herdr proves the endpoint dead or missing, or retry state cannot be recorded,
+the watcher writes a per-instruction `.escalated` marker and logs
+`ACTION REQUIRED` once. It never types into a dead
+endpoint. `watch-instructions --once` shows unresolved alerts again on demand,
+even after a watcher restart. A stopped server or otherwise unverifiable
+endpoint/activity is not proof of death: the watcher exits with an error instead.
+Retry-state failures also stop the watcher rather than silently resetting
+its budget. The automatically started process logs to `.instruction-watcher.log`
+in the selected state directory; supervise it for restarts. Unlike Firstmate's
+general watcher, Riddim does not wake the supervisor or monitor remote workers.
+Inspect the saved inbox and worker pane when alerted; an alert is not a receipt,
+reply, or Landing approval.
 
 For other agents, and for Pi-native `/` commands, send remains a direct Herdr
 native prompt (`herdr agent prompt`). A successful direct send proves only

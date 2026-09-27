@@ -119,14 +119,14 @@ Feature: Read the recovery-grade state of a recorded Pi agent
         """
       Then standard output is "missing"
 
-    Scenario: Treat an unreadable pane on a stopped server as missing, not gone
+    Scenario: Keep an unreadable pane on a stopped server unverifiable
       Given Herdr cannot read the pane
       And the recorded Herdr server is stopped
       When I run riddim with:
         """
         agent-state worker
         """
-      Then standard output is "missing"
+      Then standard output is "unreadable"
 
     Scenario: Keep an unreadable pane on a running server unknown
       Given Herdr cannot read the pane

@@ -91,6 +91,77 @@ When('I run the instruction watcher after the grace period') do
   @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
 end
 
+When('I exhaust the notification budget through the CLI') do
+  3.times do
+    state = File.join(current_inbox, '.ring-state')
+    fields = File.read(state).split("\t")
+    File.write(state, "#{fields[0]}\t#{fields[1]}\t0\n")
+    @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  end
+end
+
+When('the instruction retry record is invalid') do
+  File.write(File.join(current_inbox, '.ring-state'), "corrupt\n")
+end
+
+When('the instruction retry record is missing') do
+  File.delete(File.join(current_inbox, '.ring-state'))
+end
+
+Then('the watcher reports a durable retry bookkeeping alert and retains the instruction') do
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert File.file?(File.join(current_inbox, '.escalated'))
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
+end
+
+When('another inbox has a saved action request') do
+  publish_record('second', session: 'riddim', overrides: { 'task_mode' => 'local-only' })
+  original_state_dir = ENV.fetch('RIDDIM_STATE_DIR', nil)
+  begin
+    ENV['RIDDIM_STATE_DIR'] = scenario_state_dir
+    record = Riddim::InstructionInbox.enqueue('second', OWNERSHIP_RECORD_BASE.fetch('spawn_gen'),
+                                              'Other instruction')
+  ensure
+    ENV['RIDDIM_STATE_DIR'] = original_state_dir
+  end
+  File.utime(Time.at(100), Time.at(100), record)
+  File.write(File.join(File.dirname(record), '.escalated'),
+             "#{File.basename(record)}\tworker endpoint dead or missing\n")
+  @other_inbox = File.dirname(record)
+end
+
+Then('both inboxes report their saved action requests') do
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
+  assert_includes @stderr, 'ACTION REQUIRED: worker endpoint dead or missing'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert_equal ['Other instruction'], inbox_bodies(@other_inbox)
+end
+
+When('the worker endpoint is proven dead') do
+  install_fake_herdr(<<~RUBY)
+    require 'json'
+    if ARGV[0, 2] == %w[pane get]
+      puts JSON.generate(result: { type: 'pane', pane: { pane_id: 'w9:p1' } })
+    elsif ARGV[0, 2] == %w[agent get]
+      puts JSON.generate(error: { code: 'agent_not_found' })
+    end
+  RUBY
+end
+
+Then('the instruction remains pending with a durable action request') do
+  assert @status.success?, @stderr
+  assert_includes @stderr, 'ACTION REQUIRED'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert File.file?(File.join(current_inbox, '.escalated'))
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  assert_includes @stderr, 'ACTION REQUIRED'
+end
+
 Then('the watcher has retried the stored instruction') do
   assert @status.success?, @stderr
   assert herdr_invocations.any? { |call| call.include?('agent prompt') }, herdr_invocations.inspect

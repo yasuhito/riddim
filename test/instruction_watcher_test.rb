@@ -147,14 +147,25 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
-  def test_exhausted_budget_fails_instead_of_claiming_healthy_observation
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def test_exhausted_budget_requests_action_once_and_survives_restart
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
       record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
       File.utime(Time.at(100), Time.at(100), record)
       [190, 280, 370].each { |time| poll(time, herdr) }
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(460, herdr) }
+      _, first = capture_io { poll(460, herdr) }
+      _, repeat = capture_io { Riddim::InstructionWatcher.scan(now: 550, herdr: herdr) }
+
+      assert_match(/ACTION REQUIRED.*unhandled after 3.*#{File.basename(record)}/, first)
+      assert_empty repeat
+      assert_equal 3, herdr.bells.size
+      assert File.file?(record)
+      _, restart = capture_io { poll(600, herdr) }
+
+      assert_match(/ACTION REQUIRED.*#{File.basename(record)}/, restart)
+      assert File.file?(File.join(File.dirname(record), '.escalated'))
     end
   end
 
@@ -208,12 +219,19 @@ class InstructionWatcherTest < Minitest::Test
 
       ["bad\n", "#{File.basename(record)}\t1\t190\nextra\n"].each do |invalid|
         File.write(state, invalid)
-        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+        _, alert = capture_io do
+          assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+        end
+
+        assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
+        File.delete(File.join(File.dirname(record), '.escalated'))
       end
+
       assert_equal 1, herdr.bells.size
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_missing_retry_state_fails_without_resetting_attempts
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -222,8 +240,37 @@ class InstructionWatcherTest < Minitest::Test
       poll(190, herdr)
       File.delete(File.join(File.dirname(record), '.ring-state'))
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      _, alert = capture_io do
+        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      end
+
+      assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
       assert_equal 1, herdr.bells.size
+    end
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def test_retry_write_failure_preserves_count_and_requests_action
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      state = File.join(File.dirname(record), '.ring-state')
+      previous = File.read(state)
+      blocker = "#{state}.#{Process.pid}.tmp"
+      Dir.mkdir(blocker)
+
+      _, alert = capture_io do
+        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      end
+
+      assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
+      assert_equal previous, File.read(state)
+      assert File.file?(record)
+      assert_equal 1, herdr.bells.size
+    ensure
+      Dir.rmdir(blocker) if blocker && Dir.exist?(blocker)
     end
   end
 
@@ -367,14 +414,18 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
-  def test_dead_endpoint_fails_instead_of_claiming_healthy_observation
+  def test_dead_endpoint_requests_action_without_typing
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
       herdr.state = :dead
       record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
       File.utime(Time.at(100), Time.at(100), record)
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      _, alert = capture_io { poll(190, herdr) }
+
+      assert_match(/ACTION REQUIRED.*endpoint dead or missing/, alert)
+      assert_empty herdr.bells
+      assert File.file?(record)
     end
   end
 

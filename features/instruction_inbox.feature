@@ -41,6 +41,68 @@ Feature: Durable local-only worker instructions
     And I acknowledge the stored instruction and restart the watcher
     Then the restarted watcher does not re-notify the handled instruction
 
+  Scenario: The CLI asks for action after the retry budget and retains the instruction
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And I exhaust the notification budget through the CLI
+    Then the instruction remains pending with a durable action request
+
+  Scenario: The CLI does not notify a proven dead worker
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And the worker endpoint is proven dead
+    And I run riddim with:
+      """
+      watch-instructions --once
+      """
+    Then the instruction remains pending with a durable action request
+
+  Scenario: An invalid retry record requests action without discarding the pending instruction
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And the instruction retry record is invalid
+    And I run riddim with:
+      """
+      watch-instructions --once
+      """
+    Then the watcher reports a durable retry bookkeeping alert and retains the instruction
+
+  Scenario: A missing retry record requests action without resetting the notification count
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And the instruction retry record is missing
+    And I run riddim with:
+      """
+      watch-instructions --once
+      """
+    Then the watcher reports a durable retry bookkeeping alert and retains the instruction
+
+  Scenario: A broken inbox does not hide another inbox's existing action request
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And the instruction retry record is invalid
+    And another inbox has a saved action request
+    And I run riddim with:
+      """
+      watch-instructions --once
+      """
+    Then both inboxes report their saved action requests
+
   Scenario: A native Pi command still reaches the direct prompt
     When I run riddim with:
       """
