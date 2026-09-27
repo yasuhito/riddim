@@ -237,6 +237,17 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  def test_record_lost_before_first_scan_requires_a_receipt
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.delete(record)
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
   def test_missing_oldest_record_does_not_advance_to_next_pending_instruction
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -306,6 +317,18 @@ class InstructionWatcherTest < Minitest::Test
       File.write(path, "invalid\n")
 
       assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
+  def test_missing_owner_with_pending_instruction_fails
+    with_started_record('task_mode' => 'local-only') do |path|
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.delete(path)
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert File.file?(record)
       assert_empty herdr.bells
     end
   end

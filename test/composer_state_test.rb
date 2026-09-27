@@ -125,6 +125,25 @@ class ComposerVerdictTest < Minitest::Test
     end
   end
 
+  def test_refuses_a_draft_with_different_whitespace
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    screen = "────────────\n: Riddim instruction waiting: list /state/worker/*.msg\n────────────\n"
+    changed = screen.sub('instruction waiting', 'instructionwaiting')
+
+    with_herdr_method(:composer_capture, ->(*) { [changed, false] }) do
+      refute Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
+  def test_recognizes_an_exact_doorbell_wrapped_across_rows
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    screen = "────────────\n: Riddim instruction waiting: list /state/\nworker/*.msg\n────────────\n"
+
+    with_herdr_method(:composer_capture, ->(*) { [screen, false] }) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+  end
+
   def test_proves_empty_for_an_idle_live_pi
     with_screen("pi\tidle") do
       assert_equal :empty, Riddim::Herdr.composer_state('w9:p1', session: 'riddim')

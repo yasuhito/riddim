@@ -46,15 +46,17 @@ module Riddim
 
     # rubocop:disable-next Metrics/MethodLength
     def scan(now:, herdr:)
-      Dir.glob(File.join(Ownership.state_dir, '*.meta')).each do |record|
-        name = File.basename(record, '.meta')
-        next unless name.match?(Ownership::NAME_PATTERN)
+      Dir.glob(File.join(Ownership.state_dir, '*.inbox')).each do |dir|
+        match = /\A([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.inbox\z/.match(File.basename(dir))
+        next unless match
 
+        name, generation = match.captures
         begin
-          endpoint, generation = Ownership::Endpoint.resolve_snapshot(name)
-          mode = Ownership.parse(Ownership::Endpoint.read_bytes(record))['task_mode']
-          dir = InstructionInbox.path(name, generation)
-          next unless mode == 'local-only' || File.exist?(dir) || File.symlink?(dir)
+          InstructionInbox.verify_directory!(dir)
+          next unless unreceived_instructions?(dir)
+
+          endpoint, current_generation = Ownership::Endpoint.resolve_snapshot(name)
+          next unless current_generation == generation
 
           scan_owner(name, endpoint, generation, now, herdr)
         rescue InstructionInbox::Error
@@ -62,6 +64,15 @@ module Riddim
         rescue Ownership::Error => e
           raise InstructionInbox::Error, "instruction watcher cannot check #{name}: #{e.message}"
         end
+      end
+    end
+
+    def unreceived_instructions?(dir)
+      return true if Dir.glob(File.join(dir, '*.msg')).any?
+
+      Dir.glob(File.join(dir, '*.msg.expected')).any? do |expected|
+        receipt = File.join(dir, 'handled', File.basename(expected, '.expected'))
+        !File.file?(receipt) || File.symlink?(receipt)
       end
     end
 
@@ -83,6 +94,7 @@ module Riddim
         ensure_retry_state!(ring_state)
         previous, count, last = read_retry_state(ring_state)
         verify_record_receipt!(dir, previous, count)
+        verify_published_records!(dir)
         records = Dir.glob(File.join(dir, '*.msg')).grep(%r{/\d+\.msg\z})
         record = records.min_by { |path| File.basename(path).to_i }
         return unless record
@@ -167,6 +179,17 @@ module Riddim
       return if File.file?(receipt) && !File.symlink?(receipt)
 
       raise InstructionInbox::Error, "instruction missing without handled receipt: #{pending}"
+    end
+
+    def verify_published_records!(dir)
+      Dir.glob(File.join(dir, '*.msg.expected')).each do |expected|
+        base = File.basename(expected, '.expected')
+        unless base.match?(/\A\d+\.msg\z/) && File.file?(expected) && !File.symlink?(expected)
+          raise InstructionInbox::Error, "invalid instruction publication marker: #{expected}"
+        end
+
+        verify_record_receipt!(dir, base, 1)
+      end
     end
 
     def write_retry_state(path, base, count, now)

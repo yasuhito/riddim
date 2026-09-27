@@ -43,9 +43,10 @@ module Riddim
 
       rows = screen_rows(screen)
       content = ((pair.fetch(:open) + 1)...pair.fetch(:close)).map do |index|
-        composer_row_content(rows.fetch(index, ''), styled)
+        raw = rows.fetch(index, '')
+        styled ? strip_ghost(raw) : strip_ansi(raw)
       end.join
-      !content.empty? && content.gsub(/\s/, '') == line.gsub(/\s/, '')
+      !content.empty? && content == line
     end
 
     def composer_identity_verdict(screen, styled, pane, session:)

@@ -23,15 +23,25 @@ module Riddim
       dir = path(name, generation)
       prepare(dir)
       record = File.join(dir, format('%09d.msg', next_sequence(dir)))
+      publish_expectation(record)
       publish(record, message)
       record
     rescue SystemCallError, Ownership::Error => e
       raise Error, "instruction could not be stored in #{dir}: #{e.message}"
     end
 
+    def publish_expectation(record)
+      expected = "#{record}.expected"
+      File.open(expected, File::WRONLY | File::CREAT | File::EXCL | File::NOFOLLOW, 0o600) do |file|
+        file.flush
+        file.fsync
+      end
+      sync_record_directory(expected)
+    end
+
     def next_sequence(dir)
       (Dir.children(dir) + Dir.children(File.join(dir, 'handled'))).filter_map do |entry|
-        match = /\A(\d+)\.msg\z/.match(entry)
+        match = /\A(\d+)\.msg(?:\.expected)?\z/.match(entry)
         Integer(match[1], 10) if match
       end.max.to_i + 1
     end
