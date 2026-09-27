@@ -48,6 +48,7 @@ module Riddim
 
     # rubocop:disable-next Metrics/MethodLength
     def scan(now:, herdr:, report_existing: false)
+      failures = []
       Dir.glob(File.join(Ownership.state_dir, '*.inbox')).each do |dir|
         match = /\A([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.inbox\z/.match(File.basename(dir))
         next unless match
@@ -61,12 +62,13 @@ module Riddim
           next unless current_generation == generation
 
           scan_owner(name, [endpoint, generation], now, herdr, report_existing: report_existing)
-        rescue InstructionInbox::Error
-          raise
-        rescue Ownership::Error => e
-          raise InstructionInbox::Error, "instruction watcher cannot check #{name}: #{e.message}"
+        rescue InstructionInbox::Error => e
+          failures << e
+        rescue Ownership::Error, SystemCallError => e
+          failures << InstructionInbox::Error.new("instruction watcher cannot check #{name}: #{e.message}")
         end
       end
+      raise failures.first unless failures.empty?
     end
 
     def unreceived_instructions?(dir)
@@ -93,14 +95,17 @@ module Riddim
         InstructionInbox.verify_directory!(dir)
         handled = File.join(dir, 'handled')
         InstructionInbox.verify_directory!(handled)
-        ring_state = File.join(dir, '.ring-state')
-        ensure_retry_state!(ring_state)
-        previous, count, last = read_retry_state(ring_state)
-        verify_record_receipt!(dir, previous, count)
         verify_published_records!(dir)
         records = Dir.glob(File.join(dir, '*.msg')).grep(%r{/\d+\.msg\z})
         record = records.min_by { |path| File.basename(path).to_i }
-        return unless record
+
+        ring_state = File.join(dir, '.ring-state')
+        unless record
+          ensure_retry_state!(ring_state)
+          previous, count, = read_retry_state(ring_state)
+          verify_record_receipt!(dir, previous, count)
+          return
+        end
 
         if File.symlink?(record) || !File.file?(record)
           raise InstructionInbox::Error, "instruction record is not a regular file: #{record}"
@@ -110,17 +115,22 @@ module Riddim
         raise InstructionInbox::Error, "pending instruction owner mode changed: #{record}" unless mode == 'local-only'
 
         base = File.basename(record)
+        marker = File.join(dir, '.escalated')
+        previous, count, last = with_retry_state(marker, base, record, report_existing: report_existing) do
+          ensure_retry_state!(ring_state)
+          read_retry_state(ring_state)
+        end
+        verify_record_receipt!(dir, previous, count)
+        escalation = read_escalation(marker)
+        if escalation && escalation.first == base
+          warn "riddim: ACTION REQUIRED: #{escalation.last}: #{record}" if report_existing
+          return
+        end
         return if now - File.stat(record).mtime.to_i < GRACE
 
         if previous != base
           count = 0
           last = 0
-        end
-        marker = File.join(dir, '.escalated')
-        escalation = read_escalation(marker)
-        if escalation && escalation.first == base
-          warn "riddim: ACTION REQUIRED: #{escalation.last}: #{record}" if report_existing
-          return
         end
 
         state = herdr.agent_state(endpoint.pane_id, session: endpoint.session)
@@ -156,7 +166,9 @@ module Riddim
         return unless Ownership::Endpoint.resolve_snapshot(name) == [endpoint, generation]
 
         bell = InstructionInbox.notification(dir)
-        write_retry_state(ring_state, base, count + 1, now)
+        with_retry_state(marker, base, record, report_existing: report_existing) do
+          write_retry_state(ring_state, base, count + 1, now)
+        end
         Send.notify_worker(herdr, endpoint, bell, record)
       end
     rescue InstructionInbox::Error
@@ -169,11 +181,25 @@ module Riddim
       return nil unless File.exist?(path) || File.symlink?(path)
 
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
-      pattern = /\A(\d+\.msg)\t(worker endpoint dead or missing|unhandled after \d+ notification attempts)\n\z/
+      pattern = /\A(\d+\.msg)\t(worker endpoint dead or missing|unhandled after \d+ notification attempts|cannot record retry state)\n\z/
       fields = pattern.match(raw)
       raise InstructionInbox::Error, "invalid instruction escalation marker: #{path}" unless fields
 
       fields.captures
+    end
+
+    def with_retry_state(marker, base, record, report_existing:)
+      yield
+    rescue InstructionInbox::Error, SystemCallError
+      if File.file?(record) && !File.symlink?(record)
+        existing = read_escalation(marker)
+        if existing && existing.first == base
+          warn "riddim: ACTION REQUIRED: #{existing.last}: #{record}" if report_existing
+        else
+          escalate(marker, base, 'cannot record retry state', record)
+        end
+      end
+      raise
     end
 
     # rubocop:disable-next Metrics/MethodLength

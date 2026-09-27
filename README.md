@@ -122,10 +122,10 @@ session and pane. Unlike `status`, this read corroborates Herdr registration
 with pane presence and the OS process view: `alive` requires a registered Pi
 process, and `dead` requires a present pane with no registered agent or a
 shell-only process view behind a stale Pi registration. A confirmed missing
-pane, or a recorded session whose server is positively stopped, reads
-`missing`. **Missing does not prove the endpoint was destroyed:** a stopped
-server can restore it. Unreadable and unfamiliar process states remain
-`unreadable` rather than being guessed into `dead` or `alive`. If the ownership
+pane reads `missing`. A stopped server with an unreadable pane reads
+`unreadable`; the endpoint may return when the server restarts. Unreadable and
+unfamiliar process states remain `unreadable` rather than being guessed into
+`dead` or `alive`. If the ownership
 record's `spawn_gen` or exact endpoint changes during observation, Riddim
 returns `unreadable` rather than attributing the old observation to a new
 incarnation.
@@ -224,7 +224,7 @@ bin/riddim server-state <name>
 Reports `running`, `stopped`, or `unknown` from the recorded session's
 `status --json` alone, without touching any pane. This is a smaller subset of
 Firstmate's `fm_backend_herdr_server_running_state`; it tells you whether a
-`missing` from `agent-state` is explained by a server that is not running.
+`unreadable` from `agent-state` is explained by a server that is not running.
 Herdr preserves pane, tab, and workspace ids across a server restart while
 harness processes and registrations die, so `stopped` means unreachable right
 now: it is **not** evidence an endpoint was destroyed and licenses no
@@ -439,12 +439,13 @@ holding different text is never submitted. When the watcher can prove it holds
 this doorbell, it retries Enter without retyping the line.
 The worker's move to `handled/` alone stops retries.
 After three unacknowledged notification attempts with an idle worker, or when
-Herdr proves the endpoint dead or missing, the watcher writes a per-instruction
-`.escalated` marker and logs `ACTION REQUIRED` once. It never types into a dead
+Herdr proves the endpoint dead or missing, or retry state cannot be recorded,
+the watcher writes a per-instruction `.escalated` marker and logs
+`ACTION REQUIRED` once. It never types into a dead
 endpoint. `watch-instructions --once` shows unresolved alerts again on demand,
 even after a watcher restart. A stopped server or otherwise unverifiable
 endpoint/activity is not proof of death: the watcher exits with an error instead.
-Retry-state write failures also stop the watcher rather than silently resetting
+Retry-state failures also stop the watcher rather than silently resetting
 its budget. The automatically started process logs to `.instruction-watcher.log`
 in the selected state directory; supervise it for restarts. Unlike Firstmate's
 general watcher, Riddim does not wake the supervisor or monitor remote workers.

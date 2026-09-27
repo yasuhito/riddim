@@ -219,7 +219,11 @@ class InstructionWatcherTest < Minitest::Test
 
       ["bad\n", "#{File.basename(record)}\t1\t190\nextra\n"].each do |invalid|
         File.write(state, invalid)
-        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+        _, alert = capture_io do
+          assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+        end
+        assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
+        File.delete(File.join(File.dirname(record), '.escalated'))
       end
       assert_equal 1, herdr.bells.size
     end
@@ -233,8 +237,35 @@ class InstructionWatcherTest < Minitest::Test
       poll(190, herdr)
       File.delete(File.join(File.dirname(record), '.ring-state'))
 
-      assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      _, alert = capture_io do
+        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      end
+      assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
       assert_equal 1, herdr.bells.size
+    end
+  end
+
+  def test_retry_write_failure_preserves_count_and_requests_action
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      state = File.join(File.dirname(record), '.ring-state')
+      previous = File.read(state)
+      blocker = "#{state}.#{Process.pid}.tmp"
+      Dir.mkdir(blocker)
+
+      _, alert = capture_io do
+        assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      end
+
+      assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
+      assert_equal previous, File.read(state)
+      assert File.file?(record)
+      assert_equal 1, herdr.bells.size
+    ensure
+      Dir.rmdir(blocker) if blocker && Dir.exist?(blocker)
     end
   end
 

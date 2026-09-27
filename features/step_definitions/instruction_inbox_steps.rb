@@ -104,10 +104,42 @@ When('the instruction retry record is invalid') do
   File.write(File.join(current_inbox, '.ring-state'), "corrupt\n")
 end
 
-Then('the watcher reports a retry bookkeeping failure and retains the instruction') do
+When('the instruction retry record is missing') do
+  File.delete(File.join(current_inbox, '.ring-state'))
+end
+
+Then('the watcher reports a durable retry bookkeeping alert and retains the instruction') do
   assert_equal 1, @status.exitstatus
-  assert_includes @stderr, 'invalid instruction retry state'
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
   assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert File.file?(File.join(current_inbox, '.escalated'))
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
+end
+
+When('another inbox has a saved action request') do
+  publish_record('second', session: 'riddim', overrides: { 'task_mode' => 'local-only' })
+  original_state_dir = ENV.fetch('RIDDIM_STATE_DIR', nil)
+  begin
+    ENV['RIDDIM_STATE_DIR'] = scenario_state_dir
+    record = Riddim::InstructionInbox.enqueue('second', OWNERSHIP_RECORD_BASE.fetch('spawn_gen'),
+                                              'Other instruction')
+  ensure
+    ENV['RIDDIM_STATE_DIR'] = original_state_dir
+  end
+  File.utime(Time.at(100), Time.at(100), record)
+  File.write(File.join(File.dirname(record), '.escalated'),
+             "#{File.basename(record)}\tworker endpoint dead or missing\n")
+  @other_inbox = File.dirname(record)
+end
+
+Then('both inboxes report their saved action requests') do
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'ACTION REQUIRED: cannot record retry state'
+  assert_includes @stderr, 'ACTION REQUIRED: worker endpoint dead or missing'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert_equal ['Other instruction'], inbox_bodies(@other_inbox)
 end
 
 When('the worker endpoint is proven dead') do
