@@ -46,7 +46,7 @@ module Riddim
       raise InstructionInbox::Error, 'instruction watcher lost its home or lock binding'
     end
 
-    # rubocop:disable-next Metrics/MethodLength
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
     def scan(now:, herdr:, report_existing: false)
       failures = []
       Dir.glob(File.join(Ownership.state_dir, '*.inbox')).each do |dir|
@@ -181,13 +181,18 @@ module Riddim
       return nil unless File.exist?(path) || File.symlink?(path)
 
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
-      pattern = /\A(\d+\.msg)\t(worker endpoint dead or missing|unhandled after \d+ notification attempts|cannot record retry state)\n\z/
+      pattern = /\A(\d+\.msg)\t(
+        worker\ endpoint\ dead\ or\ missing|
+        unhandled\ after\ \d+\ notification\ attempts|
+        cannot\ record\ retry\ state
+      )\n\z/x
       fields = pattern.match(raw)
       raise InstructionInbox::Error, "invalid instruction escalation marker: #{path}" unless fields
 
       fields.captures
     end
 
+    # rubocop:disable-next Metrics/MethodLength
     def with_retry_state(marker, base, record, report_existing:)
       yield
     rescue InstructionInbox::Error, SystemCallError

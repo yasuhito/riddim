@@ -222,13 +222,16 @@ class InstructionWatcherTest < Minitest::Test
         _, alert = capture_io do
           assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
         end
+
         assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
         File.delete(File.join(File.dirname(record), '.escalated'))
       end
+
       assert_equal 1, herdr.bells.size
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_missing_retry_state_fails_without_resetting_attempts
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
@@ -240,11 +243,13 @@ class InstructionWatcherTest < Minitest::Test
       _, alert = capture_io do
         assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
       end
+
       assert_includes alert, 'ACTION REQUIRED: cannot record retry state'
       assert_equal 1, herdr.bells.size
     end
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_retry_write_failure_preserves_count_and_requests_action
     with_started_record('task_mode' => 'local-only') do
       herdr = FakeHerdr.new
