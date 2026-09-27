@@ -91,6 +91,35 @@ When('I run the instruction watcher after the grace period') do
   @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
 end
 
+When('I exhaust the notification budget through the CLI') do
+  3.times do
+    state = File.join(current_inbox, '.ring-state')
+    fields = File.read(state).split("\t")
+    File.write(state, "#{fields[0]}\t#{fields[1]}\t0\n")
+    @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  end
+end
+
+When('the worker endpoint is proven dead') do
+  install_fake_herdr(<<~RUBY)
+    require 'json'
+    if ARGV[0, 2] == %w[pane get]
+      puts JSON.generate(result: { type: 'pane', pane: { pane_id: 'w9:p1' } })
+    elsif ARGV[0, 2] == %w[agent get]
+      puts JSON.generate(error: { code: 'agent_not_found' })
+    end
+  RUBY
+end
+
+Then('the instruction remains pending with a durable action request') do
+  assert @status.success?, @stderr
+  assert_includes @stderr, 'ACTION REQUIRED'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+  assert File.file?(File.join(current_inbox, '.escalated'))
+  @stdout, @stderr, @status = run_riddim('watch-instructions', '--once')
+  assert_includes @stderr, 'ACTION REQUIRED'
+end
+
 Then('the watcher has retried the stored instruction') do
   assert @status.success?, @stderr
   assert herdr_invocations.any? { |call| call.include?('agent prompt') }, herdr_invocations.inspect

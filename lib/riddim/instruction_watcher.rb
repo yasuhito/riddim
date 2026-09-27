@@ -23,10 +23,12 @@ module Riddim
           lock.chmod(0o600)
           return false unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
+          first_scan = true
           loop do
             verify_binding!(directory, home)
             verify_binding!(lock, File.join(home, '.instruction-watcher.lock'))
-            scan(now: now.call, herdr: herdr, report_existing: once)
+            scan(now: now.call, herdr: herdr, report_existing: first_scan)
+            first_scan = false
             break if once
 
             sleep interval
