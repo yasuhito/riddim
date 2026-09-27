@@ -63,6 +63,19 @@ Feature: Durable local-only worker instructions
       """
     Then the instruction remains pending with a durable action request
 
+  Scenario: An invalid retry record fails visibly without discarding the pending instruction
+    When I run riddim with:
+      """
+      send worker First instruction
+      """
+    And I run the instruction watcher after the grace period
+    And the instruction retry record is invalid
+    And I run riddim with:
+      """
+      watch-instructions --once
+      """
+    Then the watcher reports a retry bookkeeping failure and retains the instruction
+
   Scenario: A native Pi command still reaches the direct prompt
     When I run riddim with:
       """

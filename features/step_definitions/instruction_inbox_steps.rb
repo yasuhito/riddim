@@ -100,6 +100,16 @@ When('I exhaust the notification budget through the CLI') do
   end
 end
 
+When('the instruction retry record is invalid') do
+  File.write(File.join(current_inbox, '.ring-state'), "corrupt\n")
+end
+
+Then('the watcher reports a retry bookkeeping failure and retains the instruction') do
+  assert_equal 1, @status.exitstatus
+  assert_includes @stderr, 'invalid instruction retry state'
+  assert_equal ['First instruction'], inbox_bodies(current_inbox)
+end
+
 When('the worker endpoint is proven dead') do
   install_fake_herdr(<<~RUBY)
     require 'json'
