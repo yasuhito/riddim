@@ -211,6 +211,93 @@ class InstructionWatcherTest < Minitest::Test
     end
   end
 
+  def test_missing_retry_state_fails_without_resetting_attempts
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      File.delete(File.join(File.dirname(record), '.ring-state'))
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      assert_equal 1, herdr.bells.size
+    end
+  end
+
+  def test_missing_unhandled_record_requires_a_receipt
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      poll(190, herdr)
+      File.delete(record)
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      assert_equal 1, herdr.bells.size
+    end
+  end
+
+  def test_missing_oldest_record_does_not_advance_to_next_pending_instruction
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      first = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      second = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'second')
+      File.utime(Time.at(100), Time.at(100), first)
+      File.utime(Time.at(101), Time.at(101), second)
+      poll(190, herdr)
+      File.delete(first)
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(280, herdr) }
+      assert_equal 1, herdr.bells.size
+    end
+  end
+
+  def test_disappearance_during_backend_probe_requires_a_receipt
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      herdr.define_singleton_method(:busy_state) do |_pane, session:|
+        raise 'wrong session' unless session == 'lab'
+
+        File.delete(record)
+        :idle
+      end
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
+  def test_handling_during_backend_probe_stops_notification
+    with_started_record('task_mode' => 'local-only') do
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      herdr.define_singleton_method(:busy_state) do |_pane, session:|
+        raise 'wrong session' unless session == 'lab'
+
+        File.rename(record, File.join(File.dirname(record), 'handled', File.basename(record)))
+        :idle
+      end
+
+      assert poll(190, herdr)
+      assert_empty herdr.bells
+    end
+  end
+
+  def test_pending_inbox_fails_when_owner_mode_is_lost
+    with_started_record('task_mode' => 'local-only') do |path|
+      herdr = FakeHerdr.new
+      record = Riddim::InstructionInbox.enqueue('worker', ENDPOINT_FIELDS.fetch('spawn_gen'), 'first')
+      File.utime(Time.at(100), Time.at(100), record)
+      File.write(path, Riddim::Ownership.serialize(ENDPOINT_FIELDS))
+
+      assert_raises(Riddim::InstructionInbox::Error) { poll(190, herdr) }
+      assert_empty herdr.bells
+    end
+  end
+
   def test_unverifiable_owner_with_pending_instruction_fails
     with_started_record('task_mode' => 'local-only') do |path|
       herdr = FakeHerdr.new

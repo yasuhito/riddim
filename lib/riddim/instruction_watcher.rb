@@ -52,7 +52,9 @@ module Riddim
 
         begin
           endpoint, generation = Ownership::Endpoint.resolve_snapshot(name)
-          next unless Ownership.parse(Ownership::Endpoint.read_bytes(record))['task_mode'] == 'local-only'
+          mode = Ownership.parse(Ownership::Endpoint.read_bytes(record))['task_mode']
+          dir = InstructionInbox.path(name, generation)
+          next unless mode == 'local-only' || File.exist?(dir) || File.symlink?(dir)
 
           scan_owner(name, endpoint, generation, now, herdr)
         rescue InstructionInbox::Error
@@ -75,13 +77,20 @@ module Riddim
         return unless File.exist?(dir) || File.symlink?(dir)
 
         InstructionInbox.verify_directory!(dir)
+        handled = File.join(dir, 'handled')
+        InstructionInbox.verify_directory!(handled)
+        ring_state = File.join(dir, '.ring-state')
+        ensure_retry_state!(ring_state)
+        previous, count, last = read_retry_state(ring_state)
+        verify_record_receipt!(dir, previous, count)
         records = Dir.glob(File.join(dir, '*.msg')).grep(%r{/\d+\.msg\z})
         record = records.min_by { |path| File.basename(path).to_i }
         return unless record
         raise InstructionInbox::Error, "instruction record is not a regular file: #{record}" if File.symlink?(record) || !File.file?(record)
-        ring_state = File.join(dir, '.ring-state')
+        mode = Ownership.parse(Ownership::Endpoint.read_bytes(Ownership.record_path(name)))['task_mode']
+        raise InstructionInbox::Error, "pending instruction owner mode changed: #{record}" unless mode == 'local-only'
+
         base = File.basename(record)
-        previous, count, last = read_retry_state(ring_state)
         return if now - File.stat(record).mtime.to_i < GRACE
 
         if previous != base
@@ -107,12 +116,15 @@ module Riddim
         # No other lifecycle writer may rebind the endpoint while this lock is
         # held. Recheck the file after the backend probes: handled/ is the only
         # receipt and a notification never advances the queue.
-        return unless File.file?(record) && !File.symlink?(record)
+        unless File.file?(record) && !File.symlink?(record)
+          verify_record_receipt!(dir, base, 1)
+          return
+        end
         return unless Ownership::Endpoint.resolve_snapshot(name) == [endpoint, generation]
 
         bell = InstructionInbox.notification(dir)
-        Send.notify_worker(herdr, endpoint, bell, record)
         write_retry_state(ring_state, base, count + 1, now)
+        Send.notify_worker(herdr, endpoint, bell, record)
       end
     rescue InstructionInbox::Error
       raise
@@ -122,13 +134,39 @@ module Riddim
 
     # rubocop:disable-next Metrics/CyclomaticComplexity
     def read_retry_state(path)
-      return [nil, 0, 0] unless File.exist?(path) || File.symlink?(path)
-
       raw = File.open(path, File::RDONLY | File::NOFOLLOW, &:read)
       fields = /\A(\d+\.msg)\t(\d+)\t(\d+)\n\z/.match(raw)
       raise InstructionInbox::Error, "invalid instruction retry state: #{path}" unless fields
 
       [fields[1], fields[2].to_i, fields[3].to_i]
+    end
+
+    def ensure_retry_state!(path)
+      marker = "#{path}.required"
+      if File.exist?(marker) || File.symlink?(marker)
+        raise InstructionInbox::Error, "invalid instruction retry marker: #{marker}" unless File.file?(marker) && !File.symlink?(marker)
+
+        return
+      end
+
+      write_retry_state(path, '0.msg', 0, 0) unless File.exist?(path) || File.symlink?(path)
+      read_retry_state(path)
+      File.open(marker, File::WRONLY | File::CREAT | File::EXCL | File::NOFOLLOW, 0o600) do |file|
+        file.flush
+        file.fsync
+      end
+      File.open(File.dirname(path), &:fsync)
+    end
+
+    def verify_record_receipt!(dir, base, count)
+      return if count.zero? && base == '0.msg'
+
+      pending = File.join(dir, base)
+      receipt = File.join(dir, 'handled', base)
+      return if File.file?(pending) && !File.symlink?(pending)
+      return if File.file?(receipt) && !File.symlink?(receipt)
+
+      raise InstructionInbox::Error, "instruction missing without handled receipt: #{pending}"
     end
 
     def write_retry_state(path, base, count, now)
