@@ -427,20 +427,21 @@ successful send proves storage only, not receipt, reply, or completion. If
 notification fails, the command still succeeds and reports the saved path;
 do not resend blindly. The inbox is generation-scoped: an old task's pending
 instructions are never presented to a replacement using the same name.
-An independent instruction watcher starts after a stored send. It scans saved
-inboxes even when the supervisor's Pi notification watcher is not armed. Run
+An independent instruction watcher is launched after a stored send. It scans
+saved inboxes even when the supervisor's Pi notification watcher is not armed. Run
 `bin/riddim watch-instructions` under a process supervisor to restart it after
 process or host failure; its exclusive home lock refuses a second watcher.
 For diagnostics, `bin/riddim watch-instructions --once` performs one scan when
 no watcher holds the lock. It waits 90 seconds after the oldest pending record,
 then at least 90 seconds between attempts, with a maximum of three attempts.
 A busy worker waits without consuming the budget; a proven pending composer
-holding different text is never submitted. When it holds exactly an earlier
-copy of this doorbell, the watcher retries Enter without retyping the line.
+holding different text is never submitted. When the watcher can prove it holds
+this doorbell, it retries Enter without retyping the line.
 The worker's move to `handled/` alone stops retries.
 An exhausted budget or an unverifiable endpoint/activity verdict terminates
 the watcher with an error (the automatically started process logs to
-`state/.instruction-watcher.log`), not a healthy heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
+`.instruction-watcher.log` in the selected state directory), not a healthy
+heartbeat. Unlike Firstmate's general watcher, Riddim does not escalate this
 as a supervisor wake or monitor remote workers. Inspect the saved inbox and
 worker pane when retries fail; a notification is not a receipt or completion.
 
@@ -523,10 +524,12 @@ is published, any failed or ambiguous submission, registration, or naming
 retains the pane, record, brief, launch file, and worktree for inspection:
 Riddim cannot prove the task did not already run and never automatically
 retries it. A symlinked, non-regular, empty, invalid UTF-8, or NUL-containing
-task file refuses before allocation. This remains a Pi-only subset of Firstmate's launch brief: there is no typed
-Firstmate operational-input marker, automatic inbox re-ring, reply tracking,
-or PR delivery. Local-only tasks do have a durable inbox and handled receipt. Without `--task-file`, `start --worktree` retains
-its previous native `agent start` behavior.
+task file refuses before allocation. This remains a Pi-only subset of
+Firstmate's launch brief: there is no typed
+Firstmate operational-input marker, reply tracking, or PR delivery. See
+[Send a prompt](#send-a-prompt) for local-only inbox delivery. Without
+`--task-file`, `start --worktree` retains its previous native `agent start`
+behavior.
 
 #### Local-only result handoff
 
