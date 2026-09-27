@@ -144,6 +144,24 @@ class ComposerVerdictTest < Minitest::Test
     end
   end
 
+  def test_uses_unwrapped_capture_to_prove_a_doorbell_split_at_a_space
+    line = ': Riddim instruction waiting: list /state/worker/*.msg'
+    wrapped = "────────────\n: Riddim instruction\nwaiting: list /state/worker/*.msg\n────────────\n"
+    unwrapped = "────────────\n#{line}\n────────────\n"
+    status = Struct.new(:success?).new(true)
+    sources = []
+    capture = lambda do |*arguments, session:|
+      source = arguments[arguments.index('--source') + 1]
+      sources << [source, session]
+      [source == 'recent-unwrapped' ? unwrapped : wrapped, '', status]
+    end
+
+    with_herdr_method(:capture, capture) do
+      assert Riddim::Herdr.composer_holds_line?('w9:p1', line, session: 'riddim')
+    end
+    assert_equal [['recent-unwrapped', 'riddim']], sources
+  end
+
   def test_proves_empty_for_an_idle_live_pi
     with_screen("pi\tidle") do
       assert_equal :empty, Riddim::Herdr.composer_state('w9:p1', session: 'riddim')

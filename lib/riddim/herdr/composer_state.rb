@@ -35,7 +35,7 @@ module Riddim
     # Enter, even if the same text appears elsewhere in the transcript.
     # rubocop:disable-next Metrics/AbcSize
     def composer_holds_line?(pane, line, session:)
-      screen, styled = composer_capture(pane, session: session)
+      screen, styled = composer_capture(pane, session: session, source: 'recent-unwrapped')
       return false unless screen
 
       pair = bottom_most_pi_pair(screen)
@@ -55,15 +55,15 @@ module Riddim
       pi_composer_verdict(screen, styled: styled, identity: identity)
     end
 
-    def composer_capture(pane, session:)
+    def composer_capture(pane, session:, source: 'recent')
       stdout, _stderr, status = capture(
-        'pane', 'read', pane, '--source', 'recent', '--lines', composer_fetch_lines.to_s,
+        'pane', 'read', pane, '--source', source, '--lines', composer_fetch_lines.to_s,
         '--format', 'ansi', session: session
       )
       return [tail(stdout, COMPOSER_CAPTURE_LINES), true] if status.success?
 
       stdout, _stderr, status = capture(
-        'pane', 'read', pane, '--source', 'recent', '--lines', composer_fetch_lines.to_s, session: session
+        'pane', 'read', pane, '--source', source, '--lines', composer_fetch_lines.to_s, session: session
       )
       return [tail(stdout, COMPOSER_CAPTURE_LINES), false] if status.success?
 
