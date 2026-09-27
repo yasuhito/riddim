@@ -166,9 +166,8 @@ pane. This is the small, read-only Herdr subset of Firstmate's
 `fm_backend_herdr_pane_presence_state`: a matching structured `pane get`
 response establishes `present`; only a structured `pane_not_found` response
 establishes `gone`. Exit status alone and an unreachable or stopped server
-leave the result `unknown`. Unlike `agent-state`'s `missing`, `gone` is **not**
-reported merely because the recorded server is stopped. Riddim checks that
-ownership has not changed during the read and otherwise returns `unknown`.
+leave the result `unknown`. Riddim checks that ownership has not changed
+during the read and otherwise returns `unknown`.
 
 Pane presence says nothing about whether Pi is running or a turn has finished.
 It never closes a pane or removes an ownership record. Even `gone` is a
