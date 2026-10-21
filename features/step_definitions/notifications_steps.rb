@@ -330,10 +330,11 @@ end
 
 Then('listing and scanning both succeed without pending reports') do
   directory = File.join(scenario_state_dir, '.notifications')
+  private_queue = File.directory?(directory) && !File.symlink?(directory) &&
+                  File.stat(directory).mode & 0o777 == 0o700
   assert_equal [true, "[]\n", true, true, "[]\n", true, true],
                [@listing[2].success?, @listing[0], @listing[1].empty?, @listing_left_state_absent,
-                @scan[0], @scan[2].success?, File.directory?(directory) && !File.symlink?(directory) &&
-                  File.stat(directory).mode & 0o777 == 0o700],
+                @scan[0], @scan[2].success?, private_queue],
                [@listing[1], @scan[1]].join
 end
 

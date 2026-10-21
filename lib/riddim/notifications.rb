@@ -43,11 +43,8 @@ module Riddim
     end
 
     def pending
-      begin
-        File.lstat(directory)
-      rescue Errno::ENOENT
-        return []
-      end
+      return [] unless notification_directory_present?
+
       verify_directory
       files = Dir.children(directory)
       files.grep(/\A\.(?:handled|presented|ack-pending)-.*\.json\z/).each do |filename|
@@ -220,6 +217,13 @@ module Riddim
     def ensure_directory
       Dir.mkdir(directory, 0o700) unless File.exist?(directory) || File.symlink?(directory)
       verify_directory
+    end
+
+    def notification_directory_present?
+      File.lstat(directory)
+      true
+    rescue Errno::ENOENT
+      false
     end
 
     def verify_directory
