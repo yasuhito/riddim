@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'herdr'
+require_relative 'instruction_inbox'
 require_relative 'ownership'
 require_relative 'worktree'
 require_relative 'task_brief'

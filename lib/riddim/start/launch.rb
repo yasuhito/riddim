@@ -10,6 +10,9 @@ module Riddim
       reserve_record_path(name)
       task_launch = prepare_task(name, options)
       worktree = prepare_worktree(name, config_dir: options.config_dir) if options.create_worktree
+      if task_launch.mode
+        InstructionInbox.prepare(InstructionInbox.path(name, task_launch.spawn_gen))
+      end
       workspace = create_endpoint(name, cwd: worktree ? worktree.path : Dir.pwd, worktree: worktree)
       complete_launch(name, profile, workspace, worktree, task_launch)
       report_successful_launch(worktree, task_launch)
