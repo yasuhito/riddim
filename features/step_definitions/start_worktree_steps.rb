@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'json'
 require 'open3'
 
 Given('a local Git project for worktree start') do
@@ -15,6 +16,38 @@ Given('a local Git project for worktree start') do
 
   @worktree = File.join(File.dirname(@project), 'project-riddim-worker')
   @working_directory = @project
+end
+
+Given('the project contains a Pi extension') do
+  extension = File.join(@project, '.pi', 'extensions', 'test.ts')
+  FileUtils.mkdir_p(File.dirname(extension))
+  File.write(extension, 'export default function test() {}')
+  git = ->(*args) { Open3.capture3('git', '-C', @project, *args) }
+  raise 'extension git add failed' unless git.call('add', '.pi/extensions').last.success?
+  raise 'extension commit failed' unless git.call('-c', 'user.name=Riddim', '-c', 'user.email=test@example.invalid',
+                                                  'commit', '-qm', 'Pi extension').last.success?
+end
+
+def configure_pi_agent_directory(contents)
+  @pi_agent_directory = File.join(new_temporary_directory, 'pi-agent')
+  FileUtils.mkdir_p(@pi_agent_directory, mode: 0o700)
+  File.chmod(0o700, @pi_agent_directory)
+  @pi_trust_file = File.join(@pi_agent_directory, 'trust.json')
+  File.write(@pi_trust_file, contents)
+  File.chmod(0o600, @pi_trust_file)
+  @environment['PI_CODING_AGENT_DIR'] = @pi_agent_directory
+end
+
+Given('the Pi trust store contains a denial for the worktree parent') do
+  configure_pi_agent_directory(JSON.generate(File.dirname(@worktree) => false, '/unrelated-project' => true))
+end
+
+Given('the Pi trust store contains invalid data') do
+  configure_pi_agent_directory('[]')
+end
+
+Given('Herdr checks Pi trust before creating a workspace') do
+  File.write(File.join(@herdr_directory, 'check-pi-trust-before-workspace'), '')
 end
 
 Given('the project contains the Riddim CLI') do
@@ -65,6 +98,10 @@ WORKTREE_TASK_LAUNCH = <<~RUBY
       exit 7
     end
     File.write(File.expand_path('launch-submitted', __dir__), '')
+    if File.file?(File.expand_path('execute-task-launch', __dir__))
+      cwd = File.read(File.expand_path('workspace-cwd', __dir__)).strip
+      abort 'task launch failed' unless system('/bin/sh', '-c', command, chdir: cwd)
+    end
     puts JSON.generate(result: { type: 'ok' })
   when ['pane', 'process-info']
     puts JSON.generate(result: { type: 'pane_process_info', process_info: {
@@ -102,6 +139,10 @@ Given('Herdr starts the agent only in the linked worktree') do
     case ARGV[0, 2]
     when ['workspace', 'create']
       cwd = ARGV[ARGV.index('--cwd') + 1]
+      if File.file?(File.expand_path('check-pi-trust-before-workspace', __dir__))
+        trust = JSON.parse(File.read(File.join(ENV.fetch('PI_CODING_AGENT_DIR'), 'trust.json')))
+        abort 'Pi worktree trust was not registered before workspace creation' unless trust[cwd] == true
+      end
       File.write(File.expand_path('workspace-cwd', __dir__), cwd)
       puts #{CANNED_CREATE_RESPONSE.dump}
     when ['pane', 'get']
@@ -226,4 +267,13 @@ Then('the misplaced pane is closed without deleting the worktree') do
                [herdr_invocations.any? { |invocation| invocation.include?('pane close w9:p1') },
                 herdr_invocations.any? { |invocation| invocation.include?('agent start worker') },
                 File.directory?(@worktree), File.exist?(File.join(@herdr_directory, 'pane-closed'))]
+end
+
+Then('only the exact worktree has a new trust decision') do
+  trust = JSON.parse(File.read(@pi_trust_file))
+  parent = File.dirname(@worktree)
+  expected = { parent => false, '/unrelated-project' => true, @worktree => true }
+  assert_equal [true, expected, true, true],
+               [@status.success?, trust, trust.keys.sort == expected.keys.sort,
+                File.stat(@pi_trust_file).mode & 0o777 == 0o600], @stderr
 end

@@ -142,3 +142,13 @@ Feature: Start a Pi worker in an isolated Git worktree
       start worker --worktree
       """
     Then the misplaced pane is closed without deleting the worktree
+
+  Scenario: Trust an extension-bearing worktree before creating its workspace
+    Given the project contains a Pi extension
+    And the Pi trust store contains a denial for the worktree parent
+    And Herdr checks Pi trust before creating a workspace
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then only the exact worktree has a new trust decision
