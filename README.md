@@ -419,7 +419,8 @@ bin/riddim send worker Fix the failing tests
 
 For a local-only task started with `--task-file`, ordinary text is saved first
 in `state/<name>.<spawn-gen>.inbox/NNNNNNNNN.msg` (owner-only), then a short
-notification is sent to Pi. The worker's launch brief describes how to read
+notification is sent to Pi. `start` creates the empty generation inbox before
+Pi launches, so the worker can inspect it at startup. The worker's launch brief describes how to read
 pending messages in numeric order and move each acted-on message into
 `handled/`. A duplicate notification creates no duplicate instruction. A
 successful send proves storage only, not receipt, reply, or completion. If
@@ -503,6 +504,19 @@ must be clean and must resolve to a different root of the same Git repository,
 not to the primary checkout. Before starting Pi, Riddim also requires two
 consecutive exact-pane foreground cwd reads to match that worktree. A failed
 placement closes only the exact created pane and verifies the close.
+
+When the new worktree contains resources that Pi only loads from a trusted
+project (`.pi/` settings, MCP config, extensions, skills, prompts, themes,
+`SYSTEM.md`, `APPEND_SYSTEM.md`, or an ancestor `.agents/skills` other than
+the home one), Riddim records a persistent trust decision for **exactly** the
+worktree's canonical path in Pi's `trust.json` (under `PI_CODING_AGENT_DIR`,
+default `~/.pi/agent`) before creating the workspace. Existing entries are
+preserved; it never trusts a parent directory, passes Pi's session-only
+`--approve`, or answers Pi's trust dialog with keystrokes. If the trust store
+is invalid, locked, unsafe, or unwritable, the start refuses before allocating
+a workspace or pane, or publishing a brief, result, or inbox. The created
+worktree and branch are left for inspection. A worktree without such resources
+leaves the trust store untouched.
 
 For an assigned task, give `start` a UTF-8 file (at most 64 KiB):
 
@@ -611,7 +625,7 @@ followed by routine progress. The private queue retains handled receipts for
 provenance. Scanning fails rather than claiming an empty drain when current
 status or previously classified queue evidence is missing or invalid.
 `notifications` without `scan` inspects the existing queue without reconciling
-current workers.
+current workers; a missing queue lists as empty and is not created.
 For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 `RIDDIM_STATE_DIR` and load `.pi/extensions/riddim-notifications.ts` (as a
 trusted project extension or with `pi -e`). It binds one observer per home,
