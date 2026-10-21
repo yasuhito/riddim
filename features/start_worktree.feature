@@ -152,3 +152,29 @@ Feature: Start a Pi worker in an isolated Git worktree
       start worker --worktree
       """
     Then only the exact worktree has a new trust decision
+
+  Scenario: Create a private Pi trust store when the extension-bearing worktree needs one
+    Given the project contains a Pi extension
+    And the Pi trust store directory does not exist
+    And Herdr checks Pi trust before creating a workspace
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the new Pi trust store contains only the worktree trust
+
+  Scenario: Leave Pi trust unchanged for a worktree without resources
+    Given the Pi trust store contains a denial for the worktree parent
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the Pi trust store remains unchanged
+
+  Scenario: Do not create a Pi trust store for a worktree without resources
+    Given the Pi trust store directory does not exist
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the Pi trust store directory remains absent

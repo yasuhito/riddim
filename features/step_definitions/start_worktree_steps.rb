@@ -46,6 +46,12 @@ Given('the Pi trust store contains invalid data') do
   configure_pi_agent_directory('[]')
 end
 
+Given('the Pi trust store directory does not exist') do
+  @pi_agent_directory = File.join(new_temporary_directory, 'pi-agent')
+  @pi_trust_file = File.join(@pi_agent_directory, 'trust.json')
+  @environment['PI_CODING_AGENT_DIR'] = @pi_agent_directory
+end
+
 Given('Herdr checks Pi trust before creating a workspace') do
   File.write(File.join(@herdr_directory, 'check-pi-trust-before-workspace'), '')
 end
@@ -81,6 +87,13 @@ WORKTREE_AGENT_START = <<~RUBY
   if File.exist?(File.expand_path('agent-start-fails', __dir__))
     warn 'agent refused start'
     exit 7
+  end
+RUBY
+
+WORKTREE_PI_TRUST_CHECK = <<~RUBY
+  if File.file?(File.expand_path('check-pi-trust-before-workspace', __dir__))
+    trust = JSON.parse(File.read(File.join(ENV.fetch('PI_CODING_AGENT_DIR'), 'trust.json')))
+    abort 'Pi worktree trust was not registered before workspace creation' unless trust[cwd] == true
   end
 RUBY
 
@@ -139,10 +152,7 @@ Given('Herdr starts the agent only in the linked worktree') do
     case ARGV[0, 2]
     when ['workspace', 'create']
       cwd = ARGV[ARGV.index('--cwd') + 1]
-      if File.file?(File.expand_path('check-pi-trust-before-workspace', __dir__))
-        trust = JSON.parse(File.read(File.join(ENV.fetch('PI_CODING_AGENT_DIR'), 'trust.json')))
-        abort 'Pi worktree trust was not registered before workspace creation' unless trust[cwd] == true
-      end
+      #{WORKTREE_PI_TRUST_CHECK}
       File.write(File.expand_path('workspace-cwd', __dir__), cwd)
       puts #{CANNED_CREATE_RESPONSE.dump}
     when ['pane', 'get']
@@ -276,4 +286,22 @@ Then('only the exact worktree has a new trust decision') do
   assert_equal [true, expected, true, true],
                [@status.success?, trust, trust.keys.sort == expected.keys.sort,
                 File.stat(@pi_trust_file).mode & 0o777 == 0o600], @stderr
+end
+
+Then('the new Pi trust store contains only the worktree trust') do
+  trust = JSON.parse(File.read(@pi_trust_file))
+  assert_equal [true, { @worktree => true }, true, true],
+               [@status.success?, trust, File.stat(@pi_agent_directory).mode & 0o777 == 0o700,
+                File.stat(@pi_trust_file).mode & 0o777 == 0o600], @stderr
+end
+
+Then('the Pi trust store remains unchanged') do
+  trust = JSON.parse(File.read(@pi_trust_file))
+  expected = { File.dirname(@worktree) => false, '/unrelated-project' => true }
+  assert_equal [true, expected], [@status.success?, trust], @stderr
+end
+
+Then('the Pi trust store directory remains absent') do
+  assert_equal [true, false, false],
+               [@status.success?, File.exist?(@pi_agent_directory), File.symlink?(@pi_agent_directory)], @stderr
 end
