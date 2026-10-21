@@ -18,15 +18,32 @@ module PiStallLab
     end
 
     def receive_request(server)
-      socket = Timeout.timeout(20) { server.accept }
-      line = Timeout.timeout(10) { socket.gets }
-      raise 'unexpected API request' unless line&.start_with?('POST /v1/chat/completions ')
-
+      socket = accept_http_request(server)
       read_body(socket)
       socket
     rescue StandardError
       socket&.close
       raise
+    end
+
+    def accept_http_request(server)
+      loop do
+        socket = Timeout.timeout(20) { server.accept }
+        line = Timeout.timeout(10) { socket.gets }
+        return socket if valid_request_line?(line)
+
+        socket.close
+      end
+    rescue StandardError
+      socket&.close
+      raise
+    end
+
+    def valid_request_line?(line)
+      return false unless line
+      raise 'unexpected API request' unless line.start_with?('POST /v1/chat/completions ')
+
+      true
     end
 
     def read_body(socket)
