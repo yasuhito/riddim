@@ -43,6 +43,11 @@ module Riddim
     end
 
     def pending
+      begin
+        File.lstat(directory)
+      rescue Errno::ENOENT
+        return []
+      end
       verify_directory
       files = Dir.children(directory)
       files.grep(/\A\.(?:handled|presented|ack-pending)-.*\.json\z/).each do |filename|
