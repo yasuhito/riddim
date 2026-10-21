@@ -319,6 +319,25 @@ When('I scan pending notifications twice') do
   @second_scan = run_riddim('notifications', 'scan')
 end
 
+When('I list and scan notifications from a fresh state') do
+  directory = File.join(scenario_state_dir, '.notifications')
+  raise 'notification state already exists' if File.exist?(directory) || File.symlink?(directory)
+
+  @listing = run_riddim('notifications')
+  @listing_left_state_absent = !File.exist?(directory) && !File.symlink?(directory)
+  @scan = run_riddim('notifications', 'scan')
+end
+
+Then('listing and scanning both succeed without pending reports') do
+  directory = File.join(scenario_state_dir, '.notifications')
+  private_queue = File.directory?(directory) && !File.symlink?(directory) &&
+                  File.stat(directory).mode & 0o777 == 0o700
+  assert_equal [true, "[]\n", true, true, "[]\n", true, true],
+               [@listing[2].success?, @listing[0], @listing[1].empty?, @listing_left_state_absent,
+                @scan[0], @scan[2].success?, private_queue],
+               [@listing[1], @scan[1]].join
+end
+
 Then('pending notifications retain three separate report identities without changing the worker') do
   first, second = [@first_scan, @second_scan].map { |out, _err, status| status.success? ? JSON.parse(out) : nil }
   inspected, error, status = run_riddim('notifications')

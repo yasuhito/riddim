@@ -83,6 +83,36 @@ Feature: Launch an isolated Pi worker with a durable initial task brief
       """
     Then Pi receives a staged full brief launch and is named on its exact pane
 
+  Scenario: Start Pi with an empty private inbox and accept a later instruction
+    Given the project checkout is on main
+    And a task file containing:
+      """
+      Delivery contract: mode=local-only
+      Work in the local-only branch.
+      """
+    And Pi inspects its instruction inbox at startup
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    And I send "First instruction" to the started worker
+    Then Pi sees the empty inbox and send stores the instruction once
+
+  Scenario: Refuse an invalid Pi trust store before creating task assets or a pane
+    Given the project contains a Pi extension
+    And the project checkout is on main
+    And the Pi trust store contains invalid data
+    And a task file containing:
+      """
+      Delivery contract: mode=local-only
+      Work in the local-only branch.
+      """
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    Then the trust refusal leaves no task assets or workspace
+
   Scenario: Explicit tracing binds a private Pi trace to this worker generation
     Given a task file containing:
       """

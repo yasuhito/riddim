@@ -218,6 +218,10 @@ Feature: Inspect durable actionable reports from the selected local-only home
       """
     Then scanning fails without publishing a notification
 
+  Scenario: An empty queue lists without creating state and scans successfully
+    When I list and scan notifications from a fresh state
+    Then listing and scanning both succeed without pending reports
+
   Scenario: A world-readable status cannot produce a positive claim
     Given the worker reports "done [at=1]: original"
     And the worker status is world-readable

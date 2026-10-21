@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require_relative 'herdr'
+require_relative 'instruction_inbox'
 require_relative 'ownership'
+require_relative 'pi_trust'
 require_relative 'worktree'
 require_relative 'task_brief'
 require_relative 'result'
@@ -17,6 +19,7 @@ module Riddim
   # to the record whose retention rules it must respect.
   module Start
     Options = Data.define(:create_worktree, :config_dir, :task_file, :mode)
+    TaskPlan = Data.define(:task, :spawn_gen, :mode)
     TaskLaunch = Data.define(:brief, :spawn_gen, :mode, :status_path, :runtime_paths)
 
     module_function

@@ -14,6 +14,56 @@ Given('a fake Pi executable is on PATH for the task launch') do
   end
 end
 
+Given('Pi inspects its instruction inbox at startup') do
+  executable = File.join(@herdr_directory, 'pi-bin', 'pi')
+  observation = File.join(@herdr_directory, 'pi-inbox-observation.json')
+  File.write(executable, <<~RUBY)
+    #!/usr/bin/ruby
+    require 'json'
+    state = ENV.fetch('RIDDIM_STATE_DIR')
+    inboxes = Dir.glob(File.join(state, 'worker.*.inbox'))
+    inbox = inboxes.one? ? inboxes.first : nil
+    handled = File.join(inbox, 'handled') if inbox
+    File.write(#{observation.dump}, JSON.generate(
+      count: inboxes.length, path: inbox, owner: inbox && File.stat(inbox).uid,
+      mode: inbox && (File.stat(inbox).mode & 0o777), handled: handled && File.directory?(handled),
+      handled_mode: handled && File.directory?(handled) && (File.stat(handled).mode & 0o777),
+      messages: inbox ? Dir.glob(File.join(inbox, '*.msg')) : []
+    ))
+  RUBY
+  File.chmod(0o755, executable)
+  File.write(File.join(@herdr_directory, 'execute-task-launch'), '')
+end
+
+When('I send {string} to the started worker') do |message|
+  @send_result = run_riddim('send', 'worker', message)
+end
+
+Then('Pi sees the empty inbox and send stores the instruction once') do
+  observation_path = File.join(@herdr_directory, 'pi-inbox-observation.json')
+  assert File.file?(observation_path), [@stdout, @stderr, herdr_invocations].join("\n")
+  observation = JSON.parse(File.read(observation_path))
+  fields = File.readlines(scenario_record_path('worker')).to_h { |line| line.strip.split('=', 2) }
+  inbox = File.join(scenario_state_dir, "worker.#{fields.fetch('spawn_gen')}.inbox")
+  records = Dir.glob(File.join(inbox, '*.msg'))
+  assert_equal [true, 1, inbox, Process.uid, 0o700, true, 0o700, [], true, 1, 'First instruction'],
+               [@status.success?, observation.fetch('count'), observation.fetch('path'), observation.fetch('owner'),
+                observation.fetch('mode'), observation.fetch('handled'), observation.fetch('handled_mode'),
+                observation.fetch('messages'), @send_result[2].success?, records.length,
+                File.read(records.fetch(0)).split("\n--\n", 2).last],
+               [@stderr, @send_result[1]].join("\n")
+end
+
+Then('the trust refusal leaves no task assets or workspace') do
+  worker_commands = herdr_invocations.grep(/workspace create|pane run|agent start/)
+  status_files = Dir.glob(File.join(scenario_state_dir, 'worker.*.status'))
+  assert_equal [1, true, false, false, false, [], []],
+               [@status.exitstatus, @stderr.include?('Pi trust store'), File.exist?(scenario_record_path('worker')),
+                File.exist?(File.join(scenario_state_dir, 'worker.brief')), !status_files.empty?,
+                worker_commands, Dir.glob(File.join(scenario_state_dir, 'worker.*.inbox'))],
+               [@stdout, @stderr, herdr_invocations].join("\n")
+end
+
 Given('Pi trace is enabled for task launch') do
   @environment['RIDDIM_PI_TRACE'] = '1'
 end
