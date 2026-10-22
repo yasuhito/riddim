@@ -96,6 +96,12 @@ Feature: Discover available commands
       """
     Then standard output includes "start <name>"
 
+  Scenario: List the supervisor command
+    When I run riddim with:
+      """
+      """
+    Then standard output includes "supervise"
+
   Scenario: Exit successfully when showing help for start
     When I run riddim with:
       """

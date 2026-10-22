@@ -1,0 +1,169 @@
+# frozen_string_literal: true
+
+require 'json'
+
+Given('Herdr reports a running supported server') do
+  install_supervisor_herdr_status(
+    client: { protocol: 22, version: '0.9.0' },
+    server: { running: true, version: '0.9.0' }
+  )
+end
+
+Given('Herdr cannot be reached') do
+  install_supervisor_herdr_status(
+    { client: { protocol: 22, version: '0.9.0' }, server: { running: true, version: '0.9.0' } },
+    fail: true
+  )
+end
+
+Given('Herdr reports a stopped server') do
+  install_supervisor_herdr_status(
+    client: { protocol: 22, version: '0.9.0' },
+    server: { running: false }
+  )
+end
+
+Given('a fake Pi executable that supports regular TUI mode') do
+  install_fake_pi("  --tui-mode <mode>\n")
+end
+
+Given('a fake Pi executable without regular TUI mode') do
+  install_fake_pi("  --model <pattern>\n")
+end
+
+Given('no explicit Riddim state directory') do
+  @default_state_dir = File.expand_path('../state', File.dirname(RiddimWorld::RIDDIM))
+  @default_state_dir_preexisting = File.exist?(@default_state_dir) || File.symlink?(@default_state_dir)
+  @temporary_directories << @default_state_dir unless @default_state_dir_preexisting
+  @environment = @environment.merge('RIDDIM_STATE_DIR' => nil)
+end
+
+Given('the selected Riddim state directory is a symlink') do
+  directory = new_temporary_directory
+  target = File.join(directory, 'real-state')
+  Dir.mkdir(target)
+  @state_dir_symlink = File.join(directory, 'state-link')
+  File.symlink(target, @state_dir_symlink)
+  @environment = @environment.merge('RIDDIM_STATE_DIR' => @state_dir_symlink)
+end
+
+Then('Pi receives the supervisor launch arguments and selected state directory') do
+  assert_equal expected_supervisor_arguments(regular_tui: true), pi_capture.fetch('argv')
+  assert_equal scenario_state_dir, pi_capture.fetch('state_dir')
+  assert_equal 0o700, pi_capture.fetch('state_dir_mode')
+end
+
+Then('Pi receives the supervisor launch arguments and default state directory') do
+  assert_equal expected_supervisor_arguments(regular_tui: true), pi_capture.fetch('argv')
+  assert_equal @default_state_dir, pi_capture.fetch('state_dir')
+  assert_equal 0o700, pi_capture.fetch('state_dir_mode')
+end
+
+Then('Herdr is queried only for the running status of session {string}') do |session|
+  assert_equal ["--session #{session} status --json"], herdr_invocations,
+               "exit=#{@status.exitstatus} stderr=#{@stderr.inspect} stdout=#{@stdout.inspect}"
+end
+
+Then('Pi receives the supervisor launch arguments without a TUI mode') do
+  assert_equal expected_supervisor_arguments(regular_tui: false), pi_capture.fetch('argv')
+end
+
+Then('the supervisor command reports its usage and invokes neither Herdr nor Pi') do
+  assert_equal 2, @status.exitstatus
+  assert_equal "Usage: riddim supervise\n", @stderr
+  assert_empty herdr_invocations
+  refute pi_started?
+end
+
+Then('the supervisor reports the missing profile before invoking Herdr or Pi') do
+  assert_equal 1, @status.exitstatus
+  assert_equal "riddim: missing profile file: agent-profile\n", @stderr
+  assert_empty herdr_invocations
+  refute pi_started?
+end
+
+Then('the supervisor reports that Herdr is unreachable and does not launch Pi') do
+  assert_equal 1, @status.exitstatus
+  assert_equal "riddim: Herdr is not reachable in session default: status failed\n", @stderr
+  assert_equal ['--session default status --json'], herdr_invocations
+  refute pi_started?
+end
+
+Then('the supervisor reports that Herdr is not ready and does not launch Pi') do
+  assert_equal 1, @status.exitstatus
+  expected_error = <<~ERROR
+    riddim: Herdr is not ready in session default: Herdr server is not running in session default
+  ERROR
+  assert_equal expected_error, @stderr
+  assert_equal ['--session default status --json'], herdr_invocations
+  refute pi_started?
+end
+
+Then('the supervisor refuses a symlinked state directory without launching Pi') do
+  assert_equal 1, @status.exitstatus
+  expected_error = <<~ERROR
+    riddim: could not prepare Riddim state directory #{@state_dir_symlink}: the state directory is not a real directory: #{@state_dir_symlink}
+  ERROR
+  assert_equal expected_error, @stderr
+  assert_equal ['--session default status --json'], herdr_invocations
+  refute pi_started?
+end
+
+def install_supervisor_herdr_status(document = nil, fail: false, **fields)
+  document ||= fields
+  install_fake_herdr("abort 'unexpected Herdr invocation'")
+  File.write(File.join(@herdr_directory, 'client-status.json'), JSON.generate(document))
+  File.write(File.join(@herdr_directory, 'status-fails'), '') if fail
+end
+
+def install_fake_pi(help_text)
+  directory = Dir.mktmpdir
+  @temporary_directories << directory
+  @pi_capture = File.join(directory, 'capture.json')
+  @pi_started = File.join(directory, 'started')
+  pi = File.join(directory, 'pi')
+  File.write(pi, fake_pi_script(help_text))
+  File.chmod(0o755, pi)
+  configure_fake_pi_environment(directory)
+end
+
+def configure_fake_pi_environment(directory)
+  @environment = (@environment || {}).merge(
+    'PATH' => "#{directory}:#{@environment.fetch('PATH', ENV.fetch('PATH'))}",
+    'PI_CAPTURE' => @pi_capture,
+    'PI_STARTED' => @pi_started
+  )
+end
+
+def fake_pi_script(help_text)
+  <<~RUBY
+    #!/usr/bin/ruby
+    require 'json'
+    if ARGV == ['--help']
+      print #{help_text.dump}
+      exit 0
+    end
+    state_dir = ENV.fetch('RIDDIM_STATE_DIR')
+    File.write(ENV.fetch('PI_CAPTURE'), JSON.generate(argv: ARGV, state_dir: state_dir,
+                                                       state_dir_mode: File.stat(state_dir).mode & 0o777))
+    File.write(ENV.fetch('PI_STARTED'), 'started')
+  RUBY
+end
+
+def pi_capture
+  JSON.parse(File.read(@pi_capture))
+end
+
+def pi_started?
+  File.file?(@pi_started)
+end
+
+def expected_supervisor_arguments(regular_tui:)
+  root = File.expand_path('..', File.dirname(RiddimWorld::RIDDIM))
+  args = regular_tui ? %w[--tui-mode regular] : []
+  args.push(
+    '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max',
+    '-e', File.join(root, '.pi/extensions/riddim-notifications.ts'),
+    '--append-system-prompt', File.join(root, 'docs/supervisor.md')
+  )
+end

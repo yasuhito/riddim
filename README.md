@@ -15,7 +15,7 @@ and uses Ruby's standard library.
 ## Requirements
 
 - Ruby
-- Herdr client and running server version 0.8.0 or newer for `start`;
+- Herdr client and running server version 0.8.0 or newer for `start` and `supervise`;
   Riddim intentionally requires Firstmate's focus-safe emptying-close release
   rather than supporting older versions with its more elaborate close plan
 - Herdr with a running session; `status`, `peek`, `send`, and `interrupt`
@@ -30,6 +30,40 @@ Run Riddim without arguments to see its commands:
 ```sh
 bin/riddim
 ```
+
+### Start a supervisor session from a Herdr pane
+
+Set the Riddim launch profile once:
+
+```sh
+cp config/agent-profile.example config/agent-profile
+```
+
+Edit `config/agent-profile` to select the Pi model and effort for the supervisor.
+Then open a pane in the target project's checkout in a running Herdr session and run:
+
+```sh
+bin/riddim supervise
+```
+
+The command checks the current Herdr session and the profile before it starts Pi.
+It replaces itself with Pi in the same pane, so it creates no Herdr workspace and does not
+change focus. It prepares the selected state directory with owner-only permissions, passes
+its absolute path as `RIDDIM_STATE_DIR`, loads `.pi/extensions/riddim-notifications.ts`,
+and appends `docs/supervisor.md` to Pi's system prompt. Set `RIDDIM_CONFIG_DIR` or
+`RIDDIM_STATE_DIR` before the command to select different Riddim directories.
+
+Ask the supervisor to start a local-only worker for a bounded task. It should create the
+task file outside the project and run
+`riddim start <name> --worktree --task-file <path> --mode local-only`. When Pi reports a
+worker notification, the supervisor scans and handles the report before acknowledging its
+exact ID. It checks `riddim result` and `riddim review-diff`, then asks you to approve the
+exact reviewed `head:` commit. Only after that approval may it run `riddim merge-local`.
+It runs `riddim teardown` only after the approved commit has landed.
+
+A worker report, ready result, or reviewed diff is not landing approval. Riddim's supervisor
+supports local-only work. It does not provide Firstmate's pull requests, no-mistakes
+pipelines, secondmates, remote homes, or quota routing.
 
 ### Session targeting
 
