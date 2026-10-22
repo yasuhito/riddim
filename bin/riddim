@@ -5,6 +5,7 @@ require 'json'
 
 require_relative '../lib/riddim/herdr'
 require_relative '../lib/riddim/exit'
+require_relative '../lib/riddim/discard'
 require_relative '../lib/riddim/fleet'
 require_relative '../lib/riddim/interrupt'
 require_relative '../lib/riddim/instruction_watcher'
@@ -438,6 +439,25 @@ if ARGV.first == 'merge-local'
   exit
 end
 
+if ARGV.first == 'discard'
+  inspect_only = ARGV.length == 3 && ARGV[2] == '--inspect'
+  confirmed = ARGV.length == 9 && ARGV.values_at(2, 4, 6, 8) ==
+                                  %w[--generation --head --snapshot --confirm-discard]
+  unless ARGV[1]&.match?(Riddim::Ownership::NAME_PATTERN) && (inspect_only || confirmed)
+    warn 'Usage: riddim discard <name> --inspect'
+    warn '   or: riddim discard <name> --generation <gen> --head <sha> --snapshot <digest> --confirm-discard'
+    exit 2
+  end
+
+  begin
+    puts Riddim::Discard.run(ARGV[1], approval: confirmed ? ARGV.values_at(3, 5, 7) : nil)
+  rescue Riddim::Ownership::Error, SystemCallError => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
+end
+
 if ARGV.first == 'teardown'
   unless ARGV.length == 2 && ARGV[1].match?(Riddim::Ownership::NAME_PATTERN)
     warn 'Usage: riddim teardown <name>'
@@ -522,6 +542,7 @@ puts <<~HELP
                             Show the committed local-only branch diff against local main
     merge-local <name> --head <reviewed-commit>
                             Fast-forward local main to the exact approved reviewed tip
+    discard <name> --inspect    Inspect clean-only discard scope; confirmation requires human approval
     teardown <name>             Retire only landed, clean local-only worker assets; keep evidence
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status

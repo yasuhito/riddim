@@ -848,9 +848,10 @@ bin/riddim teardown <name>
 
 This is a **destructive, explicit** local-only subset of Firstmate's
 `fm-teardown.sh`, not an approval or merge command. Firstmate also manages
-Treehouse pool slots, remote/PR tasks, backlog transitions, and forced discard;
-Riddim does none of those. First merge the reviewed worker branch into local
-`main` with separate human approval. `teardown` then requires an ungated `done`
+Treehouse pool slots, remote/PR tasks, backlog transitions, and forced discard.
+Riddim's separate `discard` command below implements only clean local discard;
+it has no pool, remote/PR, or backlog cleanup. First merge the reviewed worker
+branch into local `main` with separate human approval. `teardown` then requires an ungated `done`
 report, the current ownership generation, a clean linked worker checkout on its
 recorded branch, a clean project checkout on `main`, and proof that the worker
 branch tip is already in local `main`. No `--force` is available.
@@ -876,10 +877,64 @@ writers share the name lock; an external process ignoring it or concurrently
 changing Git is outside this guarantee. The command does not attest that a
 human reviewed the patch; the operator must make that decision before landing.
 
+#### Discard abandoned clean local-only work with separate approval
+
+```sh
+bin/riddim discard <name> --inspect
+# After the human approves the exact JSON scope and unlanded commits:
+bin/riddim discard <name> --generation <generation> --head <head> \
+  --snapshot <snapshot> --confirm-discard
+```
+
+This is irreversible discard, not landing or normal teardown. The supervisor
+first obtains the inspection JSON, reviews the named branch's commits and diff
+against local main, and presents the exact name, generation, project, worktree,
+branch, full HEAD, endpoint and snapshot to the human. Ask explicitly for deletion
+of those local assets and loss of the unlanded commits, not merely permission to
+stop Pi. Save that approval in the human conversation. Only an unmarked operator
+may invoke the confirmed command with those exact returned values. Workers cannot
+execute it. The flags express the operator's confirmation, not proof of human
+consent; a report or an idle/dead worker is never approval.
+
+Firstmate's `bin/fm-teardown.sh --force` skips dirty/landed checks only with explicit
+captain permission while preserving target/incarnation and exact Herdr disappearance
+checks. Riddim deliberately implements a smaller subset in a separate verb:
+**clean trees only**. Inspection refuses tracked edits, untracked files, ignored
+files, and assume-unchanged/skip-worktree entries. There is no dirty snapshot
+approval or blanket `--force`. Thus an abandoned clean audit commit can be discarded
+after specific approval, but dirty `source-review` work remains unsupported and
+must stay untouched pending a separate design and approval. This feature itself
+does not authorize either real worker's disposal.
+
+The snapshot binds the complete ownership record and clean HEAD scope. Any
+changed generation, endpoint, tip or local files requires inspection and fresh
+approval. Under the existing name lock, discard shares teardown's exact endpoint,
+self-pane, cwd-scan, linked-checkout and ownership rechecks. It does not require a
+`done` report or landed commits. It never changes main or cleans the project
+checkout. After confirming the pane gone it rechecks the scope, removes the
+worktree **without force**, and compare-and-deletes only the recorded branch at
+the approved HEAD. Normal merge-local and teardown guards remain unchanged.
+
+A private `state/<name>.<generation>.discard.<nonce>.jsonl` records the approved
+scope, original record and completed stages before retirement. The brief is
+archived; status, trace and launch evidence remain. This audit is not a backup of
+commit contents; unreachable Git objects can later be garbage-collected. Export
+anything worth keeping before asking for discard approval.
+
+Failure may leave a closed pane, or an already-removed worktree with the branch
+and record still present. The error names the audit file; inspect its completed
+stages and actual remaining assets. Do not infer success from the attempt record,
+retry blindly, bypass a refusal, or delete the retained record to hide partial
+failure. A missing worktree deliberately prevents automatic retry. Cooperative
+writers use the name lock; arbitrary external filesystem/Git mutation is not
+serialized by it. Git's non-forced removal and expected-old-HEAD ref deletion
+provide the final local checks.
+
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority by themselves to remove files**:
 `exit` leaves the pane, record, worktree, and branch intact, while `teardown`
-requires the independent gates above. If creation or launch fails, inspect
+requires the independent gates above and `discard` requires separate exact-scope
+approval. If creation or launch fails, inspect
 the reported path and branch; Riddim never deletes or resets the worktree or
 branch automatically. This is a smaller subset of Firstmate's Treehouse spawn:
 there is no pool, lease, fresh remote fetch, reply tracking, or Firstmate's full teardown. The original `start <name>` still starts in the current directory.
