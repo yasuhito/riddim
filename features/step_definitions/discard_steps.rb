@@ -87,9 +87,10 @@ Then('incomplete discard retains the changed branch and record') do
 end
 
 Then('discard inspection names the exact clean scope without mutation') do
-  assert_equal [@generation, @worker_tip, @worktree, 'clean-only', true, false],
+  assert_equal [@generation, @worker_tip, @worktree, true, true, false],
                [@discard_scope['generation'], @discard_scope['head'], @discard_scope['worktree'],
-                @discard_scope['files'], File.file?(scenario_record_path('worker')),
+                @discard_scope.fetch('files').all? { |file| file.fetch('status') == '  ' },
+                File.file?(scenario_record_path('worker')),
                 herdr_invocations.any? { |line| line.include?('pane close') }]
 end
 
@@ -120,9 +121,9 @@ end
 
 Then('incomplete discard keeps the branch and record after worktree removal') do
   branch = Open3.capture2e('git', '-C', @project, 'show-ref', '--verify', 'refs/heads/riddim/worker').last
-  assert_equal [false, true, false, true, 'worktree-removed'],
+  assert_equal [false, true, false, true, %w[worktree-removed incomplete]],
                [@status.success?, File.file?(scenario_record_path('worker')), File.exist?(@worktree),
-                branch.success?, discard_audit_events.last&.fetch('event')], @stderr
+                branch.success?, discard_audit_events.last(2).map { |event| event.fetch('event') }], @stderr
 end
 
 def discard_audit_events

@@ -5,9 +5,11 @@ require 'tmpdir'
 require_relative 'support/notification_worker_fixture'
 require_relative '../lib/riddim/notifications'
 require_relative '../lib/riddim/herdr'
+require_relative 'support/herdr_method_stub'
 
 class UnreportedStopTest < Minitest::Test
   include NotificationWorkerFixture
+  include HerdrMethodStub
 
   GEN = 's1767200000.4242.7'
 
@@ -69,6 +71,26 @@ class UnreportedStopTest < Minitest::Test
     end
     assert_raises(Riddim::Notifications::Error) { scan(probe) }
     assert_empty Dir.glob(File.join(@root, '.notifications/.alive-*'))
+  end
+
+  # Ported from source-review: a dead observation after prior liveness must
+  # not publish a stop when the complete record is replaced during the probe.
+  # rubocop:disable-next Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_record_replacement_during_dead_probe_after_liveness_publishes_nothing
+    scan(:alive)
+    test = self
+    root = @root
+    probe = lambda do |pane, session:, **|
+      test.assert_equal ['w9:p1', 'test'], [pane, session]
+      test.write_notification_worker(root, 's1767200001.4242.8')
+      [:dead, nil]
+    end
+
+    with_herdr_method(:observe_pi_agent, probe) do
+      assert_raises(Riddim::Notifications::Error) { Riddim::Notifications.scan }
+    end
+
+    assert_empty Riddim::Notifications.pending
   end
 
   def test_actionable_report_prevents_unreported_stop

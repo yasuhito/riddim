@@ -4,36 +4,45 @@ Record CLI failures here until resolved or transferred to an issue. Expected saf
 refusals are not automatically bugs. Source-review's abandoned worktree is evidence
 only and must remain untouched.
 
-## Abandoned local-only discard - clean-only implementation
+## Abandoned local-only discard - exact dirty snapshot
 
 - Reproduction before implementation: the existing disposable CLI scenarios
   `Refuse to discard an unmerged worker commit` and `Refuse a dirty worker`
   both passed their refusal assertions. Normal teardown retains these assets;
-  stopping Pi does not authorize deletion. The real abandoned-audit commit
-  `40e294dc1b4ba40edede9f72255524554b70a4cf` and source-review assets were not
-  modified or discarded.
+  stopping Pi does not authorize deletion. Source-review assets remain untouched.
+  The earlier audit branch was intentionally discarded; its backlog diff remains
+  recoverable with `git show 40e294dc1b4ba40edede9f72255524554b70a4cf -- docs/operational-backlog.md`.
 - Firstmate `bin/fm-teardown.sh` gates its `--force` path on explicit captain
   permission, retains target/incarnation validation, and confirms exact Herdr
   disappearance before retiring records. Riddim uses the existing teardown
   endpoint/ownership/cwd/brief checks with a separate `discard` verb, not force
   flags on normal teardown or weaker landing guards.
-- Resolution: inspection returns a generation/HEAD/record-bound snapshot of
-  clean-only scope. The operator must obtain human approval of that exact scope
-  before passing all three values and `--confirm-discard`. Dirty, untracked,
-  ignored and hidden-index work refuses; dirty snapshot approval is deferred.
-  This iteration cannot discard source-review's dirty files.
-- Disposable fault tests observed stale confirmation refusal, clean-only refusal
-  after new files, foreign/self endpoint refusal, and Git removal/deletion
-  failures. A moved branch during expected-old-HEAD deletion remains intact.
-  Errors explicitly report incomplete discard and the retained audit path;
-  completed stages, scope and original record remain private even if the pane
-  or worktree was already removed. Missing worktrees require manual inspection,
-  not automatic recovery or blanket force.
-- Validation: `bundle exec rake test lint` passed 262 unit tests / 583 assertions,
-  685 CLI feature scenarios / 4320 steps, and RuboCop on 119 files plus Gherkin
-  conventions. Discard accounts for 24 disposable CLI scenarios. Initial lint
-  found long methods and formatting offenses; small helper extraction and
-  formatting fixed them. No production guard was loosened for tests.
+- Resolution: inspection now includes staged blob IDs, tracked/untracked content
+  hashes, modes and a readable file inventory in the generation/HEAD/record-bound
+  snapshot. The operator must obtain explicit approval of irreversible loss of
+  that exact scope before passing all three values and `--confirm-discard`.
+  Ignored files, recognizable sensitive paths, nested repositories, submodules,
+  symlinks/hardlinks and hidden/conflicted/intent-to-add index entries refuse.
+  Arbitrary secret contents cannot be classified automatically; contents still
+  require human review. No actual source-review disposal has been authorized.
+- Disposable CLI tests exercise dirty inspection/removal, stale content/file-set/
+  staging/mode approval (including preserved-mtime edits), unsupported content,
+  foreign/self endpoints and partial failures. Scrubbing starts only after exact
+  endpoint disappearance, cwd scanning and final scope recheck. Only reviewed
+  untracked files are unlinked; tracked/index state is restored from the approved
+  HEAD before non-forced removal. `files-discarding`, `files-discarded` and
+  `incomplete` audit events expose possible file loss before later failure. A moved
+  branch still survives compare-delete. No automatic recovery or blanket force.
+- Read-only preservation from source-review: the extension actor matrix covers
+  branch/crew/supervisor/whitespace inertness and unset/empty operator callbacks;
+  the dead-probe record-replacement test follows prior liveness, asserts the exact
+  pane/session at `observe_pi_agent`, and verifies no notification publication.
+  No obsolete production implementation was copied.
+- Validation: `bundle exec rake test lint` passed 266 unit tests / 594 assertions,
+  708 disposable CLI scenarios / 4640 steps, and RuboCop on 123 files plus Gherkin
+  conventions. Dirty inspection was first reproduced refusing reviewable files;
+  a same-mtime inode-swap regression also failed before the fingerprint fix.
+  Normal teardown and merge-local guards remain unchanged.
 - Implementation still requires human approval of the exact commit before
   landing; no real-worker cleanup authorization is implied.
 

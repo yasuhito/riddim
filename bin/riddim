@@ -542,7 +542,7 @@ puts <<~HELP
                             Show the committed local-only branch diff against local main
     merge-local <name> --head <reviewed-commit>
                             Fast-forward local main to the exact approved reviewed tip
-    discard <name> --inspect    Inspect clean-only discard scope; confirmation requires human approval
+    discard <name> --inspect    Inspect exact file-loss scope; confirmation requires human approval
     teardown <name>             Retire only landed, clean local-only worker assets; keep evidence
     exit <name>                 Stop a recorded Pi agent, keeping its pane and record
     status <name>               Show a started agent's registered Herdr status

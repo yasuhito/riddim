@@ -15,6 +15,10 @@ class NotificationSessionRaceTest < Minitest::Test
 
   GEN = 's1767200000.4242.7'
 
+  def test_only_unset_or_empty_operator_actor_registers_extension_callbacks
+    run_scenario('notification_actor_boundary.mjs', expected: [])
+  end
+
   def test_late_predecessor_rejection_cannot_claim_successor_or_lose_later_report
     run_scenario('notification_session_race.mjs', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
   end

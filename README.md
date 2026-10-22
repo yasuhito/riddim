@@ -849,7 +849,7 @@ bin/riddim teardown <name>
 This is a **destructive, explicit** local-only subset of Firstmate's
 `fm-teardown.sh`, not an approval or merge command. Firstmate also manages
 Treehouse pool slots, remote/PR tasks, backlog transitions, and forced discard.
-Riddim's separate `discard` command below implements only clean local discard;
+Riddim's separate `discard` command below implements exact-snapshot local discard;
 it has no pool, remote/PR, or backlog cleanup. First merge the reviewed worker
 branch into local `main` with separate human approval. `teardown` then requires an ungated `done`
 report, the current ownership generation, a clean linked worker checkout on its
@@ -877,11 +877,11 @@ writers share the name lock; an external process ignoring it or concurrently
 changing Git is outside this guarantee. The command does not attest that a
 human reviewed the patch; the operator must make that decision before landing.
 
-#### Discard abandoned clean local-only work with separate approval
+#### Discard abandoned local-only work with separate approval
 
 ```sh
 bin/riddim discard <name> --inspect
-# After the human approves the exact JSON scope and unlanded commits:
+# After the human approves irreversible loss of the exact JSON scope:
 bin/riddim discard <name> --generation <generation> --head <head> \
   --snapshot <snapshot> --confirm-discard
 ```
@@ -889,9 +889,10 @@ bin/riddim discard <name> --generation <generation> --head <head> \
 This is irreversible discard, not landing or normal teardown. The supervisor
 first obtains the inspection JSON, reviews the named branch's commits and diff
 against local main, and presents the exact name, generation, project, worktree,
-branch, full HEAD, endpoint and snapshot to the human. Ask explicitly for deletion
-of those local assets and loss of the unlanded commits, not merely permission to
-stop Pi. Save that approval in the human conversation. Only an unmarked operator
+branch, full HEAD, endpoint, file inventory and snapshot to the human. Review both
+staged and unstaged diffs and every untracked file's contents. Ask explicitly for
+irreversible loss of those edits, files and unlanded commits, not merely permission
+to stop Pi. Save that approval in the human conversation. Only an unmarked operator
 may invoke the confirmed command with those exact returned values. Workers cannot
 execute it. The flags express the operator's confirmation, not proof of human
 consent; a report or an idle/dead worker is never approval.
@@ -899,27 +900,39 @@ consent; a report or an idle/dead worker is never approval.
 Firstmate's `bin/fm-teardown.sh --force` skips dirty/landed checks only with explicit
 captain permission while preserving target/incarnation and exact Herdr disappearance
 checks. Riddim deliberately implements a smaller subset in a separate verb:
-**clean trees only**. Inspection refuses tracked edits, untracked files, ignored
-files, and assume-unchanged/skip-worktree entries. There is no dirty snapshot
-approval or blanket `--force`. Thus an abandoned clean audit commit can be discarded
-after specific approval, but dirty `source-review` work remains unsupported and
-must stay untouched pending a separate design and approval. This feature itself
-does not authorize either real worker's disposal.
+regular tracked and untracked files, with no ignored files, nested repositories,
+submodules, symlinks, hardlinks, conflicted/intent-to-add entries, or hidden
+assume-unchanged/skip-worktree entries. Non-printable filenames also refuse.
+Recognizable sensitive paths such as `.env*`, `.ssh`, `.aws`, `credentials`,
+`secrets`, and private-key extensions refuse rather than being silently included.
+This is not a secret-content detector: the operator must review file contents and
+export anything sensitive or valuable before approval. There is no blanket
+`--force`. Actual `source-review` disposal still needs separate exact-snapshot
+human approval; implementation or landing approval does not grant it.
 
-The snapshot binds the complete ownership record and clean HEAD scope. Any
-changed generation, endpoint, tip or local files requires inspection and fresh
-approval. Under the existing name lock, discard shares teardown's exact endpoint,
+Inspection prints readable JSON: `files` lists paths, porcelain staged/unstaged
+status, missing files, modes and SHA-256 content digests; `index` records staged
+blob IDs and modes. Contents are not printed or backed up. The snapshot binds
+these inventories, the complete ownership record and HEAD. Any changed staged
+state, tracked or untracked content, file set, generation, endpoint or tip requires
+inspection and fresh approval. Under the existing name lock, discard shares teardown's exact endpoint,
 self-pane, cwd-scan, linked-checkout and ownership rechecks. It does not require a
 `done` report or landed commits. It never changes main or cleans the project
-checkout. After confirming the pane gone it rechecks the scope, removes the
-worktree **without force**, and compare-and-deletes only the recorded branch at
-the approved HEAD. Normal merge-local and teardown guards remain unchanged.
+checkout. After confirming the pane gone and scanning for processes it rechecks
+the entire scope. For dirty trees it records `files-discarding`, unlinks only the
+reviewed untracked files, restores tracked/index state from the approved HEAD,
+then records `files-discarded` and rechecks ownership, tip and clean supported
+content. It removes the worktree **without force** and compare-and-deletes only
+the recorded branch at the approved HEAD. Normal merge-local and teardown guards
+remain unchanged.
 
 A private `state/<name>.<generation>.discard.<nonce>.jsonl` records the approved
 scope, original record and completed stages before retirement. The brief is
-archived; status, trace and launch evidence remain. This audit is not a backup of
-commit contents; unreachable Git objects can later be garbage-collected. Export
-anything worth keeping before asking for discard approval.
+archived; status, trace and launch evidence remain. File loss can precede a later
+Git failure; an `incomplete` event and the last completed stage document that case.
+This audit is not a backup of edits, untracked files or commit contents;
+unreachable Git objects can later be garbage-collected. Export anything worth
+keeping before asking for discard approval.
 
 Failure may leave a closed pane, or an already-removed worktree with the branch
 and record still present. The error names the audit file; inspect its completed

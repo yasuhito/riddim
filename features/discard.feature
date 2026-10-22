@@ -1,4 +1,4 @@
-Feature: Explicit human-approved discard of clean abandoned local-only work
+Feature: Explicit human-approved discard of abandoned local-only work
 
   Background:
     Given a local Git project for worktree start
@@ -77,14 +77,16 @@ Feature: Explicit human-approved discard of clean abandoned local-only work
       | ignored   |
       | hidden    |
 
-  Scenario: Refuse foreign endpoint identity
-    Given I inspect the worker discard scope
+  Scenario: Refuse foreign endpoint identity even for reviewed dirty files
+    Given the worker has reviewable dirty files
+    And I inspect the worker discard scope
     And a different agent occupies the worker pane
     When I invoke the confirmed discard
     Then teardown refuses before closing the pane and keeps all worker assets
 
-  Scenario: Refuse the caller's own pane
-    Given I inspect the worker discard scope
+  Scenario: Refuse the caller's own pane even for reviewed dirty files
+    Given the worker has reviewable dirty files
+    And I inspect the worker discard scope
     And the caller is the recorded worker pane
     When I invoke the confirmed discard
     Then teardown refuses before closing the pane and keeps all worker assets
@@ -131,13 +133,65 @@ Feature: Explicit human-approved discard of clean abandoned local-only work
     When I invoke the confirmed discard
     Then incomplete discard keeps the record, Git assets and attempt evidence
 
-  Scenario: Inspection refuses dirty work instead of minting blanket approval
-    Given the worker gains "untracked" data
+  Scenario: Dirty inspection presents a reviewable exact inventory
+    Given the worker has reviewable dirty files
+    When I inspect the worker discard scope
+    Then discard inspection inventories the exact dirty files without mutation
+
+  Scenario: Explicit approval covers reviewed staged, unstaged, deleted and untracked files
+    Given the worker has reviewable dirty files
+    And I inspect the worker discard scope
+    When I invoke the confirmed discard
+    Then authorized discard removes only the worker assets and keeps audit evidence
+
+  Scenario Outline: Every dirty snapshot change needs fresh approval
+    Given the worker has reviewable dirty files
+    And I inspect the worker discard scope
+    And the reviewed dirty files change in "<kind>"
+    When I invoke the confirmed discard
+    Then teardown refuses before closing the pane and keeps all worker assets
+
+    Examples:
+      | kind              |
+      | tracked content   |
+      | new file          |
+      | deleted file      |
+      | staged content    |
+      | staged state      |
+      | untracked content |
+      | executable mode   |
+      | same stat content |
+
+  Scenario Outline: Unsupported content never receives an approval snapshot
+    Given the worker has unsupported "<kind>" content
     When I run riddim with:
       """
       discard worker --inspect
       """
-    Then discard retains the new local data and worker assets
+    Then teardown refuses before closing the pane and keeps all worker assets
+
+    Examples:
+      | kind             |
+      | ignored          |
+      | sensitive        |
+      | nested repo      |
+      | bare repo        |
+      | symlink          |
+      | hardlink         |
+      | control filename |
+      | hidden           |
+      | skip-worktree    |
+      | submodule        |
+      | intent-to-add    |
+      | conflicted       |
+      | index lock       |
+
+  Scenario: Dirty removal failure leaves explicit loss evidence
+    Given the worker has reviewable dirty files
+    And I inspect the worker discard scope
+    And Git refuses to remove the worker worktree
+    When I invoke the confirmed discard
+    Then incomplete dirty discard records file loss before removal failure
 
   Scenario: Marked workers cannot authorize discard
     Given I inspect the worker discard scope

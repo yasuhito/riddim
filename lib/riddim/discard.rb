@@ -6,7 +6,7 @@ require_relative 'actor'
 require_relative 'teardown'
 
 module Riddim
-  # Explicit operator-approved discard, deliberately limited to clean trees.
+  # Explicit operator-approved discard of an exact inspected file inventory.
   # Normal teardown's done and landed gates are not changed or bypassed there.
   module Discard
     class Refused < Ownership::Error; end
@@ -19,7 +19,7 @@ module Riddim
       Ownership.with_lock(name) do
         task = Teardown::Task.new(name, *Result.task_record(name))
         scope = scope!(task)
-        next JSON.generate(scope) unless approval
+        next JSON.pretty_generate(scope) unless approval
 
         discard!(task, scope, approval)
       end
@@ -43,26 +43,17 @@ module Riddim
     def scope!(task)
       Teardown.location!(task)
       _, head = Result.verified_tips(task.name, task.fields)
-      clean_tree!(task.worktree)
+      tree = Tree.inspect!(task.worktree)
       Teardown.verify_owner!(task)
-      scope = describe(task, head)
+      scope = describe(task, head).merge(tree)
       scope.merge(snapshot: Digest::SHA256.hexdigest(JSON.generate(scope) + task.bytes))
     end
 
     def describe(task, head)
       { name: task.name, generation: task.generation, project: task.project,
-        worktree: task.worktree, branch: task.branch, head: head, files: 'clean-only',
+        worktree: task.worktree, branch: task.branch, head: head,
+        loss: 'irreversible loss of unlanded commits, staged/unstaged edits and untracked files; no backup',
         endpoint: task.snapshot.first.to_h }
-    end
-
-    def clean_tree!(directory)
-      status = Worktree.git_value(directory, 'status', '--porcelain', '--untracked-files=all', '--ignored',
-                                  '--ignore-submodules=none')
-      flags = Worktree.git_value(directory, 'ls-files', '-v').lines
-      return if status.empty? && flags.none? { |line| line.match?(/\A[a-zS]/) }
-
-      raise Refused,
-            'discard supports clean trees only; edits, untracked/ignored files or hidden index entries retained'
     end
 
     def discard!(task, scope, approval)
@@ -83,7 +74,8 @@ module Riddim
       remove_git_assets!(task, scope, audit)
       finish!(task, brief, archived)
       note!(audit, 'complete')
-    rescue Ownership::Error, SystemCallError => e
+    rescue Ownership::Error, SystemCallError, Worktree::Error => e
+      note!(audit, 'incomplete')
       raise Refused, "discard incomplete; some assets may already be removed; inspect #{audit}: #{e.message}"
     end
 
@@ -95,6 +87,7 @@ module Riddim
 
     def remove_git_assets!(task, scope, audit)
       recheck!(task, scope)
+      discard_files!(task, scope, audit)
       Teardown.git!(task.project, 'worktree', 'remove', task.worktree) # Never --force.
       note!(audit, 'worktree-removed')
       remove_branch!(task, scope.fetch(:head))
@@ -127,3 +120,6 @@ module Riddim
     end
   end
 end
+
+require_relative 'discard/tree'
+require_relative 'discard/files'
