@@ -46,6 +46,42 @@ only and must remain untouched.
   idle episodes within one generation, or alerts for death before first positive
   liveness observation. Attention requests inspection, never restart/cleanup.
 
+## sol-repair teardown refusal - reproduced, ownership decision pending
+
+- Incident evidence: `/tmp/riddim-teardown-sol-repair-incident.md`. Approved commit
+  `0812560b3cf22591b2b6628b98e4e3bef1d775ae` landed on local main and the
+  worker worktree was clean, but teardown refused
+  `a different agent occupies the exact pane; retaining assets`.
+- Read-only real-Herdr reproduction from the teardown-fix worktree:
+  `bundle exec ruby -Ilib -rriddim/ownership -rriddim/teardown -e 'endpoint = Riddim::Ownership::Endpoint.resolve("sol-repair"); Riddim::Teardown.verify_agent!("sol-repair", endpoint)'`
+  produces that exact refusal. No teardown, close, rename, or worker mutation
+  was attempted. The original worker remains evidence.
+- Herdr 0.9.5 `agent get w13E:p1` in session `default` reports Pi at the
+  recorded workspace `w13E` and tab `w13E:t1`, with both cwd fields matching
+  `/home/yasuhito/Work/riddim-riddim-sol-repair`, but neither `name` nor
+  `agent_session`. Herdr's `src/api/schema/agents.rs`, `AgentInfo`, declares
+  both fields optional and omits absent values. A missing name is not proof
+  of a different occupant. Herdr names are mutable live-occupant aliases,
+  not durable task or process-incarnation identifiers.
+- `pane process-info` independently confirms a foreground Pi, but neither
+  that observation nor matching cwd proves it is the original task's Pi.
+  The retained record has a spawn generation and exact endpoint, but no
+  recorded Pi session or process-incarnation binding. This evidence cannot
+  distinguish the original unnamed Pi from an unnamed replacement in the
+  same pane and worktree.
+- Firstmate `bin/fm-backend.sh`, `fm_backend_validate_task_endpoint`, binds
+  task identity to durable metadata before cleanup; `bin/fm-teardown.sh`
+  separately validates the spawn incarnation. Its Herdr close path in
+  `bin/backends/herdr.sh`, `fm_backend_herdr_kill_serialized`, closes only
+  that recorded pane and confirms disappearance before record retirement.
+  It does not require an agent alias. Its teardown comments explicitly say
+  cwd is incidental and cannot veto cleanup of the recorded endpoint.
+- Resolution pending: decide whether generation-locked endpoint metadata may
+  authorize an unnamed Pi's close as in Firstmate, or require a newly
+  persisted live Pi-session binding. The latter must retain refusal for this
+  legacy record until ownership is independently reconciled. No guard was
+  relaxed, and no successful teardown or regression-fix validation is claimed.
+
 ## sol-repair registration unconfirmed - unresolved observation
 
 - Supervisor evidence: start returned `Pi registration could not be confirmed`,
