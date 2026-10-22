@@ -1027,4 +1027,3 @@ one, `start` checks the client and any running server are at least Herdr 0.8.0,
 where Firstmate verifies an emptying close no longer steals focus. This is a
 smaller supported-release subset than Firstmate, which also supports older
 Herdr versions using session-level focus-safe cleanup.
-
