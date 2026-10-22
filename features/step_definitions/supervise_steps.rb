@@ -23,12 +23,8 @@ Given('Herdr reports a stopped server') do
   )
 end
 
-Given('a fake Pi executable that supports regular TUI mode') do
-  install_fake_pi("  --tui-mode <mode>\n")
-end
-
-Given('a fake Pi executable without regular TUI mode') do
-  install_fake_pi("  --model <pattern>\n")
+Given('a fake supervisor Pi executable') do
+  install_fake_pi
 end
 
 Given('no explicit Riddim state directory') do
@@ -48,13 +44,13 @@ Given('the selected Riddim state directory is a symlink') do
 end
 
 Then('Pi receives the supervisor launch arguments and selected state directory') do
-  assert_equal expected_supervisor_arguments(regular_tui: true), pi_capture.fetch('argv')
+  assert_equal expected_supervisor_arguments, pi_capture.fetch('argv')
   assert_equal scenario_state_dir, pi_capture.fetch('state_dir')
   assert_equal 0o700, pi_capture.fetch('state_dir_mode')
 end
 
 Then('Pi receives the supervisor launch arguments and default state directory') do
-  assert_equal expected_supervisor_arguments(regular_tui: true), pi_capture.fetch('argv')
+  assert_equal expected_supervisor_arguments, pi_capture.fetch('argv')
   assert_equal @default_state_dir, pi_capture.fetch('state_dir')
   assert_equal 0o700, pi_capture.fetch('state_dir_mode')
 end
@@ -64,8 +60,8 @@ Then('Herdr is queried only for the running status of session {string}') do |ses
                "exit=#{@status.exitstatus} stderr=#{@stderr.inspect} stdout=#{@stdout.inspect}"
 end
 
-Then('Pi receives the supervisor launch arguments without a TUI mode') do
-  assert_equal expected_supervisor_arguments(regular_tui: false), pi_capture.fetch('argv')
+Then("the supervisor Pi resolves riddim to this checkout's CLI") do
+  assert_equal File.expand_path(RiddimWorld::RIDDIM), pi_capture.fetch('riddim')
 end
 
 Then('the supervisor command reports its usage and invokes neither Herdr nor Pi') do
@@ -116,13 +112,13 @@ def install_supervisor_herdr_status(document = nil, fail: false, **fields)
   File.write(File.join(@herdr_directory, 'status-fails'), '') if fail
 end
 
-def install_fake_pi(help_text)
+def install_fake_pi
   directory = Dir.mktmpdir
   @temporary_directories << directory
   @pi_capture = File.join(directory, 'capture.json')
   @pi_started = File.join(directory, 'started')
   pi = File.join(directory, 'pi')
-  File.write(pi, fake_pi_script(help_text))
+  File.write(pi, fake_pi_script)
   File.chmod(0o755, pi)
   configure_fake_pi_environment(directory)
 end
@@ -135,16 +131,14 @@ def configure_fake_pi_environment(directory)
   )
 end
 
-def fake_pi_script(help_text)
+def fake_pi_script
   <<~RUBY
     #!/usr/bin/ruby
     require 'json'
-    if ARGV == ['--help']
-      print #{help_text.dump}
-      exit 0
-    end
     state_dir = ENV.fetch('RIDDIM_STATE_DIR')
-    File.write(ENV.fetch('PI_CAPTURE'), JSON.generate(argv: ARGV, state_dir: state_dir,
+    riddim = ENV.fetch('PATH').split(':').map { |dir| File.join(dir, 'riddim') }
+                .find { |path| File.file?(path) && File.executable?(path) }
+    File.write(ENV.fetch('PI_CAPTURE'), JSON.generate(argv: ARGV, state_dir: state_dir, riddim: riddim,
                                                        state_dir_mode: File.stat(state_dir).mode & 0o777))
     File.write(ENV.fetch('PI_STARTED'), 'started')
   RUBY
@@ -158,12 +152,11 @@ def pi_started?
   File.file?(@pi_started)
 end
 
-def expected_supervisor_arguments(regular_tui:)
+def expected_supervisor_arguments
   root = File.expand_path('..', File.dirname(RiddimWorld::RIDDIM))
-  args = regular_tui ? %w[--tui-mode regular] : []
-  args.push(
+  [
     '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max',
     '-e', File.join(root, '.pi/extensions/riddim-notifications.ts'),
     '--append-system-prompt', File.join(root, 'docs/supervisor.md')
-  )
+  ]
 end

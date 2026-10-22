@@ -6,7 +6,7 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       pi openrouter/z-ai/glm-5.3-flash max
       """
     And Herdr reports a running supported server
-    And a fake Pi executable that supports regular TUI mode
+    And a fake supervisor Pi executable
 
   Scenario: Launch Pi with the profile, role contract, extension, and selected state directory
     When I run riddim with:
@@ -31,13 +31,12 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       """
     Then Herdr is queried only for the running status of session "lab"
 
-  Scenario: Omit regular TUI mode when Pi does not advertise it
-    Given a fake Pi executable without regular TUI mode
+  Scenario: Let the supervisor Pi run bare riddim commands from this checkout
     When I run riddim with:
       """
       supervise
       """
-    Then Pi receives the supervisor launch arguments without a TUI mode
+    Then the supervisor Pi resolves riddim to this checkout's CLI
 
   Scenario: Refuse an extra argument before checking prerequisites
     When I run riddim with:

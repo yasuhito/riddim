@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'open3'
-
 require_relative 'herdr'
 require_relative 'ownership'
 require_relative 'runtime_paths'
@@ -13,6 +11,7 @@ module Riddim
 
     ROLE_CONTRACT = File.join(RuntimePaths::ROOT, 'docs/supervisor.md')
     NOTIFICATIONS_EXTENSION = File.join(RuntimePaths::ROOT, '.pi/extensions/riddim-notifications.ts')
+    CLI_DIRECTORY = File.join(RuntimePaths::ROOT, 'bin')
 
     module_function
 
@@ -22,7 +21,7 @@ module Riddim
       executable = resolve_pi_executable
       state_dir = File.expand_path(Ownership.state_dir)
       prepare_state_dir!(state_dir)
-      Kernel.exec({ 'RIDDIM_STATE_DIR' => state_dir }, executable, *launch_arguments(profile, executable))
+      Kernel.exec(launch_environment(state_dir), executable, *launch_arguments(profile))
     rescue SystemCallError => e
       raise Error, "could not start Pi: #{e.message}"
     end
@@ -68,8 +67,13 @@ module Riddim
       raise Error, 'pi executable not found on PATH'
     end
 
-    def launch_arguments(profile, executable)
-      regular_tui_arguments(executable) + [
+    def launch_environment(state_dir)
+      path = [CLI_DIRECTORY, ENV.fetch('PATH', nil)].compact.join(File::PATH_SEPARATOR)
+      { 'RIDDIM_STATE_DIR' => state_dir, 'PATH' => path }
+    end
+
+    def launch_arguments(profile)
+      [
         '--model', profile.model,
         '--thinking', profile.effort,
         '-e', NOTIFICATIONS_EXTENSION,
@@ -77,17 +81,8 @@ module Riddim
       ]
     end
 
-    def regular_tui_arguments(executable)
-      help, status = Open3.capture2e(executable, '--help')
-      return [] unless status.success? && help.match?(/(^|[[:space:]])--tui-mode([[:space:]=]|$)/)
-
-      ['--tui-mode', 'regular']
-    rescue SystemCallError
-      []
-    end
-
     private_class_method :validate_resources!, :prepare_state_dir!, :verify_herdr!, :herdr_failure_detail,
                          :unreachable_herdr_message, :resolve_pi_executable,
-                         :launch_arguments, :regular_tui_arguments
+                         :launch_environment, :launch_arguments
   end
 end

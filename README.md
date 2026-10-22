@@ -40,16 +40,18 @@ cp config/agent-profile.example config/agent-profile
 ```
 
 Edit `config/agent-profile` to select the Pi model and effort for the supervisor.
-Then open a pane in the target project's checkout in a running Herdr session and run:
+Then open a pane in the target project's checkout in a running Herdr session and run this
+Riddim checkout's CLI by its path:
 
 ```sh
-bin/riddim supervise
+/path/to/riddim/bin/riddim supervise
 ```
 
 The command checks the current Herdr session and the profile before it starts Pi.
 It replaces itself with Pi in the same pane, so it creates no Herdr workspace and does not
 change focus. It prepares the selected state directory with owner-only permissions, passes
-its absolute path as `RIDDIM_STATE_DIR`, loads `.pi/extensions/riddim-notifications.ts`,
+its absolute path as `RIDDIM_STATE_DIR`, prepends this checkout's `bin` directory to Pi's
+`PATH` so the supervisor can run bare `riddim` commands, loads `.pi/extensions/riddim-notifications.ts`,
 and appends `docs/supervisor.md` to Pi's system prompt. Set `RIDDIM_CONFIG_DIR` or
 `RIDDIM_STATE_DIR` before the command to select different Riddim directories.
 
