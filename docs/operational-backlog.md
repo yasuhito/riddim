@@ -46,7 +46,7 @@ only and must remain untouched.
   idle episodes within one generation, or alerts for death before first positive
   liveness observation. Attention requests inspection, never restart/cleanup.
 
-## sol-repair teardown refusal - reproduced, ownership decision pending
+## sol-repair teardown refusal - reproduced and fixed
 
 - Incident evidence: `/tmp/riddim-teardown-sol-repair-incident.md`. Approved commit
   `0812560b3cf22591b2b6628b98e4e3bef1d775ae` landed on local main and the
@@ -76,11 +76,27 @@ only and must remain untouched.
   that recorded pane and confirms disappearance before record retirement.
   It does not require an agent alias. Its teardown comments explicitly say
   cwd is incidental and cannot veto cleanup of the recorded endpoint.
-- Resolution pending: decide whether generation-locked endpoint metadata may
-  authorize an unnamed Pi's close as in Firstmate, or require a newly
-  persisted live Pi-session binding. The latter must retain refusal for this
-  legacy record until ownership is independently reconciled. No guard was
-  relaxed, and no successful teardown or regression-fix validation is claimed.
+- Resolution: human selected Firstmate-compatible ownership of the durable,
+  generation-locked exact endpoint, not proof of the original Pi process
+  incarnation. Teardown no longer treats optional mutable aliases as ownership.
+  It still requires Pi at the recorded pane/workspace/tab in the recorded
+  session, and now rechecks the generation, endpoint and complete record bytes
+  after backend probes immediately before close, under the existing name lock.
+  Cwd and Pi-session metadata do not replace or veto the durable binding.
+- Before the fix, three actual-shape/alias/cwd cases failed with the original
+  refusal. Three concurrent record-change cases exposed a second gap: teardown
+  detected the change only after closing the pane. Both sets now pass. The
+  captured Herdr response is retained in
+  `features/fixtures/herdr/unnamed_pi.json`; feature tests adapt only endpoint
+  IDs before testing acceptance and foreign/missing identity refusals.
+- All 39 teardown scenarios / 565 steps pass, including existing self-pane,
+  clean+landed, name-lock and unconfirmed-disappearance safeguards. The updated
+  live read-only `verify_agent!(endpoint)` check passes between two durable
+  ownership rechecks against sol-repair. No close or actual retirement was
+  attempted; that still requires separate authorization.
+- Full delivery validation: `bundle exec rake test lint` passes 262 unit tests /
+  583 assertions and 661 feature scenarios / 3990 steps. RuboCop checks 117
+  files without offenses; Gherkin conventions pass.
 
 ## sol-repair registration unconfirmed - unresolved observation
 

@@ -1,0 +1,22 @@
+{
+  "id": "cli:agent:get",
+  "result": {
+    "type": "agent_info",
+    "agent": {
+      "agent": "pi",
+      "agent_status": "done",
+      "completion_seq": 1778,
+      "cwd": "/home/yasuhito/Work/riddim-riddim-sol-repair",
+      "focused": false,
+      "foreground_cwd": "/home/yasuhito/Work/riddim-riddim-sol-repair",
+      "pane_id": "w13E:p1",
+      "revision": 2,
+      "state_change_seq": 1778,
+      "tab_id": "w13E:t1",
+      "terminal_id": "term_65e646233695366",
+      "terminal_title": "π - riddim-riddim-sol-repair",
+      "terminal_title_stripped": "π - riddim-riddim-sol-repair",
+      "workspace_id": "w13E"
+    }
+  }
+}

@@ -59,6 +59,19 @@ Given('the generation archive already exists') do
   File.write(File.join(scenario_state_dir, "worker.#{@generation}.brief"), 'existing evidence')
 end
 
+Given('Herdr reports the captured unnamed Pi shape with {string} changed to {string}') do |field, value|
+  path = File.expand_path('../fixtures/herdr/unnamed_pi.json', __dir__)
+  document = JSON.parse(File.read(path))
+  agent = document.fetch('result').fetch('agent')
+  agent.merge!('pane_id' => 'w9:p1', 'workspace_id' => 'w9', 'tab_id' => 'w9:t1')
+  agent[field] = value unless field.empty?
+  File.write(File.join(@herdr_directory, 'teardown-agent.json'), JSON.generate(document))
+end
+
+Given('the ownership record changes during the agent probe in field {string}') do |field|
+  File.write(File.join(@herdr_directory, 'replace-owner-on-probe'), field)
+end
+
 Given('a different agent occupies the worker pane') do
   File.write(File.join(@herdr_directory, 'unrecognized-pi'), '')
 end

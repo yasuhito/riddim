@@ -127,6 +127,17 @@ WORKTREE_TASK_LAUNCH = <<~RUBY
       puts JSON.generate(error: { code: 'agent_not_found' })
       exit 1
     end
+    replacement = File.expand_path('replace-owner-on-probe', __dir__)
+    if File.file?(replacement)
+      field = File.read(replacement)
+      record = File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta')
+      File.write(record, File.read(record).sub(/^\#{field}=.*$/, "\#{field}=replacement"))
+    end
+    response = File.expand_path('teardown-agent.json', __dir__)
+    if File.file?(response)
+      puts File.read(response)
+      exit 0
+    end
     kind = File.file?(File.expand_path('unrecognized-pi', __dir__)) ? 'codex' : 'pi'
     name = File.file?(File.expand_path('agent-named', __dir__)) ? 'worker' : nil
     replaced = ARGV[2] == 'worker' && File.file?(File.expand_path('replaced-pi', __dir__))

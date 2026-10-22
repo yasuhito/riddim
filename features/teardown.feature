@@ -264,6 +264,71 @@ Feature: Retire only landed local-only worker assets
       """
     Then teardown refuses before closing the pane and keeps all worker assets
 
+  Scenario Outline: Retire the recorded endpoint regardless of optional alias or cwd
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the worker branch is fast-forward merged into local main
+    And a fake cwd scan reports no worker process
+    And Herdr reports the captured unnamed Pi shape with "<field>" changed to "<value>"
+    When I run riddim with:
+      """
+      teardown worker
+      """
+    Then teardown confirms the pane gone, retires the linked worktree and branch, and archives the brief
+
+    Examples:
+      | field          | value       |
+      |                |             |
+      | name           | other-alias |
+      | foreground_cwd | /           |
+
+  Scenario Outline: Refuse foreign live identity in the unnamed Herdr response
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the worker branch is fast-forward merged into local main
+    And a fake cwd scan reports no worker process
+    And Herdr reports the captured unnamed Pi shape with "<field>" changed to "<value>"
+    When I run riddim with:
+      """
+      teardown worker
+      """
+    Then teardown refuses before closing the pane and keeps all worker assets
+
+    Examples:
+      | field        | value  |
+      | pane_id      | w9:p2  |
+      | workspace_id | w10    |
+      | tab_id       | w9:t2  |
+      | agent        | codex  |
+      | pane_id      |        |
+      | workspace_id |        |
+      | tab_id       |        |
+      | agent        |        |
+
+  Scenario Outline: Recheck ownership after probing the live agent and before closing
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the worker branch is fast-forward merged into local main
+    And a fake cwd scan reports no worker process
+    And the ownership record changes during the agent probe in field "<field>"
+    When I run riddim with:
+      """
+      teardown worker
+      """
+    Then teardown refuses before closing the pane and keeps all worker assets
+
+    Examples:
+      | field        |
+      | spawn_gen    |
+      | herdr_tab_id |
+      | model        |
+
   Scenario: Refuse a symlinked worker worktree without touching its pane
     Given a local-only task was started
     And the task input is removed after launch

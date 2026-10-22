@@ -11,9 +11,10 @@ module Riddim
 
       case Herdr.pane_presence_state(endpoint.pane_id, session: endpoint.session)
       when :gone then return
-      when :present then verify_agent!(task.name, endpoint)
+      when :present then verify_agent!(endpoint)
       else raise Refused, 'exact pane presence is unknown; retaining assets'
       end
+      verify_owner!(task) # Backend reads must not outlive the durable endpoint binding.
       return if Herdr.close_pane_confirmed(endpoint.pane_id, session: endpoint.session)
 
       raise Refused, 'exact pane disappearance unconfirmed; retaining record and Git assets'
@@ -24,10 +25,13 @@ module Riddim
         ENV['HERDR_PANE_ID'] == endpoint.pane_id
     end
 
-    def verify_agent!(name, endpoint)
+    # Like Firstmate, ownership is of the generation-locked recorded endpoint,
+    # not the original Pi process. Herdr's optional mutable name and incidental
+    # cwd/session fields are not task ownership evidence.
+    def verify_agent!(endpoint)
       agent = Herdr.agent(endpoint.pane_id, session: endpoint.session)
-      identity = agent.values_at('name', 'agent', 'pane_id', 'workspace_id', 'tab_id')
-      expected = [name, 'pi', endpoint.pane_id, endpoint.workspace_id, endpoint.tab_id]
+      identity = agent.values_at('agent', 'pane_id', 'workspace_id', 'tab_id')
+      expected = ['pi', endpoint.pane_id, endpoint.workspace_id, endpoint.tab_id]
       return if identity == expected
 
       raise Refused, 'a different agent occupies the exact pane; retaining assets'
