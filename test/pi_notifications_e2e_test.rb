@@ -65,6 +65,9 @@ class PiNotificationsE2ETest < Minitest::Test
           mv "#{File.join(@state, '.notification-watcher.lock')}" "#{File.join(@state, '.old-lock')}"
           (umask 077; touch "#{File.join(@state, '.notification-watcher.lock')}")
         fi
+        if [ -e "#{File.join(@state, 'idle')}" ]; then
+          export RUBYOPT="-r#{File.expand_path('support/notification_stop_backend', __dir__)} ${RUBYOPT:-}"
+        fi
         echo spawn >> "#{count}"
       fi
       exec "#{RbConfig.ruby}" "$@"
@@ -91,8 +94,8 @@ class PiNotificationsE2ETest < Minitest::Test
     FileUtils.remove_entry(@root) if @root && File.exist?(@root)
   end
 
-  def event
-    Timeout.timeout(20) do
+  def event(timeout: 20)
+    Timeout.timeout(timeout) do
       line = @output.gets
       raise "Pi exited: #{@error.read}" unless line
 
@@ -100,9 +103,9 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
-  def until_event
+  def until_event(timeout: 20)
     loop do
-      item = event
+      item = event(timeout: timeout)
       return item if yield(item)
     end
   end
@@ -121,11 +124,34 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
-  def notification
-    until_event do |item|
+  def notification(timeout: 20)
+    until_event(timeout: timeout) do |item|
       item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
         item.dig('message', 'content').to_s.include?('Riddim Supervisor notification')
     end
+  end
+
+  # Real Pi accepts the attention follow-up for the native alive+idle+no-report
+  # fixture, without treating that observation as a worker completion claim.
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_live_idle_attention_is_consumed_by_real_pi_without_a_worker_report
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
+    File.write(File.join(@state, 'idle'), '')
+    watcher = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first.to_i
+    Process.kill('TERM', watcher) # Automatic replacement loads the native-state fixture.
+    message = notification(timeout: 45)
+
+    assert_includes message.to_s, "worker.#{GEN}.0"
+    assert_includes message.to_s, 'not completion'
+    assert_empty File.read(@status_path)
+    out, err, status = cli('scan')
+
+    assert_predicate status, :success?, err
+    assert_equal(['unreported-idle'], JSON.parse(out).map { |row| row.fetch('event') })
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
   end
 
   # A launch holds the name lock through registration. It must not starve

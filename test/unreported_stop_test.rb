@@ -26,13 +26,15 @@ class UnreportedStopTest < Minitest::Test
   end
 
   def scan(state)
-    original = Riddim::Herdr.method(:agent_state)
-    Riddim::Herdr.singleton_class.remove_method(:agent_state)
-    Riddim::Herdr.define_singleton_method(:agent_state) { |*, **| state.respond_to?(:call) ? state.call : state }
+    original = Riddim::Herdr.method(:observe_pi_agent)
+    Riddim::Herdr.singleton_class.remove_method(:observe_pi_agent)
+    Riddim::Herdr.define_singleton_method(:observe_pi_agent) do |*, **|
+      [state.respond_to?(:call) ? state.call : state, nil]
+    end
     Riddim::Notifications.scan
   ensure
-    Riddim::Herdr.singleton_class.remove_method(:agent_state)
-    Riddim::Herdr.define_singleton_method(:agent_state, original)
+    Riddim::Herdr.singleton_class.remove_method(:observe_pi_agent)
+    Riddim::Herdr.define_singleton_method(:observe_pi_agent, original)
   end
 
   # rubocop:disable-next Minitest/MultipleAssertions

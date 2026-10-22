@@ -55,9 +55,9 @@ module Riddim
       loop do
         verify_owner!(directory, lock, selected_home)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        observe_stopped = now >= next_observation
-        next_observation = now + 5 if observe_stopped
-        entries = Notifications.scan(observe_stopped: observe_stopped, wait: false)
+        observe_activity = now >= next_observation
+        next_observation = now + Notifications::Idle::SAMPLE_SECONDS if observe_activity
+        entries = Notifications.scan(observe_activity: observe_activity, wait: false)
         entries.reject! { |entry| exclude.include?(entry.id) }
         verify_owner!(directory, lock, selected_home)
         unless ready

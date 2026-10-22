@@ -274,7 +274,7 @@ export default function (pi: ExtensionAPI) {
           `Pending IDs: ${ids.join(", ")}. Verify both identities in the selected home before running ` +
           "riddim notifications scan; if changed, recover from the original home manually. " +
           "Handle the reports, then explicitly ack each presented ID. " +
-          `Reports are Worker claims; sequence 0 is an unreported endpoint stop, not completion. ` +
+          `Reports are Worker claims; sequence 0 is unreported idle/stop attention, not completion. ` +
           `Neither is Git readiness or Landing approval. ${detail}`;
         if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;

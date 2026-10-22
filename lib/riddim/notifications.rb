@@ -6,6 +6,7 @@ require 'json'
 require 'securerandom'
 require_relative 'result'
 require_relative 'herdr'
+require_relative 'notifications/idle'
 
 module Riddim
   # A manually reconciled, private report inbox. Classification is independent
@@ -17,6 +18,7 @@ module Riddim
 
     ACTIONABLE = %w[done blocked failed needs-decision].freeze
     Entry = Data.define(:id, :task, :generation, :sequence, :event)
+    Observation = Data.define(:alive, :idle, :event)
 
     module_function
 
@@ -24,7 +26,7 @@ module Riddim
       File.join(Ownership.state_dir, '.notifications')
     end
 
-    def scan(observe_stopped: true, wait: true)
+    def scan(observe_activity: true, wait: true)
       Ownership.verify_state_dir(Ownership.state_dir)
       ensure_directory
       Dir.children(Ownership.state_dir).grep(/\A[a-z][a-z0-9_-]{0,31}\.meta\z/).sort.each do |file|
@@ -32,7 +34,7 @@ module Riddim
         Ownership.with_lock(name, wait: wait) do
           # Teardown may retire the record between listing and locking.
           path = Ownership.record_path(name)
-          classify(name, observe_stopped: observe_stopped) if File.exist?(path) || File.symlink?(path)
+          classify(name, observe_activity: observe_activity) if File.exist?(path) || File.symlink?(path)
         end
       end
       present(pending, wait: wait)
@@ -131,12 +133,12 @@ module Riddim
         row['generation'].is_a?(String) && row['generation'].match?(Result::GENERATION) &&
         row['sequence'].is_a?(Integer) &&
         ((row['sequence'].positive? && ACTIONABLE.include?(row['event'])) ||
-          (row['sequence'].zero? && row['event'] == 'unreported-stop')) &&
+          (row['sequence'].zero? && %w[unreported-stop unreported-idle].include?(row['event']))) &&
         row['id'] == identity(row['task'], row['generation'], row['sequence'])
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-    def classify(name, observe_stopped: true)
+    def classify(name, observe_activity: true)
       snapshot = Ownership::Endpoint.resolve_snapshot(name)
       bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
       fields = Ownership.parse(bytes)
@@ -160,7 +162,7 @@ module Riddim
       raise Error, "status changed before classified position for #{name}" if
         prefix.nil? || (cursor['digest'] && cursor['digest'] != Digest::SHA256.hexdigest(prefix))
 
-      observation = stopped_observation(name, snapshot, bytes, events) if observe_stopped
+      observation = activity_observation(name, snapshot, bytes, events) if observe_activity
 
       # The same name lock used by report and lifecycle writers protects the
       # ownership recheck and every publication. Never attribute a read to a
@@ -170,7 +172,7 @@ module Riddim
         raise Error, "ownership changed during notification scan for #{name}"
       end
 
-      publish_stop_observation(name, generation, bytes, observation)
+      publish_observation(name, generation, bytes, observation)
       events.each do |event|
         next unless ACTIONABLE.include?(event.kind)
 
@@ -192,35 +194,40 @@ module Riddim
 
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
-    # Smaller than Firstmate's idle/stale watcher: require a previously live
-    # exact endpoint, then recovery-grade absence, never native idle as done.
-    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
-    def stopped_observation(name, snapshot, bytes, events)
+    # One attention observation per generation, shared by stable live-idle and
+    # endpoint-stop detection. Actual Worker reports keep independent IDs.
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+    def activity_observation(name, snapshot, bytes, events)
       return if events.any? { |event| ACTIONABLE.include?(event.kind) }
 
       endpoint, generation = snapshot
       return if File.exist?(File.join(directory, "#{identity(name, generation, 0)}.json"))
 
-      state = Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
-      return :alive if state == :alive
-      return unless %i[dead missing].include?(state)
-
+      state, status = Herdr.observe_pi_agent(endpoint.pane_id, session: endpoint.session)
+      idle = Idle.sample(name, snapshot, bytes, state, status)
+      event = 'unreported-idle' if Idle.ready?(idle)
       path = alive_path(name, generation)
-      :stopped if (File.exist?(path) || File.symlink?(path)) && private_read(path) == Digest::SHA256.hexdigest(bytes)
+      if %i[dead missing].include?(state) && (File.exist?(path) || File.symlink?(path)) &&
+         private_read(path) == Digest::SHA256.hexdigest(bytes)
+        event = 'unreported-stop'
+      end
+      Observation.new(alive: state == :alive, idle: idle, event: event)
     end
 
     def alive_path(name, generation)
       File.join(directory, ".alive-#{name}-#{generation}")
     end
 
-    def publish_stop_observation(name, generation, bytes, observation)
-      if observation == :alive
-        publish(alive_path(name, generation), Digest::SHA256.hexdigest(bytes))
-      elsif observation == :stopped
-        entry = Entry.new(id: identity(name, generation, 0), task: name,
-                          generation: generation, sequence: 0, event: 'unreported-stop')
-        publish(File.join(directory, "#{entry.id}.json"), "#{JSON.generate(entry.to_h)}\n")
-      end
+    def publish_observation(name, generation, bytes, observation)
+      return unless observation
+
+      publish(alive_path(name, generation), Digest::SHA256.hexdigest(bytes)) if observation.alive
+      Idle.commit(name, generation, observation.idle)
+      return unless observation.event
+
+      entry = Entry.new(id: identity(name, generation, 0), task: name,
+                        generation: generation, sequence: 0, event: observation.event)
+      publish(File.join(directory, "#{entry.id}.json"), "#{JSON.generate(entry.to_h)}\n")
     end
 
     def identity(name, generation, sequence)

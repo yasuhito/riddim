@@ -19,6 +19,11 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_session_race.mjs', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
   end
 
+  def test_live_idle_without_a_report_is_delivered_after_stability_and_busy_reset
+    run_scenario('notification_stop.mjs', expected: ["worker.#{GEN}.0", "worker.#{GEN}.1"],
+                                          backend: 'notification_stop_backend', marker: 'RIDDIM_TEST_IDLE')
+  end
+
   def test_unreported_stop_is_delivered_once_without_a_worker_report
     run_scenario('notification_stop.mjs', expected: ["worker.#{GEN}.0"], backend: 'notification_stop_backend')
   end

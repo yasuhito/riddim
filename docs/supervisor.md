@@ -29,8 +29,9 @@ Record observed CLI failures in [the operational backlog](operational-backlog.md
 or an issue before moving on. Distinguish expected safety refusals from confirmed bugs.
 
 Do not run a periodic liveness loop. The operator-only notifications extension reports
-actionable worker events and once-per-generation stops of previously observed live endpoints.
-Native idle is never completion. Use existing observations when attention is needed.
+actionable worker events and once-per-generation stable-idle/endpoint-stop attention.
+Live-idle attention requires launch grace and repeated unchanged captures with verified
+Pi native idle. Busy or unverifiable observations reset stability. Native idle is never completion. Use existing observations when attention is needed.
 
 ## Handle worker reports
 
@@ -42,9 +43,10 @@ riddim notifications scan
 
 Check the notification's worker name and generation against the scan result. Read the
 worker's report and any evidence needed to understand it. Follow up with the worker or the
-human as needed. Reserved sequence `0` (`unreported-stop`) is an endpoint observation,
-not a Worker claim: inspect the endpoint and unlanded work. It authorizes neither restart
-nor cleanup. A notification is not a report, and neither is human approval.
+human as needed. Reserved sequence `0` (`unreported-idle` or `unreported-stop`) is an
+attention observation, not a Worker claim: inspect the worker and unlanded work. It
+authorizes neither restart nor cleanup. Both kinds share one attention slot per
+generation; acknowledging it does not consume later Worker reports. A notification is not a report, and neither is human approval.
 
 Acknowledge an exact notification ID only after you have handled that report:
 

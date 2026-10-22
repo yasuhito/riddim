@@ -3,8 +3,15 @@
 require_relative '../../lib/riddim/herdr'
 
 module NotificationStopBackend
-  def agent_state(*)
-    File.exist?(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'stopped')) ? :dead : :alive
+  def observe_pi_agent(*)
+    state = ENV.fetch('RIDDIM_STATE_DIR')
+    return [:dead, nil] if File.exist?(File.join(state, 'stopped'))
+
+    [:alive, File.exist?(File.join(state, 'idle')) ? 'idle' : 'working']
+  end
+
+  def pane_tail(**)
+    'Stable Pi prompt'
   end
 end
 

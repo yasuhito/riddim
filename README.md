@@ -639,7 +639,7 @@ not permission to merge: independently review code and tests and recheck Git
 before merging. It does not infer completion from Herdr idle, validate test
 claims, automatically merge, clean up, or implement Firstmate's reconciled
 current crew-state or general watcher. The opt-in notification watcher below adds
-only unreported endpoint-stop observations, not Firstmate's idle/stale supervision. Existing starts
+bounded unreported idle/stop attention, not Firstmate's full stale/wedge supervision. Existing starts
 without `--mode` retain
 their previous briefs and delivery behavior.
 
@@ -661,15 +661,28 @@ followed by routine progress. The private queue retains handled receipts for
 provenance. Scanning fails rather than claiming an empty drain when current
 status or previously classified queue evidence is missing or invalid.
 
-`scan` also remembers positive Pi liveness for the exact generation and endpoint
-record. A later recovery-grade `dead` or `missing` endpoint without an actionable
-report queues one `unreported-stop` with reserved sequence `0`. This is an
-observation, not a Worker report or completion: inspect the endpoint and unlanded
-work before any recovery or cleanup. Acknowledgement suppresses it for that
-generation, including after restart. Launching workers, workers never observed
-alive, native idle, and unverifiable endpoints do not establish a stop. The
-background watcher probes liveness every five seconds and skips locked workers
-until a later poll so launch/teardown locks cannot starve its heartbeat. Explicit
+`scan` also observes Pi activity for the exact generation and endpoint record.
+Without an actionable report, it queues one attention observation with reserved
+sequence `0`:
+
+- `unreported-stop`: a previously observed live endpoint becomes recovery-grade
+  `dead` or `missing`.
+- `unreported-idle`: a verified live Pi has native idle/done/blocked state and
+  three unchanged, nonempty recent-pane captures, sampled at least five seconds
+  apart. A thirty-second grace from first verified liveness avoids launch alerts.
+  Busy, unverifiable state, failed/empty capture, changed output, clock rollback,
+  or a sampling gap over ten seconds resets stability. Rapid manual scans cannot
+  substitute for elapsed sampling time. No prior busy turn is required, so a
+  worker that never received its brief can still call for attention.
+
+Both are observations, not Worker reports or completion: inspect the worker and
+unlanded work before deciding what happened. The two kinds share one attention
+slot per generation. Acknowledgement suppresses further attention for that
+generation, including after restart or a busy/idle transition; actual reports
+retain independent IDs. Never-observed liveness and ambiguous evidence do not
+establish a stop. Native idle alone does not establish stable idle attention.
+The background watcher probes every five seconds and skips locked workers until
+a later poll so launch/teardown locks cannot starve its heartbeat. Explicit
 manual scans retain blocking reconciliation.
 
 `notifications` without `scan` inspects the existing queue without reconciling

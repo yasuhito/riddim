@@ -17,20 +17,34 @@ only and must remain untouched.
 - Validation: the same reproduction passes after the fix. No lock weakening or
   extension-disable workaround is required. Full suite results recorded at delivery.
 
-## Unreported workers - limited stop observation implemented
+## Unreported workers - stable live-idle and stop attention implemented
 
-- Evidence: the original notification scanner only classified actionable status
-  reports. An empty status file stayed silent after endpoint death.
-- Fix: reserved sequence 0 records one `unreported-stop` per generation after a
-  positively observed live exact endpoint becomes recovery-grade dead or missing.
-  Durable queue/ack receipts prevent repeat alerts. Status remains worker-owned.
-- Validation: `test/unreported_stop_test.rb` covers launch ambiguity, unverified
-  state, report suppression, progress, acknowledgement and replacement generations.
-- Deliberately smaller than Firstmate `bin/fm-watch.sh`, `wedge_dead_record`:
-  no native idle-as-done, pane hashing, wedge ladder or task-completion inference.
-  Firstmate also monitors stable idle/turn-end episodes. Live-but-idle workers and
-  workers dying before the first positive observation remain a follow-up, not claimed
-  covered by this stop-only implementation.
+- Evidence: source-review was Pi alive but idle without a report. The original
+  scanner only classified actionable status reports. Initial commit `af0ad38`
+  added endpoint-death detection but explicitly left this original symptom
+  uncovered; review reopened the task rather than treating stop-only as sufficient.
+- Live-idle reproduction: `bundle exec ruby test/unreported_idle_test.rb` initially
+  failed six checks, including alive+idle+no-report and busy-transition behavior.
+- Firstmate `bin/fm-watch.sh`'s pane-staleness backbone requires repeated identical
+  captures and non-busy state, surfaces inconclusive nonterminal stale for inspection,
+  and clears pending stability when output or activity changes. Riddim implements
+  the stricter Pi-only subset: positively verified native idle plus three unchanged
+  nonempty captures at least five seconds apart and a thirty-second launch grace
+  from first liveness. Busy/unverifiable observations, capture failures, output
+  changes, clock rollback and sampling gaps over ten seconds reset stability.
+- Reserved sequence 0 records one `unreported-idle` or `unreported-stop` per exact
+  generation/endpoint record, sharing one durable attention slot. Acknowledgement
+  suppresses duplicates after restart or busy/idle transitions. Worker reports
+  keep independent IDs and status files remain exclusively Worker-owned.
+- Tests: deterministic scanner regressions cover the original symptom, launch
+  grace, busy transitions, observation gaps, capture failures, metadata replacement
+  and deduplication. The real extension/watcher test exercises busy-to-idle reset
+  and an independent subsequent report. A real Pi plus loopback model consumes
+  the live-idle follow-up without a Worker report (native backend state is a
+  controlled fixture, not a second managed worker).
+- Still smaller than Firstmate: no wedge ladder, inferred completion, recurring
+  idle episodes within one generation, or alerts for death before first positive
+  liveness observation. Attention requests inspection, never restart/cleanup.
 
 ## sol-repair registration unconfirmed - unresolved observation
 
@@ -92,7 +106,7 @@ only and must remain untouched.
   accounts for the same validated linked-worktree marker as the CLI. No operational
   state marker was changed or removed to make the test pass.
 
-## Delivery validation
+## Initial delivery validation (`af0ad38`)
 
 - `bundle exec rake unit lint`: 238 tests, 413 assertions, no failures/errors/skips;
   RuboCop checked 111 files without offenses; Gherkin conventions passed.
@@ -102,3 +116,17 @@ only and must remain untouched.
   rejected positional brief. No source files need alteration for that control.
 - Operational profile outside this worktree updated to
   `pi openai-codex/gpt-6.1-sol medium`. No ignored config was added to the commit.
+
+## Live-idle regression validation - fixture failure resolved
+
+- During the new integration test, the watcher correctly refused `status file has
+  no final newline`. The test fixture had appended literal `\\n` instead of a
+  newline while simulating a subsequent report. Fixed the fixture; this was an
+  expected malformed-status refusal, not a production report-writing bug.
+- Live-idle end-to-end check: real Pi consumed the alert after launch grace with
+  no Worker report or completion claim. Native liveness/pane state was injected at
+  the Herdr observation seam; Pi, the extension, Ruby observer and local model
+  transport were real.
+- Full rerun: `bundle exec rake unit lint` passed 255 tests / 559 assertions with
+  no failures, errors or skips; 113 Ruby files passed RuboCop and Gherkin conventions.
+  `bundle exec rake features` passed all 647 scenarios / 3780 steps.
