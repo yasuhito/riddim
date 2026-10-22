@@ -169,6 +169,26 @@ Given('ownership changes during status classification') do
   @environment['RUBYOPT'] = "-r#{fixture}"
 end
 
+Given('teardown retires the worker record while the scan waits for its lock') do
+  fixture = File.join(new_temporary_directory, 'retire_record.rb')
+  File.write(fixture, <<~RUBY)
+    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    module Riddim::Ownership
+      class << self
+        alias_method :original_with_lock, :with_lock
+        def with_lock(name, **options, &block)
+          original_with_lock(name, **options) do
+            path = record_path('worker')
+            File.unlink(path) if File.exist?(path)
+            block.call
+          end
+        end
+      end
+    end
+  RUBY
+  @environment['RUBYOPT'] = "-r#{fixture}"
+end
+
 Given('the notification cursor cannot be replaced') do
   fixture = File.join(new_temporary_directory, 'break_cursor.rb')
   File.write(fixture, <<~RUBY)
@@ -408,4 +428,8 @@ Then('the failed scan leaves the same pending identity recoverable') do
                 'generation' => generation, 'sequence' => 1, 'event' => 'blocked' }]
   assert_equal [false, expected, true, expected],
                [@status.success?, JSON.parse(before), status.success?, JSON.parse(later)], error
+end
+
+Then('scanning succeeds without a notification for the retired worker') do
+  assert_equal [true, "[]\n"], [@status.success?, @stdout], @stderr
 end

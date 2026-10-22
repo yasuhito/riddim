@@ -253,6 +253,15 @@ Feature: Inspect durable actionable reports from the selected local-only home
       """
     Then scanning fails without publishing a notification
 
+  Scenario: A worker torn down between listing and locking is skipped
+    Given the worker reports "done [at=1]: original"
+    And teardown retires the worker record while the scan waits for its lock
+    When I run riddim with:
+      """
+      notifications scan
+      """
+    Then scanning succeeds without a notification for the retired worker
+
   Scenario: A cursor publication failure leaves a durable notification to replay
     Given the worker reports "blocked [at=1]: hold"
     And the notification cursor cannot be replaced

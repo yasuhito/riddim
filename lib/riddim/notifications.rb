@@ -28,7 +28,11 @@ module Riddim
       ensure_directory
       Dir.children(Ownership.state_dir).grep(/\A[a-z][a-z0-9_-]{0,31}\.meta\z/).sort.each do |file|
         name = file.delete_suffix('.meta')
-        Ownership.with_lock(name) { classify(name) }
+        Ownership.with_lock(name) do
+          # Teardown may retire the record between listing and locking.
+          path = Ownership.record_path(name)
+          classify(name) if File.exist?(path) || File.symlink?(path)
+        end
       end
       present(pending)
     end
