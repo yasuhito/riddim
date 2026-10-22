@@ -3,7 +3,7 @@
 require_relative '../../lib/riddim/notifications'
 
 module WatchScanReplacement
-  def scan
+  def scan(**)
     unless @replaced
       @replaced = true
       selected = ENV.fetch('RIDDIM_REPLACED_HOME')

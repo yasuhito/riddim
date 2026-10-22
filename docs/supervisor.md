@@ -25,8 +25,12 @@ completion. Use `riddim send <name> <message...>` to steer a worker. Use
 `riddim interrupt <name>` only when you need to cancel its current turn. An accepted message
 or interrupt is not a worker reply or proof of cancellation.
 
-Do not run a periodic liveness loop. The notifications extension reports actionable worker
-events. Use the existing Riddim observations when a report or decision needs attention.
+Record observed CLI failures in [the operational backlog](operational-backlog.md)
+or an issue before moving on. Distinguish expected safety refusals from confirmed bugs.
+
+Do not run a periodic liveness loop. The operator-only notifications extension reports
+actionable worker events and once-per-generation stops of previously observed live endpoints.
+Native idle is never completion. Use existing observations when attention is needed.
 
 ## Handle worker reports
 
@@ -38,7 +42,9 @@ riddim notifications scan
 
 Check the notification's worker name and generation against the scan result. Read the
 worker's report and any evidence needed to understand it. Follow up with the worker or the
-human as needed. A notification is not a report, and neither is human approval.
+human as needed. Reserved sequence `0` (`unreported-stop`) is an endpoint observation,
+not a Worker claim: inspect the endpoint and unlanded work. It authorizes neither restart
+nor cleanup. A notification is not a report, and neither is human approval.
 
 Acknowledge an exact notification ID only after you have handled that report:
 
@@ -51,7 +57,10 @@ fails, leave the report pending and explain the uncertainty. Never treat an empt
 state directory as the original notification source without verifying the identity named by
 the extension.
 
-If the extension reports a watcher failure, verify that the selected `RIDDIM_STATE_DIR` and
+Unexpected observer exits or stale heartbeats get bounded automatic recovery against the
+original ownership identities. Routine recovery does not need human slash-command entry.
+If recovery is exhausted or ownership is ambiguous, the extension reports failure.
+Verify that the selected `RIDDIM_STATE_DIR` and
 watcher-lock identities still match its follow-up before scanning. When both match, scan the
 original home for reports written during the outage, handle them, and ask the human to run
 `/riddim-watch-arm`. Do not claim recovery until the extension confirms the watcher is ready.

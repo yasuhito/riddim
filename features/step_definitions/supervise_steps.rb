@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require_relative '../../lib/riddim/runtime_paths'
 
 Given('Herdr reports a running supported server') do
   install_supervisor_herdr_status(
@@ -28,7 +29,12 @@ Given('a fake supervisor Pi executable') do
 end
 
 Given('no explicit Riddim state directory') do
-  @default_state_dir = File.expand_path('../state', File.dirname(RiddimWorld::RIDDIM))
+  inherited_home = Riddim::RuntimePaths.read_for_source
+  @default_state_dir = if inherited_home
+                         inherited_home.fetch('state_dir')
+                       else
+                         File.expand_path('../state', File.dirname(RiddimWorld::RIDDIM))
+                       end
   @default_state_dir_preexisting = File.exist?(@default_state_dir) || File.symlink?(@default_state_dir)
   @temporary_directories << @default_state_dir unless @default_state_dir_preexisting
   @environment = @environment.merge('RIDDIM_STATE_DIR' => nil)

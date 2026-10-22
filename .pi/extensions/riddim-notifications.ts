@@ -10,7 +10,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim");
 const home = process.env.RIDDIM_STATE_DIR && resolve(process.env.RIDDIM_STATE_DIR);
-const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.([1-9]\d*)$/;
+const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.(0|[1-9]\d*)$/;
 const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
@@ -42,6 +42,10 @@ function homeIdentity(): string | null {
 }
 
 export default function (pi: ExtensionAPI) {
+  // Task launches inherit this project extension and the shared state home.
+  // Match Actor's operator boundary, including fail-closed unknown markers.
+  if (process.env.RIDDIM_ACTOR) return;
+
   let child: ChildProcess | null = null;
   const closedChildren = new WeakSet<ChildProcess>();
   let readyChild: ChildProcess | null = null;
@@ -55,10 +59,15 @@ export default function (pi: ExtensionAPI) {
   const batches: Batch[] = [];
   const accepted = new Map<string, Set<string>>();
   let notifyFailure: ((message: string) => void) | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryAttempts = 0;
+  let recovering = false;
+  let recoveryBlocked = false;
 
   function failure(reason: string, epoch = serial): void {
     if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
+    if (recovering) return; // One alarm after the bounded recovery episode.
     try {
       notifyFailure?.(`Riddim watcher FAILED: ${reason}. Verify the original home before running riddim notifications scan.`);
     } catch (error) {
@@ -66,7 +75,7 @@ export default function (pi: ExtensionAPI) {
     }
     // Failure is a Supervisor follow-up, never an acknowledgement.
     try {
-      void Promise.resolve(pi.sendUserMessage("Riddim watcher FAILED. " +
+      void Promise.resolve(pi.sendUserMessage(`Riddim watcher FAILED: ${reason}. ` +
         "Verify the original home before running riddim notifications scan; repair with /riddim-watch-arm.",
       { deliverAs: "followUp" })).catch((error: unknown) => {
         console.error(`riddim failure follow-up rejected: ${String(error)}`);
@@ -74,6 +83,52 @@ export default function (pi: ExtensionAPI) {
     } catch (error) {
       console.error(`riddim failure follow-up rejected: ${String(error)}`);
     }
+  }
+
+  // Retry only a previously verified observer, never a contested startup lock.
+  // The budget is session-wide (manual repair resets it), so a crash loop cannot
+  // turn successful readiness frames into an unbounded restart storm.
+  function recover(reason: string, epoch: number, originalHome: string, originalLock: string | null): void {
+    if (!active || serial !== epoch || retryTimer || recovering || recoveryBlocked) return;
+    const unchanged = () => originalHome === homeIdentity() && originalLock !== null && originalLock === lockIdentity();
+    if (!unchanged() || retryAttempts >= 3) {
+      recoveryBlocked = true;
+      failure(`${reason}; automatic recovery exhausted or ownership ambiguous`, epoch);
+      return;
+    }
+    retryAttempts += 1;
+    retryTimer = setTimeout(async () => {
+      retryTimer = null;
+      if (!active || serial !== epoch) return;
+      if (!unchanged()) {
+        recoveryBlocked = true;
+        failure("automatic recovery refused changed ownership", epoch);
+        return;
+      }
+      recovering = true;
+      const healthy = await arm();
+      if (!active || serial !== epoch) return;
+      if (!unchanged()) {
+        recoveryBlocked = true;
+        readyChild = null;
+        verifiedAt = 0;
+        child?.kill();
+        recovering = false;
+        failure("automatic recovery refused changed ownership after readiness", epoch);
+        return;
+      }
+      const retiring = child;
+      if (!healthy && retiring) await waitForClose(retiring);
+      if (!active || serial !== epoch) return;
+      recovering = false;
+      if (healthy) return;
+      if (child) {
+        recoveryBlocked = true;
+        failure("automatic recovery could not verify observer retirement", epoch);
+        return;
+      }
+      recover(reason, epoch, originalHome, originalLock);
+    }, 250 * 2 ** (retryAttempts - 1));
   }
 
   function arm(): Promise<boolean> {
@@ -114,13 +169,15 @@ export default function (pi: ExtensionAPI) {
     let stdout = "";
     let stderr = "";
     let ready = false;
+    let verifiedLock: string | null = null;
     let pending: Batch | null = null;
     let failureReported = false;
+    let recoveryReason: string | null = null;
     const watchdog = setInterval(() => {
       if (!active || serial !== epoch || !ready || failureReported || child !== proc ||
         performance.now() - verifiedAt <= BEAT_TIMEOUT) return;
       failureReported = true;
-      failure("watcher heartbeat stale; ownership unverified", epoch);
+      recoveryReason = "watcher heartbeat stale; ownership unverified";
       proc.kill("SIGKILL");
     }, 1000);
     let finishReady: (value: boolean) => void = () => {};
@@ -143,6 +200,7 @@ export default function (pi: ExtensionAPI) {
           /^\d+:\d+$/.test(frame.lock)) {
           ready = true;
           boundLock = frame.lock;
+          verifiedLock = frame.lock;
           verifiedAt = performance.now();
           finishReady(true);
         } else if (frame.type === "beat" && ready) {
@@ -165,8 +223,10 @@ export default function (pi: ExtensionAPI) {
       if (pending) {
         batches.push(pending);
         void deliver(epoch);
+      } else if (ready) {
+        recover(recoveryReason || stderr.trim() || "observer stopped without a report", epoch, binding, verifiedLock);
       } else if (!failureReported) {
-        failure(stderr.trim() || (ready ? "observer stopped without a report" : "observer failed before readiness"), epoch);
+        failure(stderr.trim() || "observer failed before readiness", epoch);
       }
     });
     const signaled = await readiness;
@@ -214,7 +274,8 @@ export default function (pi: ExtensionAPI) {
           `Pending IDs: ${ids.join(", ")}. Verify both identities in the selected home before running ` +
           "riddim notifications scan; if changed, recover from the original home manually. " +
           "Handle the reports, then explicitly ack each presented ID. " +
-          `This is a Worker claim, not Git readiness or Landing approval. ${detail}`;
+          `Reports are Worker claims; sequence 0 is an unreported endpoint stop, not completion. ` +
+          `Neither is Git readiness or Landing approval. ${detail}`;
         if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -262,6 +323,11 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", async () => {
     active = false;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    retryAttempts = 0;
+    recovering = false;
+    recoveryBlocked = false;
     notifyFailure = null;
     serial += 1;
     const predecessor = child;
@@ -287,6 +353,10 @@ export default function (pi: ExtensionAPI) {
     description: "Repair a failed Riddim Supervisor notification watcher in the selected home",
     handler: async (_args, ctx) => {
       if (!home) { ctx.ui.notify("Set RIDDIM_STATE_DIR before starting Pi", "error"); return; }
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      retryAttempts = 0;
+      recoveryBlocked = false;
       const healthy = await arm();
       ctx.ui.notify(healthy ? "Riddim watcher ready" : "Riddim watcher FAILED; inspect pending notifications",
         healthy ? "info" : "error");

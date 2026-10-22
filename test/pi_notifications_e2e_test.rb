@@ -36,7 +36,7 @@ class PiNotificationsE2ETest < Minitest::Test
     @status_path = File.join(@state, "worker.#{GEN}.status")
     File.write(@status_path, '', mode: 'w', perm: 0o600)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => @state }
+            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil }
     env['PATH'] = "#{watcher_ruby_bin}:#{ENV.fetch('PATH')}"
     @input, @output, @error, @wait = Bundler.with_unbundled_env do
       Open3.popen3(env, 'pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
@@ -57,10 +57,15 @@ class PiNotificationsE2ETest < Minitest::Test
       #!/bin/sh
       if [ "$1" = "#{CLI}" ] && [ "$2" = "watch-notifications" ]; then
         if [ -e "#{count}" ] && [ -e "#{deny}" ]; then
+          echo refused >> "#{File.join(@root, 'watcher-refusals')}"
           echo 'injected watcher rearm failure' >&2
           exit 1
         fi
-        touch "#{count}"
+        if [ -e "#{File.join(@root, 'replace-lock-rearm')}" ]; then
+          mv "#{File.join(@state, '.notification-watcher.lock')}" "#{File.join(@state, '.old-lock')}"
+          (umask 077; touch "#{File.join(@state, '.notification-watcher.lock')}")
+        fi
+        echo spawn >> "#{count}"
       fi
       exec "#{RbConfig.ruby}" "$@"
     SH
@@ -123,8 +128,31 @@ class PiNotificationsE2ETest < Minitest::Test
     end
   end
 
+  # A launch holds the name lock through registration. It must not starve
+  # the supervisor observer's heartbeat while Pi waits for that launch.
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
-  def test_stopped_watcher_is_reported_failed_not_healthy
+  def test_busy_worker_lock_does_not_kill_supervisor_watcher
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
+    File.open(File.join(@state, '.meta-worker.lock'), File::RDWR | File::CREAT, 0o600) do |lock|
+      lock.flock(File::LOCK_EX)
+      report('blocked [at=1]: report waits behind launch')
+      sleep 6
+      @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'probe')
+      verdict = until_event { |item| item['type'] == 'extension_ui_request' && item['method'] == 'notify' }
+
+      assert_equal 'Riddim watcher ready', verdict['message']
+      assert_equal 'info', verdict['notifyType']
+    end
+    assert_includes notification.to_s, "worker.#{GEN}.1"
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  # rubocop:disable-next Metrics/CyclomaticComplexity
+  def test_stopped_watcher_is_automatically_replaced_before_claiming_ready
     @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'probe')
     verdict = until_event do |item|
       item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
@@ -134,17 +162,80 @@ class PiNotificationsE2ETest < Minitest::Test
     assert_equal 'info', verdict['notifyType']
     @paused_watcher = Integer(File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first)
     Process.kill('STOP', @paused_watcher)
+    replacement = nil
+    Timeout.timeout(12) do
+      loop do
+        replacement = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first&.to_i
+        break if replacement && replacement != @paused_watcher
+
+        sleep 0.05
+      end
+    end
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'recovered')
     alarm = until_event do |item|
-      item['type'] == 'extension_ui_request' && item['method'] == 'notify' &&
-        item['message'].to_s.include?('heartbeat stale')
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
     end
 
-    assert_equal 'error', alarm['notifyType']
-    report('blocked [at=1]: waiting during watcher failure')
+    assert_equal 'Riddim watcher ready', alarm['message']
+    assert_equal 'info', alarm['notifyType']
+    refute_equal @paused_watcher, replacement
+    report('blocked [at=1]: waiting after verified recovery')
     out, err, status = cli('scan')
 
     assert_predicate status, :success?, err
     assert_equal(["worker.#{GEN}.1"], JSON.parse(out).map { |row| row.fetch('id') })
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_unexpected_close_retries_are_bounded_and_alarm_only_once
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
+    File.write(File.join(@root, 'deny-watcher-rearm'), '')
+    watcher = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first.to_i
+    Process.kill('TERM', watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
+    end
+
+    assert_includes alarm['message'], 'automatic recovery exhausted'
+    assert_equal 'error', alarm['notifyType']
+    # Every refusal is counted separately from a successful initial spawn.
+    assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
+    sleep 1
+
+    assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_lock_replaced_during_retry_is_not_accepted_as_recovery
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
+    File.write(File.join(@root, 'replace-lock-rearm'), '')
+    watcher = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first.to_i
+    Process.kill('TERM', watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
+    end
+
+    assert_includes alarm['message'], 'changed ownership after readiness'
+    sleep 1
+
+    assert_equal 2, File.readlines(File.join(@root, 'watcher-spawns')).size
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
+  def test_changed_lock_is_not_rebound_by_automatic_recovery
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
+    path = File.join(@state, '.notification-watcher.lock')
+    File.rename(path, "#{path}.old")
+    File.write(path, '', perm: 0o600)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
+    end
+
+    assert_includes alarm['message'], 'ownership ambiguous'
+    assert_equal 1, File.readlines(File.join(@root, 'watcher-spawns')).size
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions

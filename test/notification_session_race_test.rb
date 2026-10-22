@@ -19,6 +19,10 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_session_race.mjs', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
   end
 
+  def test_unreported_stop_is_delivered_once_without_a_worker_report
+    run_scenario('notification_stop.mjs', expected: ["worker.#{GEN}.0"], backend: 'notification_stop_backend')
+  end
+
   def test_unsettled_follow_up_times_out_and_can_be_rearmed
     run_scenario('notification_delivery_timeout.mjs', expected: ["worker.#{GEN}.1"])
   end
@@ -76,17 +80,18 @@ class NotificationSessionRaceTest < Minitest::Test
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-  def run_scenario(script, expected:, marker: nil)
+  def run_scenario(script, expected:, marker: nil, backend: nil)
     Dir.mktmpdir('riddim-session-race-') do |root|
       state = File.join(root, 'state')
       FileUtils.mkdir_p(state)
       status_path = File.join(state, "worker.#{GEN}.status")
       File.write(status_path, '', perm: 0o600)
       write_notification_worker(state, GEN)
-      env = { 'RIDDIM_STATE_DIR' => state, 'RIDDIM_STATUS_PATH' => status_path,
+      env = { 'RIDDIM_ACTOR' => nil, 'RIDDIM_STATE_DIR' => state, 'RIDDIM_STATUS_PATH' => status_path,
               'RIDDIM_FIRST_ID' => "worker.#{GEN}.1",
               'RIDDIM_EXTENSION' => File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__) }
       env[marker] = '1' if marker
+      env['RUBYOPT'] = "-r#{File.expand_path("support/#{backend}", __dir__)}" if backend
       output, error, result = Bundler.with_unbundled_env do
         Open3.capture3(env, 'node', File.expand_path("support/#{script}", __dir__))
       end

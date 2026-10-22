@@ -5,6 +5,7 @@ require 'fileutils'
 require 'json'
 require 'securerandom'
 require_relative 'result'
+require_relative 'herdr'
 
 module Riddim
   # A manually reconciled, private report inbox. Classification is independent
@@ -23,27 +24,27 @@ module Riddim
       File.join(Ownership.state_dir, '.notifications')
     end
 
-    def scan
+    def scan(observe_stopped: true, wait: true)
       Ownership.verify_state_dir(Ownership.state_dir)
       ensure_directory
       Dir.children(Ownership.state_dir).grep(/\A[a-z][a-z0-9_-]{0,31}\.meta\z/).sort.each do |file|
         name = file.delete_suffix('.meta')
-        Ownership.with_lock(name) do
+        Ownership.with_lock(name, wait: wait) do
           # Teardown may retire the record between listing and locking.
           path = Ownership.record_path(name)
-          classify(name) if File.exist?(path) || File.symlink?(path)
+          classify(name, observe_stopped: observe_stopped) if File.exist?(path) || File.symlink?(path)
         end
       end
-      present(pending)
+      present(pending, wait: wait)
     end
 
-    def present(entries)
-      entries.each do |entry|
-        Ownership.with_lock(entry.task) do
+    def present(entries, wait: true)
+      entries.filter_map do |entry|
+        Ownership.with_lock(entry.task, wait: wait) do
           publish(marker_path('presented', entry.id), "#{JSON.generate(entry.to_h)}\n")
+          entry
         end
       end
-      entries
     end
 
     def pending
@@ -98,7 +99,7 @@ module Riddim
     # Retain both the queue row and receipt for provenance and crash replay.
     # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
     def acknowledge(id)
-      match = /\A([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.([1-9]\d*)\z/.match(id)
+      match = /\A([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.(0|[1-9]\d*)\z/.match(id)
       raise Error, 'invalid notification identity' unless match
 
       Ownership.verify_state_dir(Ownership.state_dir)
@@ -128,13 +129,14 @@ module Riddim
         row['id'] == filename.delete_suffix('.json') &&
         row['task'].is_a?(String) && row['task'].match?(Ownership::NAME_PATTERN) &&
         row['generation'].is_a?(String) && row['generation'].match?(Result::GENERATION) &&
-        row['sequence'].is_a?(Integer) && row['sequence'].positive? &&
-        ACTIONABLE.include?(row['event']) &&
+        row['sequence'].is_a?(Integer) &&
+        ((row['sequence'].positive? && ACTIONABLE.include?(row['event'])) ||
+          (row['sequence'].zero? && row['event'] == 'unreported-stop')) &&
         row['id'] == identity(row['task'], row['generation'], row['sequence'])
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-    def classify(name)
+    def classify(name, observe_stopped: true)
       snapshot = Ownership::Endpoint.resolve_snapshot(name)
       bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
       fields = Ownership.parse(bytes)
@@ -158,6 +160,8 @@ module Riddim
       raise Error, "status changed before classified position for #{name}" if
         prefix.nil? || (cursor['digest'] && cursor['digest'] != Digest::SHA256.hexdigest(prefix))
 
+      observation = stopped_observation(name, snapshot, bytes, events) if observe_stopped
+
       # The same name lock used by report and lifecycle writers protects the
       # ownership recheck and every publication. Never attribute a read to a
       # replacement generation or to modified record bytes.
@@ -166,6 +170,7 @@ module Riddim
         raise Error, "ownership changed during notification scan for #{name}"
       end
 
+      publish_stop_observation(name, generation, bytes, observation)
       events.each do |event|
         next unless ACTIONABLE.include?(event.kind)
 
@@ -186,6 +191,37 @@ module Riddim
     end
 
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    # Smaller than Firstmate's idle/stale watcher: require a previously live
+    # exact endpoint, then recovery-grade absence, never native idle as done.
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+    def stopped_observation(name, snapshot, bytes, events)
+      return if events.any? { |event| ACTIONABLE.include?(event.kind) }
+
+      endpoint, generation = snapshot
+      return if File.exist?(File.join(directory, "#{identity(name, generation, 0)}.json"))
+
+      state = Herdr.agent_state(endpoint.pane_id, session: endpoint.session)
+      return :alive if state == :alive
+      return unless %i[dead missing].include?(state)
+
+      path = alive_path(name, generation)
+      :stopped if (File.exist?(path) || File.symlink?(path)) && private_read(path) == Digest::SHA256.hexdigest(bytes)
+    end
+
+    def alive_path(name, generation)
+      File.join(directory, ".alive-#{name}-#{generation}")
+    end
+
+    def publish_stop_observation(name, generation, bytes, observation)
+      if observation == :alive
+        publish(alive_path(name, generation), Digest::SHA256.hexdigest(bytes))
+      elsif observation == :stopped
+        entry = Entry.new(id: identity(name, generation, 0), task: name,
+                          generation: generation, sequence: 0, event: 'unreported-stop')
+        publish(File.join(directory, "#{entry.id}.json"), "#{JSON.generate(entry.to_h)}\n")
+      end
+    end
 
     def identity(name, generation, sequence)
       "#{name}.#{generation}.#{sequence}"

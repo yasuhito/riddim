@@ -638,8 +638,8 @@ status evidence fails closed instead of yielding `ready`. This is a snapshot,
 not permission to merge: independently review code and tests and recheck Git
 before merging. It does not infer completion from Herdr idle, validate test
 claims, automatically merge, clean up, or implement Firstmate's reconciled
-current crew-state or general watcher. The opt-in notification watcher below does not
-monitor Pi activity or replace Firstmate's general watcher. Existing starts
+current crew-state or general watcher. The opt-in notification watcher below adds
+only unreported endpoint-stop observations, not Firstmate's idle/stale supervision. Existing starts
 without `--mode` retain
 their previous briefs and delivery behavior.
 
@@ -660,16 +660,37 @@ A restart can replay unacknowledged reports, including an actionable event
 followed by routine progress. The private queue retains handled receipts for
 provenance. Scanning fails rather than claiming an empty drain when current
 status or previously classified queue evidence is missing or invalid.
+
+`scan` also remembers positive Pi liveness for the exact generation and endpoint
+record. A later recovery-grade `dead` or `missing` endpoint without an actionable
+report queues one `unreported-stop` with reserved sequence `0`. This is an
+observation, not a Worker report or completion: inspect the endpoint and unlanded
+work before any recovery or cleanup. Acknowledgement suppresses it for that
+generation, including after restart. Launching workers, workers never observed
+alive, native idle, and unverifiable endpoints do not establish a stop. The
+background watcher probes liveness every five seconds and skips locked workers
+until a later poll so launch/teardown locks cannot starve its heartbeat. Explicit
+manual scans retain blocking reconciliation.
+
 `notifications` without `scan` inspects the existing queue without reconciling
 current workers; a missing queue lists as empty and is not created.
 For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 `RIDDIM_STATE_DIR` and load `.pi/extensions/riddim-notifications.ts` (as a
-trusted project extension or with `pi -e`). It binds one observer per home,
-reconciles actionable reports, and sends stable notification IDs, source home
+trusted project extension or with `pi -e`). Only an unmarked operator activates
+supervision; every nonempty `RIDDIM_ACTOR`, including the launcher's `branch`,
+disables supervisor callbacks and repair commands before startup. It binds one
+observer per home, reconciles actionable reports and stop observations, and sends stable notification IDs, source home
 and watcher-lock identities, and handling instructions via Pi's
 non-interrupting `followUp` API. The extension checks a fresh successor, the
 selected home's identity, and periodic liveness beacons before claiming
-continuity; a replaced home, replaced lock, or missing beacons fail closed.
+continuity. An unexpectedly stopped or stale previously verified observer gets
+at most three automatic retries per session, with 250/500/1000 ms backoff. Retries
+require the original home and lock identities, retire the old child first, and
+verify fresh successor readiness. Successful recovery is quiet; exhausted retries
+or ambiguous ownership alert the supervisor. A contested initial arm or changed
+home/lock is never taken over automatically. Explicit repair resets the retry
+budget. Failed handling-successor startup still alerts with the pending report
+rather than withholding it.
 Before scanning after a failure, verify the original selected home and watcher
 lock; actionable follow-ups include their identities. If either changed,
 recover reports from the original home manually; never scan the replacement as
@@ -681,7 +702,7 @@ handling, drain with `notifications scan` and acknowledge individual presented
 IDs. Pi accepting or consuming a follow-up never acknowledges it. Session
 replacements re-present unhandled reports, including IDs accepted into the
 previous Pi session's pending queue. This smaller subset of Firstmate's watcher
-never interrupts workers, approves landing, or infers current Worker state.
+never interrupts workers, approves landing, or infers task completion from activity.
 
 #### Review a local-only worker's committed diff
 

@@ -8,7 +8,7 @@ module Riddim
   # Worker command or Herdr input is involved. A new process must acquire the
   # lock and complete a scan before it can announce readiness.
   module Watcher
-    IDENTITY = /\A[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.[1-9]\d*\z/
+    IDENTITY = /\A[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)\z/
 
     module_function
 
@@ -50,9 +50,15 @@ module Riddim
       selected_home = directory.path
       ready = false
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      next_observation = last_beat
+      # rubocop:disable-next Metrics/BlockLength
       loop do
         verify_owner!(directory, lock, selected_home)
-        entries = Notifications.scan.reject { |entry| exclude.include?(entry.id) }
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        observe_stopped = now >= next_observation
+        next_observation = now + 5 if observe_stopped
+        entries = Notifications.scan(observe_stopped: observe_stopped, wait: false)
+        entries.reject! { |entry| exclude.include?(entry.id) }
         verify_owner!(directory, lock, selected_home)
         unless ready
           stat = lock.stat
