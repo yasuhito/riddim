@@ -82,5 +82,7 @@ Before do
 end
 
 After do
-  @temporary_directories.each { |directory| FileUtils.remove_entry(directory) }
+  @temporary_directories.each do |directory|
+    FileUtils.remove_entry(directory) if File.exist?(directory) || File.symlink?(directory)
+  end
 end

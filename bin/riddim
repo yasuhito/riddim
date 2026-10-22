@@ -19,6 +19,7 @@ require_relative '../lib/riddim/review_diff'
 require_relative '../lib/riddim/runtime_paths'
 require_relative '../lib/riddim/send'
 require_relative '../lib/riddim/start'
+require_relative '../lib/riddim/supervise'
 require_relative '../lib/riddim/teardown'
 require_relative '../lib/riddim/watcher'
 
@@ -27,6 +28,25 @@ begin
 rescue Riddim::RuntimePaths::Error => e
   warn "riddim: #{e.message}"
   exit 1
+end
+
+if ARGV.first == 'supervise'
+  unless ARGV == ['supervise']
+    warn 'Usage: riddim supervise'
+    exit 2
+  end
+
+  config_dir = ENV.fetch('RIDDIM_CONFIG_DIR', nil)
+  config_dir = File.expand_path('../config', __dir__) if config_dir.nil? || config_dir.empty?
+
+  begin
+    profile = Riddim::AgentProfile.load(config_dir: config_dir)
+    Riddim::Supervise.run(profile)
+  rescue Riddim::AgentProfile::Error, Riddim::Supervise::Error => e
+    warn "riddim: #{e.message}"
+    exit 1
+  end
+  exit
 end
 
 if %w[agent-state busy-state composer-state current-path pane-presence process-state server-state].include?(ARGV.first)
@@ -491,6 +511,7 @@ puts <<~HELP
                             Store an answer and close its open local-only decision key
     start <name> [--worktree [--task-file <path> [--mode local-only]]]
                             Start Pi in the cwd or a fresh isolated Git worktree with a task brief
+    supervise                   Start the Riddim supervisor Pi in the current pane
     report <name> --generation <spawn-gen> <status-event>
                             Append a worker report under the task name lock
     result <name>           Read a local-only worker event and verify a ready branch

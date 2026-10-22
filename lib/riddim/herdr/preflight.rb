@@ -11,16 +11,30 @@ module Riddim
     # and requires the 0.8.0 focus-safe emptying-close fix as well. Status is
     # available before a named server starts.
     def verify_client!
+      validate_client_status(status_document)
+    end
+
+    def verify_running_client!
+      document = status_document
+      validate_client_status(document)
+      return document if document['server']['running']
+
+      raise IncompatibleClient, "Herdr server is not running in session #{session}"
+    end
+
+    def status_document
       stdout, stderr, status = capture('status', '--json')
       raise CommandFailed.new(stdout, stderr, status) unless status.success?
 
-      validate_client_status(JSON.parse(stdout))
+      JSON.parse(stdout)
     rescue JSON::ParserError
       raise IncompatibleClient, 'incompatible Herdr client/server: malformed status JSON'
     end
 
     def validate_client_status(document)
-      client = document['client'] if document.is_a?(Hash)
+      raise IncompatibleClient, 'incompatible Herdr client/server: expected status object' unless document.is_a?(Hash)
+
+      client = document['client']
       protocol = client['protocol'] if client.is_a?(Hash)
       unless protocol.is_a?(Integer) && protocol >= 14 && supported_release?(client['version'])
         raise IncompatibleClient, 'incompatible Herdr client: expected protocol >= 14 and version >= 0.8.0'
@@ -44,5 +58,7 @@ module Riddim
 
       (value.split(/[.+]/).first(3).map(&:to_i) <=> [0, 8, 0]) >= 0
     end
+
+    private_class_method :status_document
   end
 end
