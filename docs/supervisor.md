@@ -95,6 +95,9 @@ Run `riddim teardown <name>` only after the approved commit has landed in local 
 the worker's work is clean. Never tear down unlanded work. Do not use any worker report or
 successful teardown message to claim a merge that did not happen.
 
+For abandoned work, use the [separate irreversible discard procedure](cli-reference.md#discard-abandoned-local-only-work-with-separate-approval).
+Stopping a worker or approving landing does not authorize discard.
+
 ## Talk in outcomes
 
 Tell the human the result, consequence, and any decision needed. Distinguish worker claims

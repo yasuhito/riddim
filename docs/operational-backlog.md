@@ -1,17 +1,27 @@
 # Operational failures and follow-ups
 
 Record CLI failures here until resolved or transferred to an issue. Expected safety
-refusals are not automatically bugs. Source-review's abandoned worktree is evidence
-only and must remain untouched.
+refusals are not automatically bugs. The incident notes below are historical
+unless they explicitly identify an unresolved follow-up.
+
+At historical local main `b1170972f8e692a01cd56218c4420a64ca0e8b3d`, all prior
+workers had been retired. `source-review` and `abandoned-audit` were explicitly
+approved for irreversible discard and successfully discarded. The original
+checkout's private audit files record `complete`:
+
+- `state/source-review.s1792633136.18464.5462.discard.29217397e655d50c.jsonl`
+- `state/abandoned-audit.s1792646864.2435025.31786.discard.552d1bef0ba30d71.jsonl`
+
+These are historical evidence paths, not setup inputs or outstanding cleanup
+requests. No discarded audit commit needs to be restored.
 
 ## Abandoned local-only discard - exact dirty snapshot
 
 - Reproduction before implementation: the existing disposable CLI scenarios
   `Refuse to discard an unmerged worker commit` and `Refuse a dirty worker`
   both passed their refusal assertions. Normal teardown retains these assets;
-  stopping Pi does not authorize deletion. Source-review assets remain untouched.
-  The earlier audit branch was intentionally discarded; its backlog diff remains
-  recoverable with `git show 40e294dc1b4ba40edede9f72255524554b70a4cf -- docs/operational-backlog.md`.
+  stopping Pi does not authorize deletion. Source-review assets were retained
+  during that reproduction; the separately approved discard happened afterward.
 - Firstmate `bin/fm-teardown.sh` gates its `--force` path on explicit captain
   permission, retains target/incarnation validation, and confirms exact Herdr
   disappearance before retiring records. Riddim uses the existing teardown
@@ -27,7 +37,8 @@ only and must remain untouched.
   on-disk/HEAD byte equality; filter/EOL differences conservatively refuse.
   Duplicate porcelain paths (staged deletion plus untracked copy) fail closed.
   Arbitrary secret contents cannot be classified automatically; contents still
-  require human review. No actual source-review disposal has been authorized.
+  require human review. Implementation approval did not authorize disposal;
+  source-review was later discarded with separate exact-snapshot approval.
 - Disposable CLI tests exercise dirty inspection/removal, stale content/file-set/
   staging/mode approval (including preserved-mtime edits), unsupported content,
   foreign/self endpoints and partial failures. Scrubbing starts only after exact
@@ -113,7 +124,7 @@ only and must remain untouched.
 - Read-only real-Herdr reproduction from the teardown-fix worktree:
   `bundle exec ruby -Ilib -rriddim/ownership -rriddim/teardown -e 'endpoint = Riddim::Ownership::Endpoint.resolve("sol-repair"); Riddim::Teardown.verify_agent!("sol-repair", endpoint)'`
   produces that exact refusal. No teardown, close, rename, or worker mutation
-  was attempted. The original worker remains evidence.
+  was attempted during that reproduction. The original worker was later retired.
 - Herdr 0.9.5 `agent get w13E:p1` in session `default` reports Pi at the
   recorded workspace `w13E` and tab `w13E:t1`, with both cwd fields matching
   `/home/yasuhito/Work/riddim-riddim-sol-repair`, but neither `name` nor
@@ -151,7 +162,7 @@ only and must remain untouched.
   clean+landed, name-lock and unconfirmed-disappearance safeguards. The updated
   live read-only `verify_agent!(endpoint)` check passes between two durable
   ownership rechecks against sol-repair. No close or actual retirement was
-  attempted; that still requires separate authorization.
+  attempted in that validation; retirement required its own authorized workflow.
 - Full delivery validation: `bundle exec rake test lint` passes 262 unit tests /
   583 assertions and 661 feature scenarios / 3990 steps. RuboCop checks 117
   files without offenses; Gherkin conventions pass.
@@ -163,8 +174,8 @@ only and must remain untouched.
 - This particular launch disabled automatic extensions to bypass the startup
   collision. Missing extension-provided registration may be workaround-caused;
   no independent registration bug is established by that evidence.
-- Next: reproduce a normal extension-enabled launch after the role fix and check
-  exact session registration. Do not restart or discard this worker to test it.
+- Follow-up: reproduce a normal extension-enabled launch after the role fix and
+  check exact session registration using disposable fixtures, not the retired worker.
 
 ## source-review exit refused - expected safety, recovery UX follow-up
 
