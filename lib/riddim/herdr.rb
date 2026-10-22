@@ -4,6 +4,7 @@ require 'json'
 require 'open3'
 
 require_relative 'herdr/agent_state'
+require_relative 'herdr/bounded_capture'
 require_relative 'herdr/cleanup'
 require_relative 'herdr/command_failed'
 require_relative 'herdr/composer_scan'
@@ -77,7 +78,7 @@ module Riddim
     # ambient or default routing.
     def capture(*, session: nil)
       target = targeted_session(session)
-      Open3.capture3(environment(target), 'herdr', *command(*, session: target))
+      capture_command(environment(target), 'herdr', *command(*, session: target))
     end
 
     # Replaces this process with one Herdr invocation targeting <session>, or

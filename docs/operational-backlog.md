@@ -127,6 +127,76 @@ only and must remain untouched.
   no Worker report or completion claim. Native liveness/pane state was injected at
   the Herdr observation seam; Pi, the extension, Ruby observer and local model
   transport were real.
-- Full rerun: `bundle exec rake unit lint` passed 255 tests / 559 assertions with
+- Rerun at `7fbbc65`: `bundle exec rake unit lint` passed 255 tests / 559 assertions with
   no failures, errors or skips; 113 Ruby files passed RuboCop and Gherkin conventions.
   `bundle exec rake features` passed all 647 scenarios / 3780 steps.
+
+## Slow/hung Herdr observation - reproduced and fixed after review
+
+- Review initially identified an unconfirmed risk: Herdr captures ran synchronously
+  inside the name lock, while watcher beats followed the scan. Per-call timeouts
+  alone would not bound cumulative multiworker probes.
+- Real-Pi fault reproduction: `test_hung_herdr_does_not_block_worker_report_progress`
+  failed because a sixty-second fake Herdr subprocess kept the real report CLI
+  waiting on the worker lock past one second. The fake executable runs through
+  actual `Herdr.capture` / Open3, not a scanner-side sleep.
+- Multiworker reproduction: five records with three 0.4-second captures each caused
+  `test_cumulative_slow_herdr_probes_do_not_starve_heartbeat_or_recovery_budget` to
+  return `Riddim watcher FAILED; inspect pending notifications` instead of ready.
+  This independently confirms cumulative backend work can exhaust heartbeat grace.
+- Fix: one shared 500 ms monotonic Herdr-I/O budget per activity scan, across all
+  workers and all nested captures. Deadline-scoped Open3 children own process
+  groups; timeout kills the group and joins readers before Open3 waits. Normal
+  non-observation commands retain their original capture behavior and routing.
+- Timeout is unknown evidence and clears pending idle stability, never a stop or
+  completion. Exhausting the budget skips remaining probes, not report/status
+  reconciliation. A worker report can wait for at most the remaining backend
+  budget plus local scan/publication work, not an unbounded Herdr read.
+- The watcher rotates the next activity scan after the last attempted worker so
+  a slow first record cannot monopolize every budget. The real-Pi regression also
+  checks progress to two different worker observation markers without restarting
+  the observer or consuming recovery attempts.
+- Firstmate `bin/fm-watch.sh`, `watcher_capture` / `fm_active_check_stop`, owns and
+  retires capture process groups even for blocked reads. Riddim keeps that
+  subprocess ownership contract and adds a shared short deadline appropriate to
+  its four-second heartbeat grace; it does not copy Firstmate's broader watcher.
+- During fixture setup, an inherited-Bundler report subprocess initially exited 1
+  before the intended lock assertion, without retained diagnostics. The fixture
+  now launches it unbundled and retains stderr. The intended lock-blocking failure
+  was then independently reproduced; no separate production CLI cause is claimed.
+
+## Idle sampling jitter - reproduced and fixed after review
+
+- `test_scan_start_and_per_worker_clock_jitter_does_not_prevent_attention` used
+  samples at 100, 105.1, 110.0, 115.2, 120.1, 125.3 and 130.2 seconds. It failed
+  with no alert: a slightly early sample was discarded, then the next looked like
+  a gap over ten seconds and reset stability indefinitely.
+- Fix: retain `last_observed` separately from `last_sample`. A verified capture
+  arriving before the five-second counting boundary preserves continuity without
+  counting as another stable sample. Actual observation gaps still reset after
+  ten seconds, and launch grace still measures real observed elapsed time.
+- Existing counted-only private candidates migrate conservatively using their last
+  counted sample as the last known observation. Tests cover legacy data and a
+  timed-out backend resetting stability, as well as the original jitter sequence.
+
+## Intentional exit without a report - expected attention
+
+- While a current local-only record remains, an intentional Pi exit without an
+  actionable report can produce the same `unreported-stop` observation as an
+  unexpected exit. This is intentional inspection attention, not a failure or
+  cleanup authorization. Removing/retiring a record remains a separate locked
+  lifecycle action. No safety behavior was weakened to suppress this case.
+
+## Shared-budget and jitter delivery validation
+
+- `bundle exec rake unit lint`: 262 tests / 583 assertions passed, with no failures,
+  errors or skips; 117 Ruby files passed RuboCop and Gherkin conventions passed.
+- `bundle exec rake features`: 647 scenarios / 3780 steps passed.
+- Real-Pi fault regressions now preserve heartbeat with cumulative slow multiworker
+  calls and allow a real report to complete during a hung Herdr probe. Dedicated
+  capture tests cover a shared deadline, routing/context restoration, and a child
+  that exits while a descendant retains an output pipe.
+- Deliberate limit: deferred or timed-out probes do not prove worker state. Large
+  or persistently slow fleets can delay attention; an observation gap still resets
+  stable-idle evidence rather than inventing continuity. Reports remain independent
+  of that observational uncertainty.

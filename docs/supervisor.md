@@ -31,7 +31,10 @@ or an issue before moving on. Distinguish expected safety refusals from confirme
 Do not run a periodic liveness loop. The operator-only notifications extension reports
 actionable worker events and once-per-generation stable-idle/endpoint-stop attention.
 Live-idle attention requires launch grace and repeated unchanged captures with verified
-Pi native idle. Busy or unverifiable observations reset stability. Native idle is never completion. Use existing observations when attention is needed.
+Pi native idle. Busy or unverifiable observations reset stability. Native idle is never completion.
+Herdr probes share a short per-scan deadline; timeouts are unknown evidence, not
+worker failure or completion. Reports keep reconciling even when probes are deferred.
+A live watcher therefore does not prove every worker's backend state is readable. Use existing observations when attention is needed.
 
 ## Handle worker reports
 

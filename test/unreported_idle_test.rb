@@ -36,7 +36,11 @@ class UnreportedIdleTest < Minitest::Test
   end
 
   def scan(status, at:, pane: 'Stable Pi prompt', wait: true)
-    state = status == :unknown ? [:unreadable, nil] : [:alive, status]
+    state = if status.respond_to?(:call)
+              status
+            else
+              status == :unknown ? [:unreadable, nil] : [:alive, status]
+            end
     override(Riddim::Herdr, :observe_pi_agent, state) do
       override(Riddim::Herdr, :pane_tail, pane) do
         override(Time, :now, Time.at(at)) { Riddim::Notifications.scan(wait: wait) }
@@ -60,6 +64,36 @@ class UnreportedIdleTest < Minitest::Test
     Riddim::Notifications.acknowledge(rows.first.id)
 
     assert_empty scan('idle', at: 140)
+  end
+
+  def test_scan_start_and_per_worker_clock_jitter_does_not_prevent_attention
+    rows = nil
+    [100, 105.1, 110.0, 115.2, 120.1, 125.3, 130.2].each do |at|
+      rows = scan('idle', at: at)
+    end
+
+    assert_equal ['unreported-idle'], rows.map(&:event)
+  end
+
+  def test_existing_counted_only_candidate_remains_readable_after_upgrade
+    warm_up
+    path = File.join(@root, '.notifications', ".idle-worker-#{GEN}")
+    row = JSON.parse(File.read(path))
+    row.delete('last_observed')
+    File.write(path, JSON.generate(row))
+
+    assert_equal ['unreported-idle'], scan('idle', at: 130).map(&:event)
+  end
+
+  # rubocop:disable-next Minitest/MultipleAssertions
+  def test_timed_out_backend_resets_stability_without_claiming_a_stop
+    warm_up
+    failure = -> { raise Riddim::Herdr::CaptureTimeout }
+    scan(failure, at: 130)
+    scan('idle', at: 135)
+
+    assert_empty scan('idle', at: 140)
+    assert_equal ['unreported-idle'], scan('idle', at: 145).map(&:event)
   end
 
   def test_launch_grace_and_rapid_manual_scans_do_not_create_an_idle_alert

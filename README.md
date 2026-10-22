@@ -671,7 +671,9 @@ sequence `0`:
   three unchanged, nonempty recent-pane captures, sampled at least five seconds
   apart. A thirty-second grace from first verified liveness avoids launch alerts.
   Busy, unverifiable state, failed/empty capture, changed output, clock rollback,
-  or a sampling gap over ten seconds resets stability. Rapid manual scans cannot
+  or an observation gap over ten seconds resets stability. A verified capture
+  arriving slightly before the next five-second counting boundary preserves
+  continuity without counting another sample. Rapid manual scans cannot
   substitute for elapsed sampling time. No prior busy turn is required, so a
   worker that never received its brief can still call for attention.
 
@@ -681,9 +683,17 @@ slot per generation. Acknowledgement suppresses further attention for that
 generation, including after restart or a busy/idle transition; actual reports
 retain independent IDs. Never-observed liveness and ambiguous evidence do not
 establish a stop. Native idle alone does not establish stable idle attention.
-The background watcher probes every five seconds and skips locked workers until
-a later poll so launch/teardown locks cannot starve its heartbeat. Explicit
-manual scans retain blocking reconciliation.
+The background watcher schedules activity scans every five seconds and skips
+locked workers until a later poll so launch/teardown locks cannot starve its
+heartbeat. Each scan shares one 500 ms monotonic Herdr-I/O budget across all
+workers and nested captures, not one timeout per call. Timed-out command groups
+are retired, and the result is unknown evidence that resets idle stability.
+After budget exhaustion, report reconciliation continues for all records; only
+remaining activity probes are deferred. Probe order rotates after the last
+attempt to avoid repeatedly spending the budget on the same slow worker.
+Explicit manual scans retain blocking name-lock reconciliation but use the same
+bounded activity budget. A ready observer is not proof that every backend probe
+succeeded.
 
 `notifications` without `scan` inspects the existing queue without reconciling
 current workers; a missing queue lists as empty and is not created.

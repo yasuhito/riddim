@@ -7,6 +7,7 @@ require 'securerandom'
 require_relative 'result'
 require_relative 'herdr'
 require_relative 'notifications/idle'
+require_relative 'notifications/probe_budget'
 
 module Riddim
   # A manually reconciled, private report inbox. Classification is independent
@@ -26,15 +27,18 @@ module Riddim
       File.join(Ownership.state_dir, '.notifications')
     end
 
-    def scan(observe_activity: true, wait: true)
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+    def scan(observe_activity: true, wait: true, budget: nil)
       Ownership.verify_state_dir(Ownership.state_dir)
       ensure_directory
-      Dir.children(Ownership.state_dir).grep(/\A[a-z][a-z0-9_-]{0,31}\.meta\z/).sort.each do |file|
-        name = file.delete_suffix('.meta')
+      budget = observe_activity ? budget || ProbeBudget.new : nil
+      names = Dir.children(Ownership.state_dir).grep(/\A[a-z][a-z0-9_-]{0,31}\.meta\z/)
+                 .map { |file| file.delete_suffix('.meta') }.sort
+      (budget ? budget.order(names) : names).each do |name|
         Ownership.with_lock(name, wait: wait) do
           # Teardown may retire the record between listing and locking.
           path = Ownership.record_path(name)
-          classify(name, observe_activity: observe_activity) if File.exist?(path) || File.symlink?(path)
+          classify(name, budget: budget) if File.exist?(path) || File.symlink?(path)
         end
       end
       present(pending, wait: wait)
@@ -138,7 +142,7 @@ module Riddim
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-    def classify(name, observe_activity: true)
+    def classify(name, budget: nil)
       snapshot = Ownership::Endpoint.resolve_snapshot(name)
       bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
       fields = Ownership.parse(bytes)
@@ -162,7 +166,12 @@ module Riddim
       raise Error, "status changed before classified position for #{name}" if
         prefix.nil? || (cursor['digest'] && cursor['digest'] != Digest::SHA256.hexdigest(prefix))
 
-      observation = activity_observation(name, snapshot, bytes, events) if observe_activity
+      observation = budget&.observe(name) { activity_observation(name, snapshot, bytes, events) }
+      if observation == :timed_out
+        # A timed-out probe is unknown, not a stop or stable-idle sample.
+        idle = Idle.sample(name, snapshot, bytes, :unreadable, nil)
+        observation = Observation.new(alive: false, idle: idle, event: nil)
+      end
 
       # The same name lock used by report and lifecycle writers protects the
       # ownership recheck and every publication. Never attribute a read to a

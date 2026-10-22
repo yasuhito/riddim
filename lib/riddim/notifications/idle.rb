@@ -8,7 +8,7 @@ module Riddim
       SAMPLE_SECONDS = 5
       LAUNCH_GRACE_SECONDS = 30
       STABLE_SAMPLES = 3
-      FIELDS = %w[first_seen hash last_sample record samples].freeze
+      FIELDS = %w[first_seen hash last_observed last_sample record samples].freeze
 
       module_function
 
@@ -16,12 +16,20 @@ module Riddim
         File.join(Notifications.directory, ".idle-#{name}-#{generation}")
       end
 
+      def initial(digest)
+        { 'record' => digest, 'first_seen' => nil, 'last_sample' => nil, 'last_observed' => nil,
+          'hash' => nil, 'samples' => 0 }
+      end
+
+      # rubocop:disable-next Metrics/AbcSize
       def read(name, generation, digest)
         file = path(name, generation)
-        return { 'record' => digest, 'first_seen' => nil, 'last_sample' => nil, 'hash' => nil, 'samples' => 0 } unless
-          File.exist?(file) || File.symlink?(file)
+        return initial(digest) unless File.exist?(file) || File.symlink?(file)
 
         row = JSON.parse(Notifications.private_read(file))
+        # Older candidates recorded only counted samples. Their last counted
+        # sample is the only observation we can safely carry forward.
+        row['last_observed'] = row['last_sample'] if row.is_a?(Hash) && row.keys.sort == FIELDS - ['last_observed']
         raise Error, "invalid idle observation at #{file}" unless valid?(row, digest)
 
         row
@@ -32,7 +40,7 @@ module Riddim
       # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def valid?(row, digest)
         row.is_a?(Hash) && row.keys.sort == FIELDS && row['record'] == digest &&
-          %w[first_seen last_sample].all? do |field|
+          %w[first_seen last_observed last_sample].all? do |field|
             row[field].nil? || (row[field].is_a?(Numeric) && row[field].finite? && row[field] >= 0)
           end && row['samples'].is_a?(Integer) && row['samples'].between?(0, STABLE_SAMPLES) &&
           ((row['samples'].zero? && row['hash'].nil?) ||
@@ -46,19 +54,23 @@ module Riddim
         endpoint, generation = snapshot
         row = read(name, generation, Digest::SHA256.hexdigest(bytes))
         now = Time.now.to_f
-        row.merge!('first_seen' => nil, 'hash' => nil, 'samples' => 0) if row['last_sample'] && now < row['last_sample']
+        if row['last_observed'] && now < row['last_observed']
+          row.merge!('first_seen' => nil, 'hash' => nil, 'samples' => 0)
+        end
         row['first_seen'] ||= now if state == :alive
         hash = pane_hash(endpoint) if state == :alive && %w[idle done blocked].include?(status)
-        gap = row['last_sample'] && (now - row['last_sample'])
+        gap = row['last_observed'] && (now - row['last_observed'])
         if hash && hash == row['hash'] && gap&.between?(0, SAMPLE_SECONDS * 2)
-          return row if gap < SAMPLE_SECONDS
-
-          row['samples'] = [row['samples'] + 1, STABLE_SAMPLES].min
+          if now - row['last_sample'] >= SAMPLE_SECONDS
+            row['samples'] = [row['samples'] + 1, STABLE_SAMPLES].min
+            row['last_sample'] = now
+          end
         else
-          row['hash'] = hash
-          row['samples'] = hash ? 1 : 0
+          row.merge!('hash' => hash, 'samples' => hash ? 1 : 0, 'last_sample' => now)
         end
-        row['last_sample'] = now
+        # A verified capture still breaks an observation gap when it arrives
+        # just before the next counted sample is due. Do not discard it.
+        row['last_observed'] = now
         row
       end
 
@@ -71,7 +83,7 @@ module Riddim
 
       def ready?(row)
         row['samples'] >= STABLE_SAMPLES && row['first_seen'] &&
-          row['last_sample'] - row['first_seen'] >= LAUNCH_GRACE_SECONDS
+          row['last_observed'] - row['first_seen'] >= LAUNCH_GRACE_SECONDS
       end
 
       def commit(name, generation, row)

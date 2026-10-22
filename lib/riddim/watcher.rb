@@ -45,19 +45,22 @@ module Riddim
       raise Notifications::Error, 'watcher already bound to this home'
     end
 
-    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
     def observe(nonce, exclude, interval, directory, lock)
       selected_home = directory.path
       ready = false
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       next_observation = last_beat
+      observation_after = nil
       # rubocop:disable-next Metrics/BlockLength
       loop do
         verify_owner!(directory, lock, selected_home)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         observe_activity = now >= next_observation
         next_observation = now + Notifications::Idle::SAMPLE_SECONDS if observe_activity
-        entries = Notifications.scan(observe_activity: observe_activity, wait: false)
+        budget = observe_activity ? Notifications::ProbeBudget.new(after: observation_after) : nil
+        entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget)
+        observation_after = budget.last_name if budget
         entries.reject! { |entry| exclude.include?(entry.id) }
         verify_owner!(directory, lock, selected_home)
         unless ready

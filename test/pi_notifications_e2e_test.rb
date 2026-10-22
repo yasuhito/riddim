@@ -50,12 +50,14 @@ class PiNotificationsE2ETest < Minitest::Test
   def watcher_ruby_bin
     dir = File.join(@root, 'bin')
     FileUtils.mkdir_p(dir)
+    install_probe_herdr(dir)
     executable = File.join(dir, 'ruby')
     count = File.join(@root, 'watcher-spawns')
     deny = File.join(@root, 'deny-watcher-rearm')
     File.write(executable, <<~SH)
       #!/bin/sh
       if [ "$1" = "#{CLI}" ] && [ "$2" = "watch-notifications" ]; then
+        export RUBYOPT="-r#{File.expand_path('support/notification_slow_backend', __dir__)} ${RUBYOPT:-}"
         if [ -e "#{count}" ] && [ -e "#{deny}" ]; then
           echo refused >> "#{File.join(@root, 'watcher-refusals')}"
           echo 'injected watcher rearm failure' >&2
@@ -90,8 +92,52 @@ class PiNotificationsE2ETest < Minitest::Test
       Process.kill('TERM', @wait.pid)
       @wait.join(5)
     end
+    kill_probe_processes
     [@output, @error, @server].each { |io| io&.close }
     FileUtils.remove_entry(@root) if @root && File.exist?(@root)
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def install_probe_herdr(dir)
+    original = ENV.fetch('PATH').split(File::PATH_SEPARATOR).map { |part| File.join(part, 'herdr') }
+                  .find { |path| File.executable?(path) && File.file?(path) }
+    original ||= File.join(dir, 'unavailable-herdr')
+    path = File.join(dir, 'herdr')
+    File.write(path, <<~RUBY)
+      #!#{RbConfig.ruby}
+      if ARGV.include?('riddim-test-probe')
+        File.open(#{File.join(@state, 'probe-pids').dump}, 'a') { |f| f.puts(Process.pid) }
+        sleep Float(File.read(#{File.join(@state, 'herdr-delay').dump}))
+        puts '{}'
+      else
+        exec(#{original.dump}, *ARGV)
+      end
+    RUBY
+    File.chmod(0o700, path)
+  end
+
+  def kill_probe_processes
+    path = File.join(@state, 'probe-pids') if @state
+    return unless path && File.exist?(path)
+
+    File.readlines(path).each do |line|
+      pid = Integer(line)
+      command = File.binread("/proc/#{pid}/cmdline")
+      Process.kill('KILL', pid) if command.include?(File.join(@root, 'bin/herdr'))
+    rescue Errno::ESRCH, Errno::ENOENT
+      # The bounded probe already retired this process.
+    end
+  end
+
+  def wait_for_probe
+    Timeout.timeout(10) do
+      sleep 0.01 until File.exist?(File.join(@state, 'probe-pids'))
+    end
+  end
+
+  def arm_watcher
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'arm')
+    until_event { |item| item['type'] == 'extension_ui_request' && item['message'] == 'Riddim watcher ready' }
   end
 
   def event(timeout: 20)
@@ -129,6 +175,49 @@ class PiNotificationsE2ETest < Minitest::Test
       item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
         item.dig('message', 'content').to_s.include?('Riddim Supervisor notification')
     end
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_cumulative_slow_herdr_probes_do_not_starve_heartbeat_or_recovery_budget
+    arm_watcher
+    4.times do |index|
+      name = "worker#{index}"
+      write_notification_worker(@state, GEN, name: name)
+      File.write(File.join(@state, "#{name}.#{GEN}.status"), '', perm: 0o600)
+    end
+    File.write(File.join(@state, 'herdr-delay'), '0.4')
+    wait_for_probe
+    sleep 6
+    @input.puts JSON.generate(type: 'prompt', message: '/riddim-watch-arm', id: 'probe')
+    verdict = until_event { |item| item['type'] == 'extension_ui_request' && item['method'] == 'notify' }
+
+    assert_equal 'Riddim watcher ready', verdict['message']
+    assert_equal 1, File.readlines(File.join(@root, 'watcher-spawns')).size
+    assert_path_exists File.join(@state, '.notifications', ".idle-worker0-#{GEN}")
+    assert_path_exists File.join(@state, '.notifications', ".idle-worker1-#{GEN}")
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_hung_herdr_does_not_block_worker_report_progress
+    arm_watcher
+    File.write(File.join(@state, 'herdr-delay'), '60')
+    wait_for_probe
+    diagnostic = File.join(@root, 'report-error')
+    pid = Bundler.with_unbundled_env do
+      Process.spawn({ 'RIDDIM_STATE_DIR' => @state }, CLI, 'report', 'worker', '--generation', GEN,
+                    'blocked [at=1]: report during hung observation', out: File::NULL, err: diagnostic)
+    end
+    reporter = Process.detach(pid)
+
+    assert reporter.join(1), 'a hung observation held the Worker report lock for over one second'
+    assert_predicate reporter.value, :success?, File.read(diagnostic)
+    assert_includes notification.to_s, "worker.#{GEN}.1"
+    socket = request
+    PiStallLab::LabServer.send_ok(socket)
+    socket.close
+  ensure
+    Process.kill('TERM', pid) if reporter&.alive?
+    reporter&.join(2)
   end
 
   # Real Pi accepts the attention follow-up for the native alive+idle+no-report
