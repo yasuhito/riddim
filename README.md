@@ -904,7 +904,12 @@ regular tracked and untracked files, with no ignored files, nested repositories,
 submodules, symlinks, hardlinks, conflicted/intent-to-add entries, or hidden
 assume-unchanged/skip-worktree entries. Non-printable filenames also refuse.
 Recognizable sensitive paths such as `.env*`, `.ssh`, `.aws`, `credentials`,
-`secrets`, and private-key extensions refuse rather than being silently included.
+`secrets`, and private-key extensions refuse when dirty or untracked. Unchanged
+tracked fixtures such as `.env.example` or `spec/fixtures/server.pem` are allowed
+only when their on-disk bytes exactly match HEAD. Filter/EOL representations
+that differ from HEAD bytes still refuse for these sensitive-looking paths.
+Duplicate porcelain paths (for example, staged deletion plus an untracked copy
+from `git rm --cached`) refuse explicitly rather than hiding either state.
 This is not a secret-content detector: the operator must review file contents and
 export anything sensitive or valuable before approval. There is no blanket
 `--force`. Actual `source-review` disposal still needs separate exact-snapshot
@@ -938,10 +943,14 @@ Failure may leave a closed pane, or an already-removed worktree with the branch
 and record still present. The error names the audit file; inspect its completed
 stages and actual remaining assets. Do not infer success from the attempt record,
 retry blindly, bypass a refusal, or delete the retained record to hide partial
-failure. A missing worktree deliberately prevents automatic retry. Cooperative
-writers use the name lock; arbitrary external filesystem/Git mutation is not
-serialized by it. Git's non-forced removal and expected-old-HEAD ref deletion
-provide the final local checks.
+failure. A missing worktree deliberately prevents automatic retry. The snapshot
+is an observation, not a filesystem lock. Cooperative Riddim record writers use
+the name lock; concurrent external filesystem/Git writers are outside the
+snapshot guarantee. Stop build/watch/editor processes and keep the checkout
+quiescent through removal. In particular, an ignored file created after the final
+inspection can be deleted by **non-forced** `git worktree remove`: no-force is
+not an ignored-file safety barrier. Ignored files observed during inspection
+still refuse. Expected-old-HEAD ref deletion remains the final branch check.
 
 The ownership record also stores `project`, `worktree`, and `branch` for this
 mode. These are inventory, **not authority by themselves to remove files**:

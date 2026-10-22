@@ -193,6 +193,37 @@ Feature: Explicit human-approved discard of abandoned local-only work
     When I invoke the confirmed discard
     Then incomplete dirty discard records file loss before removal failure
 
+  Scenario: Clean tracked sensitive-looking fixtures remain discardable
+    Given the worker committed sensitive-looking fixtures
+    And I inspect the worker discard scope
+    When I invoke the confirmed discard
+    Then authorized discard removes only the worker assets and keeps audit evidence
+
+  Scenario Outline: Dirty or untracked sensitive-looking files still refuse inspection
+    Given the worker committed sensitive-looking fixtures
+    And a sensitive-looking fixture changes in "<kind>"
+    When I run riddim with:
+      """
+      discard worker --inspect
+      """
+    Then teardown refuses before closing the pane and keeps all worker assets
+
+    Examples:
+      | kind           |
+      | unstaged       |
+      | staged         |
+      | preserved stat |
+      | deleted        |
+      | untracked      |
+
+  Scenario: Duplicate status paths cannot hide staged deletion
+    Given the worker untracks a file without removing its contents
+    When I run riddim with:
+      """
+      discard worker --inspect
+      """
+    Then discard explicitly refuses duplicate status paths without mutation
+
   Scenario: Marked workers cannot authorize discard
     Given I inspect the worker discard scope
     And the discard caller is a marked worker

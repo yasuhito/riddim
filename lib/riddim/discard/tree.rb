@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'find'
+require_relative 'tree/sensitive'
 
 module Riddim
   module Discard
@@ -29,7 +30,9 @@ module Riddim
         paths = (disk.keys + entries.map { |line| line.split("\t", 2).last }).uniq.sort
         paths.map do |path|
           verify_path!(path, File.join(directory, path))
-          { path: path, status: status.fetch(path, '  '), content: disk[path] }
+          state = status.fetch(path, '  ')
+          verify_sensitive!(directory, path, state, disk[path])
+          { path: path, status: state, content: disk[path] }
         end
       end
 
@@ -57,10 +60,11 @@ module Riddim
 
       def statuses!(directory)
         records!(directory, 'status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all',
-                 '--ignored', '--ignore-submodules=none').to_h do |line|
+                 '--ignored', '--ignore-submodules=none').each_with_object({}) do |line, paths|
           raise Refused, 'ignored files are not discardable; retaining assets' if line.start_with?('!!')
+          raise Refused, 'duplicate Git status paths are unsupported; retaining assets' if paths.key?(line[3..])
 
-          [line[3..], line[0, 2]]
+          paths[line[3..]] = line[0, 2]
         end
       end
 
@@ -82,15 +86,9 @@ module Riddim
         raise Refused, 'unsupported filename encoding; retaining assets' unless path.valid_encoding?
 
         parts = path.split('/')
-        return unless path.match?(/[[:cntrl:]]/) || parts.any? { |part| sensitive?(part) } || nested?(parts, absolute)
+        return unless path.match?(/[[:cntrl:]]/) || nested?(parts, absolute)
 
-        raise Refused, 'sensitive/unsupported paths or nested repositories are not discardable; retaining assets'
-      end
-
-      def sensitive?(part)
-        part.match?(/\A(?:\.env.*|\.ssh|\.aws|\.(?:netrc|npmrc|pypirc)|\.?(?:credentials|secrets?)(?:\..*)?)\z/i) ||
-          part.match?(/\A(?:id_(?:rsa|dsa|ecdsa|ed25519)|auth\.json)\z/i) ||
-          part.match?(/\.(?:pem|key|p12|pfx|keystore)\z/i)
+        raise Refused, 'unsupported paths or nested repositories are not discardable; retaining assets'
       end
 
       def nested?(parts, absolute)

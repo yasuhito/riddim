@@ -21,8 +21,11 @@ only and must remain untouched.
   hashes, modes and a readable file inventory in the generation/HEAD/record-bound
   snapshot. The operator must obtain explicit approval of irreversible loss of
   that exact scope before passing all three values and `--confirm-discard`.
-  Ignored files, recognizable sensitive paths, nested repositories, submodules,
+  Ignored files, dirty/untracked sensitive paths, nested repositories, submodules,
   symlinks/hardlinks and hidden/conflicted/intent-to-add index entries refuse.
+  Clean tracked sensitive-looking fixtures remain supported only with exact
+  on-disk/HEAD byte equality; filter/EOL differences conservatively refuse.
+  Duplicate porcelain paths (staged deletion plus untracked copy) fail closed.
   Arbitrary secret contents cannot be classified automatically; contents still
   require human review. No actual source-review disposal has been authorized.
 - Disposable CLI tests exercise dirty inspection/removal, stale content/file-set/
@@ -38,8 +41,21 @@ only and must remain untouched.
   the dead-probe record-replacement test follows prior liveness, asserts the exact
   pane/session at `observe_pi_agent`, and verifies no notification publication.
   No obsolete production implementation was copied.
+- Review reproductions: clean tracked `.env.example`, encrypted credentials and
+  PEM fixtures incorrectly refused; `git rm --cached tracked.txt` silently hid
+  its staged deletion behind the duplicate untracked row. Disposable CLI tests
+  reproduced both failures before the fixes, and cover dirty sensitive contents
+  even when preserved metadata makes Git's stat cache report clean. Firstmate's
+  normal safety gate uses Git status, not sensitive-name heuristics; its authorized forced
+  path scrubs with `git clean -ffdq` then returns/removes the checkout. Riddim
+  retains its narrower sensitive-data policy without regressing clean fixtures.
+- A separate disposable Git experiment confirmed that a late ignored file is
+  deleted by non-forced worktree removal after a clean inspection. The CLI docs
+  now explicitly exclude concurrent external filesystem/Git writers from the
+  snapshot guarantee and require a quiescent checkout. No-force is not an ignored
+  file barrier; no new locking infrastructure was added.
 - Validation: `bundle exec rake test lint` passed 266 unit tests / 594 assertions,
-  708 disposable CLI scenarios / 4640 steps, and RuboCop on 123 files plus Gherkin
+  715 disposable CLI scenarios / 4737 steps, and RuboCop on 125 files plus Gherkin
   conventions. Dirty inspection was first reproduced refusing reviewable files;
   a same-mtime inode-swap regression also failed before the fingerprint fix.
   Normal teardown and merge-local guards remain unchanged.
