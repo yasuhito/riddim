@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'open3'
+require 'digest'
 require_relative 'ownership'
 require_relative 'runtime_paths'
 
@@ -31,7 +32,7 @@ module Riddim
       branch = "riddim/#{name}"
       base_head = git_value(project, 'rev-parse', 'HEAD')
       path = destination(project, name, branch)
-      add_worktree!(project, path, branch, base_head)
+      allocate!(project, path, branch, base_head)
 
       created = Created.new(project, path, branch, base_head)
       verify_created!(created, base_head)
@@ -40,11 +41,13 @@ module Riddim
     end
 
     def destination(project, name, branch)
-      path = File.join(File.dirname(project), "#{File.basename(project)}-riddim-#{name}")
+      path = File.join(RuntimePaths.worktree_root, repository_directory(project), name)
       [project, path, branch].each { |value| Ownership.validate_value('worktree', value) }
       raise Error, "worktree destination already exists: #{path}" if File.exist?(path) || File.symlink?(path)
 
       path
+    rescue RuntimePaths::Error => e
+      raise Error, e.message
     end
 
     def require_main!(cwd)
@@ -126,3 +129,5 @@ module Riddim
     end
   end
 end
+
+require_relative 'worktree/storage'

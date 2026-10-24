@@ -155,8 +155,17 @@ Herdr への呼び出しは `HERDR_SESSION` を使い、未設定なら `default
 
 スーパーバイザーはタスクを準備し、フォーカスを切り替えずに、バックグラウンドの
 Herdr ワークスペースでワーカーを起動します。プロジェクト名が `my-app` なら、
-ワーカーは隣のチェックアウト `my-app-riddim-docs-example` と、
-ブランチ `riddim/docs-example` を使います。既存の名前、worktree、ブランチは上書きしません。
+ワーカーは `<worktree-root>/my-app-<repository-id>/docs-example` と、
+ブランチ `riddim/docs-example` を使います。全プロジェクトの保存先は、Riddim の元の
+インストール先と同じ親ディレクトリにある `.riddim-worktrees` です。
+たとえば `~/Work/riddim` なら `~/Work/.riddim-worktrees` に保存します。
+リンクされた Riddim CLI から起動しても、この保存先は変わりません。
+Riddim リポジトリの外に置くことで、そのプロジェクト指示がワーカーに混ざるのを防ぎます。
+Pi は対象プロジェクトとグローバルの指示を通常どおり読み込みます。
+ID はローカルの Git 共通ディレクトリの正規パスから決まるため、同名の別クローンは混ざりません。
+既存ワーカーは記録済みのパスを使い続け、移動しません。
+既存の名前、worktree、ブランチは上書きしません。Ruby 標準ライブラリと Git だけを使い、
+Treehouse や worktree のプールは導入しません。
 あなたはスーパーバイザーとの会話を続けられます。タスクファイルを書いたり、
 ワーカーの報告コマンドを自分で実行したりする必要はありません。
 

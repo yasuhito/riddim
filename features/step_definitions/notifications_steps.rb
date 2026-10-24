@@ -32,7 +32,7 @@ end
 def start_notification_watcher(excluded)
   env = { 'HERDR_SESSION' => nil }.merge(@environment.compact)
   stdin, stdout, stderr, wait = Bundler.with_unbundled_env do
-    Open3.popen3(env, RiddimWorld::RIDDIM, 'watch-notifications', '--nonce',
+    Open3.popen3(env, riddim_cli, 'watch-notifications', '--nonce',
                  SecureRandom.hex(16), '--exclude-stdin')
   end
   @watchers << [stdin, stdout, stderr, wait]
@@ -46,7 +46,7 @@ end
 
 Then('another watcher fails to arm without claiming readiness') do
   output, error, status = Bundler.with_unbundled_env do
-    Open3.capture3(@environment.compact, 'timeout', '3', RiddimWorld::RIDDIM,
+    Open3.capture3(@environment.compact, 'timeout', '3', riddim_cli,
                    'watch-notifications', '--nonce', SecureRandom.hex(16), '--exclude-stdin', stdin_data: '[]')
   end
   assert_equal [false, '', true], [status.success?, output, error.include?('watcher already bound')]
@@ -153,7 +153,7 @@ end
 Given('ownership changes during status classification') do
   fixture = File.join(new_temporary_directory, 'change_owner.rb')
   File.write(fixture, <<~RUBY)
-    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Result
       class << self
         alias_method :original_parse_events, :parse_events
@@ -172,7 +172,7 @@ end
 Given('teardown retires the worker record while the scan waits for its lock') do
   fixture = File.join(new_temporary_directory, 'retire_record.rb')
   File.write(fixture, <<~RUBY)
-    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Ownership
       class << self
         alias_method :original_with_lock, :with_lock
@@ -192,7 +192,7 @@ end
 Given('the notification cursor cannot be replaced') do
   fixture = File.join(new_temporary_directory, 'break_cursor.rb')
   File.write(fixture, <<~RUBY)
-    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Notifications
       def self.replace(*)
         raise IOError, 'injected crash before cursor replacement'
@@ -215,7 +215,7 @@ end
 Given('acknowledgement receipt publication fails') do
   fixture = File.join(new_temporary_directory, 'break_ack.rb')
   File.write(fixture, <<~RUBY)
-    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Notifications
       class << self
         alias_method :publish_before_failed_ack, :publish
@@ -233,7 +233,7 @@ end
 Given('acknowledgement directory sync fails after receipt publication') do
   fixture = File.join(new_temporary_directory, 'break_ack_sync.rb')
   File.write(fixture, <<~RUBY)
-    require #{File.expand_path('../../lib/riddim/notifications', __dir__).dump}
+    require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Notifications
       class << self
         alias_method :sync_before_failed_ack, :sync_directory

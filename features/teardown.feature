@@ -70,6 +70,33 @@ Feature: Retire only landed local-only worker assets
       """
     Then teardown confirms the pane gone, retires the linked worktree and branch, and archives the brief
 
+  Scenario: Retire a legacy sibling worker at its recorded path
+    Given a legacy sibling local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the worker branch is fast-forward merged into local main
+    And a fake cwd scan reports no worker process
+    When I run riddim with:
+      """
+      teardown worker
+      """
+    Then teardown confirms the pane gone, retires the linked worktree and branch, and archives the brief
+
+  Scenario: Central teardown never removes neighboring work or storage parents
+    Given a local-only task was started
+    And another worker has files in the same central repository directory
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=123]: work committed"
+    And the worker branch is fast-forward merged into local main
+    And a fake cwd scan reports no worker process
+    When I run riddim with:
+      """
+      teardown worker
+      """
+    Then central teardown preserves the other worker and storage parents
+
   Scenario: Target the record's session rather than the ambient session
     Given a local-only task was started
     And the task input is removed after launch
