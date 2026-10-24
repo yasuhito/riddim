@@ -75,7 +75,8 @@ Then('the ready-looking done stays gated by the earlier decision') do
                '[not ready: open decisions: default (needs-decision): ' \
                "riddim send worker --resolve-key default '<answer>'; " \
                'replace <answer> with a warranted answer for each key, ' \
-               'then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]',
+               'then obtain a fresh done report; Git checks, review and ' \
+               'human approval of the reviewed version still required]',
                record.fetch('report')
 end
 

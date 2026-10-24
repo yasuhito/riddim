@@ -721,7 +721,7 @@ Compares the recorded `riddim/<name>` branch with the project's **local
 `main`**, using Git's three-dot diff (changes since their merge base). It
 prints a stat and patch, or only the stat with `--stat`; an uncommitted edit
 is not included. Both outputs begin with the exact worker branch tip SHA on
-a `head:` line, the reviewed version the operator can approve for
+a `head:` line for the supervisor to record with its landing proposal for
 `merge-local`. This is read-only: no fetch, PR lookup, merge, or cleanup.
 It requires the current local-only ownership record, the same linked Git
 repository and checked-out named branch. It holds the per-name lock from the
@@ -743,7 +743,7 @@ its own generation and control-lock gate.
 #### Land an approved local-only worker branch
 
 ```sh
-bin/riddim review-diff <name>                          # review, then approve the printed head
+bin/riddim review-diff <name>                          # review, record head, ask human to land this version
 bin/riddim merge-local <name> --head <reviewed-commit>
 ```
 
@@ -757,11 +757,18 @@ the local merge's control lock. Riddim lacks that hold, so new task workers
 report through the shared name lock instead; this is a stricter local-only
 subset, not a claim to implement Firstmate's full hold lifecycle.
 
-The operating rule is explicit human approval: run `review-diff`, review the
-patch, and approve the exact `head:` SHA it prints. That approval is the
-operator's own decision, recorded outside this CLI; a `ready` result, a `done`
-report, or a printed diff is **not** approval, and this brief is not one
-either. `merge-local` never claims that a human approved anything in the CLI.
+Follow the [supervisor's review and approval procedure](supervisor.md#review-land-and-retire):
+review the patch, record the full `head:` SHA with the landing proposal, and
+obtain explicit human approval of the specifically described reviewed version.
+The human need not read or repeat the SHA. The supervisor binds that approval
+to the recorded immutable head passed to `--head`; a changed candidate requires
+re-review, an explanation of outcome and verification changes, and fresh approval.
+Approval is recorded outside this CLI; a `ready` result, a `done` report, or a
+printed diff is **not** approval, and this brief is not one either.
+This follows Firstmate's outcome-focused captain approval, but retains Riddim's
+exact-head guard: Firstmate's local merge CLI takes no reviewed-head argument
+and merges the branch name. Riddim instead merges the recorded commit id.
+`merge-local` never claims that a human approved anything in the CLI.
 It reports only what it did, with the exact resulting local main tip:
 
 ```text

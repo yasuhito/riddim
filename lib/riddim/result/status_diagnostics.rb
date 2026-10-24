@@ -44,7 +44,7 @@ module Riddim
         reasons << 'failed history remains a gate; investigate the failure (key resolution cannot clear it)'
       end
       reasons << 'no current done report; obtain a fresh done report' unless status.last&.start_with?('done ')
-      reasons << 'Git checks, review and exact-SHA human approval still required' unless reasons.empty?
+      reasons << 'Git checks, review and human approval of the reviewed version still required' unless reasons.empty?
       reasons.join('; ')
     end
 

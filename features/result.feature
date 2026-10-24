@@ -143,7 +143,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported: blocked [at=18]: waiting for a decision [not ready: open decisions: default (blocked): riddim send worker --resolve-key default '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; no current done report; obtain a fresh done report; Git checks, review and exact-SHA human approval still required]"
+    Then the local-only result is "reported: blocked [at=18]: waiting for a decision [not ready: open decisions: default (blocked): riddim send worker --resolve-key default '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; no current done report; obtain a fresh done report; Git checks, review and human approval of the reviewed version still required]"
 
   Scenario: A done event cannot silently close an earlier decision
     Given a local-only task was started
@@ -158,7 +158,7 @@ Feature: A local-only task reports a claim, not inferred completion
       | open decisions: default (needs-decision)                  |
       | riddim send worker --resolve-key default '<answer>'       |
       | obtain a fresh done report                               |
-      | Git checks, review and exact-SHA human approval still required |
+      | Git checks, review and human approval of the reviewed version still required |
 
   Scenario: Show every open key without using report prose as an answer
     Given a local-only task was started
@@ -206,7 +206,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported (not ready): done [at=18]: tests passed [not ready: open decisions: beta (blocked): riddim send worker --resolve-key beta '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]"
+    Then the local-only result is "reported (not ready): done [at=18]: tests passed [not ready: open decisions: beta (blocked): riddim send worker --resolve-key beta '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; Git checks, review and human approval of the reviewed version still required]"
 
   Scenario: A resolved decision permits a subsequent done and exact-tip review
     Given a local-only task was started
@@ -264,7 +264,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported (not ready): done [at=17]: tests passed [not ready: failed history remains a gate; investigate the failure (key resolution cannot clear it); Git checks, review and exact-SHA human approval still required]"
+    Then the local-only result is "reported (not ready): done [at=17]: tests passed [not ready: failed history remains a gate; investigate the failure (key resolution cannot clear it); Git checks, review and human approval of the reviewed version still required]"
 
   Scenario: An already answered key cannot deliver a duplicate answer
     Given a local-only task was started

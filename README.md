@@ -119,7 +119,7 @@ Type a bounded request into the supervisor's Pi conversation, for example:
 > Start one local-only worker named docs-example to add a short example of
 > running this project's tests to its README. Have it verify the command,
 > change documentation only, and commit its work. Review the diff and tell me
-> what you checked. Ask me to approve the exact commit before landing it.
+> what you checked. Ask me to approve this reviewed version before landing it.
 > Do not push or open a PR.
 
 The supervisor prepares the task and launches the worker in a background
@@ -139,20 +139,24 @@ it to continue.
 
 When the worker reports completion, the supervisor checks its committed diff,
 tests and handoff state. It should show you what changed, what was actually
-verified, any limitations, and the **full `head:` commit SHA** from its review.
+verified, and any limitations, then ask whether to land this reviewed version.
 A `done` report or `ready` result alone does not establish correctness or approval.
 
-Review that evidence. Request changes if needed. To approve landing, name the
-exact SHA the supervisor showed you, for example:
+Review that evidence. Request changes if needed. For example, you can answer
+the supervisor's specific landing proposal with:
 
-> I approve landing docs-example at commit <full reviewed SHA> on local main.
+> I approve landing this reviewed version of docs-example on local main.
 
-Replace the placeholder with the full reviewed commit ID. General permission
-to do the task is not landing approval. If the worker changes the commit,
-including by rebasing after `main` moves, review and approve the new SHA.
+You need not read or repeat a commit hash. The supervisor records the full
+reviewed commit ID with its proposal and your answer; it remains available
+in review evidence. General permission to do the task is not landing approval.
+Every landing requires your explicit approval. If the candidate commit changes,
+including by rebasing after `main` moves, the supervisor must review it again,
+explain any changes to the outcome and verification, and ask for fresh approval,
+even if the outcome is unchanged.
 
 After your approval, the supervisor can fast-forward local `main` to exactly
-that commit. Both checkouts must be clean; diverged work must be rebased and
+that recorded commit. Both checkouts must be clean; diverged work must be rebased and
 reviewed again. The supervisor reports whether landing actually succeeded.
 Only after landing may it retire the worker, closing its pane and removing
 its clean worktree and merged branch. Nothing is automatically pushed or

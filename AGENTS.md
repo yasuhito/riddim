@@ -20,4 +20,4 @@ Before proposing or implementing a user-facing feature, find and read its workin
 
 ### Roles and delivery
 
-Project edits belong to Riddim workers in their assigned isolated worktrees; workers follow the project's coding and testing instructions there. The supervisor coordinates rather than editing the project. See `docs/supervisor.md` for external task-file/local-only launch, review, exact-SHA human landing approval and the CLI reference's separately approved irreversible discard procedure.
+Project edits belong to Riddim workers in their assigned isolated worktrees; workers follow the project's coding and testing instructions there. The supervisor coordinates rather than editing the project. See `docs/supervisor.md` for external task-file/local-only launch, review, human landing approval bound to the reviewed head and the CLI reference's separately approved irreversible discard procedure.

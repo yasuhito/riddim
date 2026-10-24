@@ -105,15 +105,20 @@ not a substitute for review or approval:
 riddim review-diff <name>
 ```
 
-Check the code and tests yourself. Tell the human what changed, what you verified, and the
-exact `head:` commit printed by `review-diff`. Ask for explicit approval of that exact
-commit. Do not infer approval from a worker's report, a ready result, a prior general
-instruction, or silence.
+Check the code and tests yourself. Record the full immutable `head:` commit printed by
+`review-diff` with the landing proposal. Tell the human what changed, what you verified,
+and any limitations, then ask explicitly whether to land this reviewed version. Make clear
+which worker and outcome the proposal covers. The human need not read or repeat the SHA;
+keep it available in review evidence, bound to that proposal and the human's answer.
+Do not infer approval from a worker's report, a ready result, a prior general instruction,
+or silence. Every landing needs explicit human approval; there is no automatic landing.
 
-Run `riddim merge-local <name> --head <approved-sha>` only after the human explicitly
-approves that exact SHA. Invoke it from the worker record's `project` main checkout, not
-from the Riddim checkout or worker worktree. If the head changes, review the new head and
-get approval again.
+Run `riddim merge-local <name> --head <reviewed-sha>` only after the human approves that
+specific reviewed version, using the full recorded SHA. Invoke it from the worker record's
+`project` main checkout, not from the Riddim checkout or worker worktree. If the candidate
+head changes, including through rebase, review and verify the new head, explain what changed
+in the outcome and verification (even if the outcome is unchanged), and ask for fresh approval.
+Never transfer consent to a changed head.
 Report the merge result faithfully. If the merge fails or its result is uncertain, say so and
 inspect before taking another action.
 

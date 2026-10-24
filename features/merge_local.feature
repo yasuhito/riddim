@@ -186,7 +186,7 @@ Feature: Land an approved local-only worker branch into local main
       | open decisions: beta (blocked) |
       | riddim send worker --resolve-key beta '<answer>' |
       | failed history remains a gate; investigate the failure (key resolution cannot clear it) |
-      | Git checks, review and exact-SHA human approval still required |
+      | Git checks, review and human approval of the reviewed version still required |
 
   Scenario: An answer requires a fresh done even after an earlier done
     Given a local-only task was started

@@ -178,7 +178,8 @@ Then('the unrelated blocker remains open') do
   assert_equal 'reported (not ready): done [at=18]: tested [not ready: open decisions: beta (blocked): ' \
                "riddim send worker --resolve-key beta '<answer>'; " \
                'replace <answer> with a warranted answer for each key, ' \
-               'then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]' \
+               'then obtain a fresh done report; Git checks, review and ' \
+               'human approval of the reviewed version still required]' \
                "\n", @stdout
   @stdout, @stderr, @status = run_riddim('send', 'worker', '--resolve-key', 'beta', 'Proceed')
   assert_predicate @status, :success?, @stderr
@@ -207,7 +208,7 @@ Then('the answer is stored but its decision remains open for repair') do
              "riddim send worker --resolve-key default '<answer>'; " \
              'replace <answer> with a warranted answer for each key, then obtain a fresh done report; ' \
              'no current done report; obtain a fresh done report; ' \
-             "Git checks, review and exact-SHA human approval still required]\n"
+             "Git checks, review and human approval of the reviewed version still required]\n"
   assert_equal [1, true, true, 0, expected],
                [sent_status, warning.include?('do not resend; decision default close unconfirmed'),
                 records.length == 1 && File.read(records.first).include?('Choose A'), @status.exitstatus, @stdout]
