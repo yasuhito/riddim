@@ -6,8 +6,9 @@ for operators, supervisor agents and contributors who need command contracts.
 report handling, human approval and retirement.
 
 Examples below use `bin/riddim` from the Riddim checkout. From another project,
-use `/path/to/riddim/bin/riddim`; inside a session launched by `supervise`, use
-`riddim`, which that launcher puts on PATH. Replace angle-bracket placeholders.
+use `/path/to/riddim/bin/riddim`; inside a native checkout-root Pi supervisor
+or a session launched by `supervise`, use `riddim`, which startup puts on PATH.
+Replace angle-bracket placeholders.
 These are reference examples, not a script to run from top to bottom.
 
 ## Find a command
@@ -29,6 +30,19 @@ These are reference examples, not a script to run from top to bottom.
 - [Ownership records](#endpoint-ownership-record) and [launch cleanup](#confirmed-pane-cleanup)
 
 ## Supervisor launch
+
+In the plain Riddim checkout root, launch `pi` and approve project trust when
+prompted. Native project discovery prepares the selected state home using the
+same secure path checks as `supervise`, makes the CLI available on PATH, injects
+[the supervisor contract](supervisor.md), and starts the existing notification
+watcher. It uses Pi's model selection, while worker launches still use the
+configured profile. Explicit `RIDDIM_STATE_DIR` overrides remain effective.
+Linked task worktrees and all nonempty `RIDDIM_ACTOR` values are excluded.
+A live owner is never taken over; watcher readiness, bounded recovery and exact
+notification acknowledgement retain their existing contracts. Initial trust and
+runtime dependencies are not bypassed. Startup does not spawn workers.
+
+For a different target project, retain the explicit entrypoint:
 
 ```sh
 /path/to/riddim/bin/riddim supervise

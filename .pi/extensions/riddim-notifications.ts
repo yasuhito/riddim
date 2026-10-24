@@ -1,7 +1,7 @@
-// Local-only Supervisor notifications. Opt in by selecting RIDDIM_STATE_DIR
-// explicitly before starting Pi; this extension never guesses another home.
-import { spawn, type ChildProcess } from "node:child_process";
-import { lstatSync } from "node:fs";
+// Local-only Supervisor notifications, with native primary-checkout startup.
+// External projects retain the explicit supervise/selected-home entrypoint.
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim");
-const home = process.env.RIDDIM_STATE_DIR && resolve(process.env.RIDDIM_STATE_DIR);
+const root = resolve(dirname(cli), "..");
+let home = process.env.RIDDIM_STATE_DIR && resolve(process.env.RIDDIM_STATE_DIR);
 const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.(0|[1-9]\d*)$/;
 const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
@@ -315,11 +316,42 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  pi.on("session_start", (_event, ctx) => {
+  let eligible = true;
+  let supervisorInstructions: string | null = null;
+  let startupFailure: string | null = null;
+  pi.on("session_start", async (_event, ctx) => {
+    eligible = true;
+    supervisorInstructions = null;
+    startupFailure = null;
+    // Explicit supervise remains usable from external projects and linked
+    // runtimes. Native discovery alone must never promote a linked worker.
+    if (ctx.cwd && realpathSync(ctx.cwd) === realpathSync(root) &&
+        process.env.RIDDIM_SUPERVISE !== root) {
+      try {
+        const prepared = JSON.parse(execFileSync("ruby", [resolve(root, "scripts/pi_supervisor_startup.rb"), ctx.cwd],
+          { encoding: "utf8", timeout: 5000 }));
+        if (!prepared) { eligible = false; return; }
+        Object.assign(process.env, prepared);
+        home = prepared.RIDDIM_STATE_DIR;
+        supervisorInstructions = readFileSync(resolve(root, "docs/supervisor.md"), "utf8");
+      } catch (error) {
+        eligible = false;
+        startupFailure = `Riddim native startup FAILED: ${String(error)}. Do not supervise or start workers until repaired.`;
+        ctx.ui.notify(startupFailure, "error");
+        return;
+      }
+    }
     if (!home) return;
     active = true;
     notifyFailure = (message) => ctx.ui.notify(message, "error");
-    void arm();
+    if (!await arm() && supervisorInstructions) {
+      startupFailure = "Riddim native startup FAILED: watcher ownership/readiness was not established. " +
+        "Do not supervise or start workers until ownership is unambiguous and the watcher is ready.";
+    }
+  });
+  pi.on("before_agent_start", (event) => {
+    if (startupFailure) event.systemPromptOptions.sections.riddim_startup = startupFailure;
+    else if (supervisorInstructions) event.systemPromptOptions.sections.riddim_supervisor = supervisorInstructions;
   });
   pi.on("session_shutdown", async () => {
     active = false;
@@ -352,12 +384,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("riddim-watch-arm", {
     description: "Repair a failed Riddim Supervisor notification watcher in the selected home",
     handler: async (_args, ctx) => {
+      if (!eligible) { ctx.ui.notify("Riddim native startup is ineligible or failed", "error"); return; }
       if (!home) { ctx.ui.notify("Set RIDDIM_STATE_DIR before starting Pi", "error"); return; }
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = null;
       retryAttempts = 0;
       recoveryBlocked = false;
       const healthy = await arm();
+      if (healthy) startupFailure = null;
       ctx.ui.notify(healthy ? "Riddim watcher ready" : "Riddim watcher FAILED; inspect pending notifications",
         healthy ? "info" : "error");
     },

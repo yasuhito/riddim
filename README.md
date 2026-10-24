@@ -75,11 +75,30 @@ one of `low`, `medium`, `high`, `xhigh`, `max`. For example, the supplied sample
 uses `pi openrouter/z-ai/glm-5.3-flash max`; it requires access to that model,
 not just a Pi installation. Choose an effort your model supports.
 
-The same profile supplies `--model` and `--thinking` to the supervisor and new
-workers. Changing Pi's default model does not override this profile. No
-Bundler install is needed to run the CLI.
+The profile supplies `--model` and `--thinking` to new workers and to a
+supervisor launched by `riddim supervise`. Native `pi` uses Pi's own model
+selection. No Bundler install is needed to run the CLI.
 
-## 3. Launch from your project
+## 3. Launch Pi
+
+To supervise Riddim itself, open a shell pane in your running Herdr session:
+
+```sh
+cd /path/to/riddim
+pi
+```
+
+Review and approve Pi's project trust prompt on first launch. The tracked
+extension initializes the private `state/` directory, puts `riddim` on Pi's
+PATH, supplies the supervisor instructions, and starts the notification watcher.
+No `supervise` command or manual watcher arm is needed. A nonempty
+`RIDDIM_STATE_DIR` override is preserved. This native entrypoint requires the
+plain Riddim checkout root; linked worker worktrees and sessions with any
+nonempty `RIDDIM_ACTOR` do not become supervisors. Ruby, Git, configured Pi
+model access, Herdr and the worker launch profile are still required as above.
+A competing watcher owner is refused, not replaced.
+
+### Supervise another project
 
 Open a shell pane in your running Herdr session. Change to the **target
 project's checkout root**, not the Riddim checkout. Use a checkout on local

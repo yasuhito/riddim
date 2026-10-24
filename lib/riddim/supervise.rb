@@ -21,7 +21,8 @@ module Riddim
       executable = resolve_pi_executable
       state_dir = File.expand_path(Ownership.state_dir)
       prepare_state_dir!(state_dir)
-      Kernel.exec(launch_environment(state_dir), executable, *launch_arguments(profile))
+      environment = launch_environment(state_dir).merge('RIDDIM_SUPERVISE' => RuntimePaths::ROOT)
+      Kernel.exec(environment, executable, *launch_arguments(profile))
     rescue SystemCallError => e
       raise Error, "could not start Pi: #{e.message}"
     end
@@ -67,8 +68,27 @@ module Riddim
       raise Error, 'pi executable not found on PATH'
     end
 
+    # Native discovery is confined to this runtime's genuine primary checkout,
+    # never a task worktree or a caller-selected working directory.
+    def native_environment(cwd)
+      return if ENV.fetch('RIDDIM_ACTOR', '') != ''
+      return unless File.realpath(cwd) == File.realpath(RuntimePaths::ROOT)
+
+      root = File.realpath(RuntimePaths::ROOT)
+      return unless RuntimePaths.git_path(root, '--show-toplevel') == root
+      return unless RuntimePaths.git_path(root, '--absolute-git-dir') ==
+                    RuntimePaths.git_path(root, '--path-format=absolute', '--git-common-dir')
+
+      validate_resources!
+      state_dir = File.expand_path(Ownership.state_dir)
+      prepare_state_dir!(state_dir)
+      launch_environment(state_dir)
+    end
+
     def launch_environment(state_dir)
-      path = [CLI_DIRECTORY, ENV.fetch('PATH', nil)].compact.join(File::PATH_SEPARATOR)
+      directories = ENV.fetch('PATH', '').split(File::PATH_SEPARATOR, -1)
+      directories.delete(CLI_DIRECTORY)
+      path = [CLI_DIRECTORY, *directories].join(File::PATH_SEPARATOR)
       { 'RIDDIM_STATE_DIR' => state_dir, 'PATH' => path }
     end
 

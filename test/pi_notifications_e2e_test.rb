@@ -41,7 +41,7 @@ class PiNotificationsE2ETest < Minitest::Test
     @input, @output, @error, @wait = Bundler.with_unbundled_env do
       Open3.popen3(env, 'pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
                    '--no-prompt-templates', '--no-context-files', '--extension', EXT, '--session-dir', @root,
-                   '--model', 'stall-lab/test', '--thinking', 'off')
+                   '--model', 'stall-lab/test', '--thinking', 'off', chdir: @root)
     end
   end
 

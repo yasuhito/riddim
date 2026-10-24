@@ -19,7 +19,7 @@ try {
       on(name) { events.push(name); },
       registerCommand(name) { commands.push(name); },
     });
-    assert.deepEqual(events, ["session_start", "session_shutdown"]);
+    assert.deepEqual(events, ["session_start", "before_agent_start", "session_shutdown"]);
     assert.deepEqual(commands, ["riddim-watch-arm"]);
   }
 } finally {
