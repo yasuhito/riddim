@@ -25,6 +25,9 @@ class PiNativeStartupTest < Minitest::Test
     Dir.mkdir(@home)
     @server = TCPServer.new('127.0.0.1', 0)
     PiStallLab::LabServer.config(@home, @server.addr[1])
+    @config = File.join(@root, 'config')
+    Dir.mkdir(@config)
+    File.write(File.join(@config, 'agent-profile'), "pi stall-lab/test low\n")
     @processes = []
     @events = []
     @shim = install_supervise_dependencies
@@ -51,10 +54,14 @@ class PiNativeStartupTest < Minitest::Test
     out
   end
 
+  def pi_environment(state: nil, actor: nil)
+    { 'PI_CODING_AGENT_DIR' => @home, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
+      'RIDDIM_CONFIG_DIR' => @config, 'RIDDIM_STATE_DIR' => state, 'RIDDIM_ACTOR' => actor,
+      'RIDDIM_SUPERVISE' => nil, 'PATH' => @shim }
+  end
+
   def start_pi(cwd: @checkout, state: nil, actor: nil, trust: true, extra_args: [])
-    env = { 'PI_CODING_AGENT_DIR' => @home, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => state, 'RIDDIM_ACTOR' => actor, 'RIDDIM_SUPERVISE' => nil,
-            'PATH' => @shim }
+    env = pi_environment(state: state, actor: actor)
     process = Bundler.with_unbundled_env do
       Open3.popen3(env, @real_pi, trust ? '--approve' : '--no-approve', '--mode', 'rpc', '--no-tools', '--no-skills',
                    '--no-prompt-templates', '--no-context-files', '--model', 'stall-lab/test',
@@ -240,8 +247,7 @@ class PiNativeStartupTest < Minitest::Test
     @state = File.join(@root, 'selected-state')
     alias_root = File.join(@root, 'alias')
     File.symlink(@checkout, alias_root)
-    env = { 'PI_CODING_AGENT_DIR' => @home, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => @shim }
+    env = pi_environment(state: @state)
     process = Bundler.with_unbundled_env do
       Open3.popen3(env, File.join(alias_root, 'bin/riddim'), 'supervise', chdir: alias_root)
     end
@@ -256,6 +262,18 @@ class PiNativeStartupTest < Minitest::Test
     body = model_request
 
     assert_equal 1, body.to_s.scan('You coordinate Riddim').size
+  end
+
+  def test_existing_supervise_does_not_hide_missing_isolated_profile
+    File.unlink(File.join(@config, 'agent-profile'))
+    @state = File.join(@root, 'selected-state')
+    _out, error, status = Bundler.with_unbundled_env do
+      Open3.capture3(pi_environment(state: @state), File.join(@checkout, 'bin/riddim'), 'supervise', chdir: @checkout)
+    end
+
+    assert_equal 1, status.exitstatus
+    assert_includes error, 'missing profile file: agent-profile'
+    refute_path_exists @state
   end
 
   def install_supervise_dependencies
