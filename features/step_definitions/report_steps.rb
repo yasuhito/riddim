@@ -9,7 +9,7 @@ When('the worker tries to report done while the operator holds the name lock') d
     file.flock(File::LOCK_EX)
     Bundler.with_unbundled_env do
       environment = { 'HERDR_SESSION' => nil }.merge(@environment || {})
-      Open3.popen3(environment, RiddimWorld::RIDDIM, 'report', 'worker', '--generation', generation,
+      Open3.popen3(environment, riddim_cli, 'report', 'worker', '--generation', generation,
                    'done [at=123]: work committed', chdir: @project) do |input, output, error, process|
         input.close
         sleep 0.5
@@ -46,7 +46,7 @@ Then('the worker has a usable absolute report command and inherited private stat
   launch = File.read(File.join(@herdr_directory, 'staged-launch'))
   assert_equal [true, false, true, true, true],
                [@status.success?, File.exist?(File.join(@worktree, 'bin', 'riddim')),
-                brief.include?("#{RiddimWorld::RIDDIM} report worker --generation #{generation}"),
+                brief.include?("#{riddim_cli} report worker --generation #{generation}"),
                 launch.include?("export RIDDIM_STATE_DIR=#{scenario_state_dir}"),
                 launch.include?("export RIDDIM_CONFIG_DIR=#{@environment.fetch('RIDDIM_CONFIG_DIR')}")], @stderr
 end
@@ -57,7 +57,7 @@ Then('the task brief instructs the worker to use its generation-locked report co
   brief = File.read(File.join(scenario_state_dir, 'worker.brief'))
   assert_equal [true, true, true],
                [@status.success?, record.include?('status_protocol=locked-v1'),
-                brief.include?("#{RiddimWorld::RIDDIM} report worker --generation #{generation}")], @stderr
+                brief.include?("#{riddim_cli} report worker --generation #{generation}")], @stderr
 end
 
 Then('reporting refuses the stale generation and keeps the status empty') do
