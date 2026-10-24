@@ -59,7 +59,10 @@ module Riddim
     # needs-decision event precedes it. Teardown and merge-local gate on this
     # one predicate, so a later done cannot clear an open decision in either.
     def ungated_done?(name, generation)
-      status = read_status(path(name, generation))
+      ungated_done_status?(read_status(path(name, generation)))
+    end
+
+    def ungated_done_status?(status)
       status.last&.start_with?('done ') && !status.open_gate
     end
 

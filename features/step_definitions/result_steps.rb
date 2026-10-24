@@ -106,6 +106,21 @@ Then('the local-only brief puts the binding delivery contract before the task') 
                 brief.index('# Local-only delivery contract') < brief.index('# Human\'s task')], @stderr
 end
 
+Then('result and fleet retain the ordinary report {string}') do |expected|
+  output, errors, status = run_riddim('fleet', '--json')
+  report = JSON.parse(output).fetch('records').first.fetch('report')
+  assert_equal [true, "#{expected}\n", true, expected], [@status.success?, @stdout, status.success?, report], errors
+end
+
+Then('result and fleet require a fresh done after resolution') do
+  output, errors, status = run_riddim('fleet', '--json')
+  report = JSON.parse(output).fetch('records').first.fetch('report')
+  assert_equal [true, true, true, true, false],
+               [@status.success?, status.success?, report == @stdout.strip,
+                report.include?('no current done report; obtain a fresh done report'),
+                report.include?('after addressing gates')], errors
+end
+
 Then('result and fleet show the same outstanding decisions without answering them') do
   outcome = @stdout.strip
   commands = ["riddim send worker --resolve-key default '<answer>'",
@@ -191,7 +206,7 @@ Then('the answer is stored but its decision remains open for repair') do
   expected = 'reported: needs-decision [at=16]: choose A [not ready: open decisions: default (needs-decision): ' \
              "riddim send worker --resolve-key default '<answer>'; " \
              'replace <answer> with a warranted answer for each key, then obtain a fresh done report; ' \
-             'no current done report; obtain a fresh done report after addressing gates; ' \
+             'no current done report; obtain a fresh done report; ' \
              "Git checks, review and exact-SHA human approval still required]\n"
   assert_equal [1, true, true, 0, expected],
                [sent_status, warning.include?('do not resend; decision default close unconfirmed'),

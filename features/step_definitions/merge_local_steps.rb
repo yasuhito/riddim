@@ -259,7 +259,7 @@ end
 Then('merge-local refuses without an ungated done report') do
   assert_equal [false, @main_before, true],
                [@status.success?, local_main_tip,
-                @stderr.include?('no current done report; obtain a fresh done report after addressing gates')], @stderr
+                @stderr.include?('no current done report; obtain a fresh done report')], @stderr
 end
 
 Then('merge-local refuses with readiness diagnostics:') do |table|

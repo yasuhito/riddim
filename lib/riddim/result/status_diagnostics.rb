@@ -14,13 +14,14 @@ module Riddim
       return 'unreported' unless event
 
       outcome = if event.start_with?('done ')
-                  ready = !status.open_gate && ready?(name, fields)
+                  ready = ungated_done_status?(status) && ready?(name, fields)
                   ready ? "ready: #{event}" : "reported (not ready): #{event}"
                 else
                   "reported: #{event}"
                 end
-      diagnostics = status_diagnostics(status, name)
-      diagnostics.empty? ? outcome : "#{outcome} [not ready: #{diagnostics}]"
+      return outcome unless status_guidance_needed?(status)
+
+      "#{outcome} [not ready: #{status_diagnostics(status, name)}]"
     end
 
     # The report outcome for the fleet view: the same describe() wording with
@@ -32,15 +33,17 @@ module Riddim
       'unknown (unreadable status evidence)'
     end
 
+    def status_guidance_needed?(status)
+      status.open_gate || status.events.last&.kind == 'resolved'
+    end
+
     def status_diagnostics(status, name)
       reasons = []
       reasons << decision_guidance(status.open_keys, name) unless status.open_keys.empty?
       if status.events.any? { |event| event.kind == 'failed' }
         reasons << 'failed history remains a gate; investigate the failure (key resolution cannot clear it)'
       end
-      unless status.last&.start_with?('done ')
-        reasons << 'no current done report; obtain a fresh done report after addressing gates'
-      end
+      reasons << 'no current done report; obtain a fresh done report' unless status.last&.start_with?('done ')
       reasons << 'Git checks, review and exact-SHA human approval still required' unless reasons.empty?
       reasons.join('; ')
     end

@@ -88,6 +88,20 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then the local-only result is "reported (not ready): done [at=17]: ready for review"
 
+  Scenario Outline: Ordinary ongoing reports do not imply a readiness gate
+    Given a local-only task was started
+    And the worker reports "<event> [at=17]: ongoing"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then result and fleet retain the ordinary report "reported: <event> [at=17]: ongoing"
+
+    Examples:
+      | event   |
+      | working |
+      | paused  |
+
   Scenario: A committed, clean and fast-forwardable local-only branch is ready
     Given a local-only task was started
     And the worker commits a change in its own branch
@@ -129,7 +143,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported: blocked [at=18]: waiting for a decision [not ready: open decisions: default (blocked): riddim send worker --resolve-key default '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; no current done report; obtain a fresh done report after addressing gates; Git checks, review and exact-SHA human approval still required]"
+    Then the local-only result is "reported: blocked [at=18]: waiting for a decision [not ready: open decisions: default (blocked): riddim send worker --resolve-key default '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; no current done report; obtain a fresh done report; Git checks, review and exact-SHA human approval still required]"
 
   Scenario: A done event cannot silently close an earlier decision
     Given a local-only task was started
@@ -176,8 +190,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then readiness diagnostics include:
-      | no current done report; obtain a fresh done report after addressing gates |
+    Then result and fleet require a fresh done after resolution
 
   Scenario: A keyed answer closes only its own decision after durable delivery
     Given a local-only task was started

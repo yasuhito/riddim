@@ -13,7 +13,7 @@ module Riddim
 
     def verify_done_report!(name, generation)
       status = Result.read_status(Result.path(name, generation))
-      return if status.last&.start_with?('done ') && !status.open_gate
+      return if Result.ungated_done_status?(status)
 
       diagnostics = Result.status_diagnostics(status, name)
       raise Refused, "worker has no ungated done report; refusing the merge: #{diagnostics}"

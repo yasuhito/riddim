@@ -198,7 +198,7 @@ Feature: Land an approved local-only worker branch into local main
     And the operator approves the reviewed worker branch tip
     When I run riddim merge-local with the approved head
     Then merge-local refuses with readiness diagnostics:
-      | no current done report; obtain a fresh done report after addressing gates |
+      | no current done report; obtain a fresh done report |
 
   Scenario: Land the exact reviewed tip after an explicit answer and later done
     Given a local-only task was started
