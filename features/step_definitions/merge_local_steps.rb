@@ -258,7 +258,13 @@ end
 
 Then('merge-local refuses without an ungated done report') do
   assert_equal [false, @main_before, true],
-               [@status.success?, local_main_tip, @stderr.include?('ungated done report')], @stderr
+               [@status.success?, local_main_tip,
+                @stderr.include?('no current done report; obtain a fresh done report after addressing gates')], @stderr
+end
+
+Then('merge-local refuses with readiness diagnostics:') do |table|
+  assert_equal [false, @main_before, true],
+               [@status.success?, local_main_tip, table.raw.flatten.all? { |text| @stderr.include?(text) }], @stderr
 end
 
 Then('merge-local refuses the late decision without moving local main') do
@@ -274,8 +280,10 @@ Then('merge-local reports the landed main and the late decision') do
 end
 
 Then('merge-local refuses the open decision gate') do
-  assert_equal [false, @main_before, true],
-               [@status.success?, local_main_tip, @stderr.include?('ungated done report')], @stderr
+  assert_equal [false, @main_before, true, true, true],
+               [@status.success?, local_main_tip, @stderr.include?('ungated done report'),
+                @stderr.include?('open decisions: default (needs-decision)'),
+                @stderr.include?("riddim send worker --resolve-key default '<answer>'")], @stderr
 end
 
 Then('merge-local lands the tip while Herdr, remotes, and worker assets stay untouched') do

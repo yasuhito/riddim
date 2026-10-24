@@ -71,7 +71,12 @@ end
 
 Then('the ready-looking done stays gated by the earlier decision') do
   record = JSON.parse(@stdout).fetch('records').fetch(0)
-  assert_equal 'reported (not ready): done [at=17]: tests passed', record.fetch('report')
+  assert_equal 'reported (not ready): done [at=17]: tests passed ' \
+               '[not ready: open decisions: default (needs-decision): ' \
+               "riddim send worker --resolve-key default '<answer>'; " \
+               'replace <answer> with a warranted answer for each key, ' \
+               'then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]',
+               record.fetch('report')
 end
 
 Then('the row keeps the captured identity without mutable evidence') do

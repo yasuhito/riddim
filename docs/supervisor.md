@@ -74,10 +74,23 @@ never scan a replacement home as the original.
 
 ## Review, land, and retire
 
-For a worker's completion claim, inspect both the result and the committed diff:
+For a worker's completion claim, inspect readiness before attempting a merge:
 
 ```sh
 riddim result <name>
+```
+
+Investigate a non-ready result first. Read every outstanding decision key and kind; if the
+list reports omissions, inspect the generation's status evidence for the remaining keys.
+When an answer is warranted, use the displayed `riddim send <name> --resolve-key <key>
+'<answer>'` syntax with the actual answer. Resolving one key closes only that key, not
+historical failures or Git checks. Ask the worker for a fresh `done` after resolution,
+then recheck `result`. See [reports and readiness](cli-reference.md#local-only-result-handoff)
+for the detailed contract.
+
+Once ready, inspect the committed diff:
+
+```sh
 riddim review-diff <name>
 ```
 
@@ -87,7 +100,9 @@ commit. Do not infer approval from a worker's report, a ready result, a prior ge
 instruction, or silence.
 
 Run `riddim merge-local <name> --head <approved-sha>` only after the human explicitly
-approves that exact SHA. If the head changes, review the new head and get approval again.
+approves that exact SHA. Invoke it from the worker record's `project` main checkout, not
+from the Riddim checkout or worker worktree. If the head changes, review the new head and
+get approval again.
 Report the merge result faithfully. If the merge fails or its result is uncertain, say so and
 inspect before taking another action.
 

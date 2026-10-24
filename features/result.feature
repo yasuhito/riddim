@@ -129,7 +129,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported: blocked [at=18]: waiting for a decision"
+    Then the local-only result is "reported: blocked [at=18]: waiting for a decision [not ready: open decisions: default (blocked): riddim send worker --resolve-key default '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; no current done report; obtain a fresh done report after addressing gates; Git checks, review and exact-SHA human approval still required]"
 
   Scenario: A done event cannot silently close an earlier decision
     Given a local-only task was started
@@ -140,7 +140,44 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported (not ready): done [at=17]: tests passed"
+    Then readiness diagnostics include:
+      | open decisions: default (needs-decision)                  |
+      | riddim send worker --resolve-key default '<answer>'       |
+      | obtain a fresh done report                               |
+      | Git checks, review and exact-SHA human approval still required |
+
+  Scenario: Show every open key without using report prose as an answer
+    Given a local-only task was started
+    And the worker reports "blocked [at=16]: $(touch unsafe)"
+    And the worker reports "needs-decision [at=17] [key=alpha]: choose A"
+    And the worker reports "done [at=18]: tests passed"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then result and fleet show the same outstanding decisions without answering them
+
+  Scenario: Bound a long decision list and disclose omitted keys
+    Given a local-only task was started
+    And the worker has many open decision keys
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then the decision list is bounded and discloses omissions
+
+  Scenario: Resolution alone does not make an earlier done current
+    Given a local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "blocked [at=16]: waiting"
+    And the worker reports "done [at=17]: tests passed"
+    And the supervisor answers key "default" with "Use main"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then readiness diagnostics include:
+      | no current done report; obtain a fresh done report after addressing gates |
 
   Scenario: A keyed answer closes only its own decision after durable delivery
     Given a local-only task was started
@@ -156,7 +193,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported (not ready): done [at=18]: tests passed"
+    Then the local-only result is "reported (not ready): done [at=18]: tests passed [not ready: open decisions: beta (blocked): riddim send worker --resolve-key beta '<answer>'; replace <answer> with a warranted answer for each key, then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]"
 
   Scenario: A resolved decision permits a subsequent done and exact-tip review
     Given a local-only task was started
@@ -214,7 +251,7 @@ Feature: A local-only task reports a claim, not inferred completion
       """
       result worker
       """
-    Then the local-only result is "reported (not ready): done [at=17]: tests passed"
+    Then the local-only result is "reported (not ready): done [at=17]: tests passed [not ready: failed history remains a gate; investigate the failure (key resolution cannot clear it); Git checks, review and exact-SHA human approval still required]"
 
   Scenario: An already answered key cannot deliver a duplicate answer
     Given a local-only task was started

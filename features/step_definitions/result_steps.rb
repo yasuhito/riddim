@@ -106,6 +106,36 @@ Then('the local-only brief puts the binding delivery contract before the task') 
                 brief.index('# Local-only delivery contract') < brief.index('# Human\'s task')], @stderr
 end
 
+Then('result and fleet show the same outstanding decisions without answering them') do
+  outcome = @stdout.strip
+  commands = ["riddim send worker --resolve-key default '<answer>'",
+              "riddim send worker --resolve-key alpha '<answer>'"]
+  output, errors, status = run_riddim('fleet', '--json')
+  report = JSON.parse(output).fetch('records').first.fetch('report')
+  assert_equal [true, true, true, true, true, true],
+               [@status.success?, status.success?, report == outcome,
+                outcome.include?("open decisions: default (blocked): #{commands.first}"),
+                outcome.include?("alpha (needs-decision): #{commands.last}"),
+                Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg')).empty?], errors
+end
+
+Given('the worker has many open decision keys') do
+  events = Array.new(100) { |index| "blocked [at=1] [key=k#{index}]: waiting\n" }
+  File.write(@result_path, "#{events.join}done [at=2]: claimed\n")
+end
+
+Then('the decision list is bounded and discloses omissions') do
+  assert_equal [true, true, true, true],
+               [@status.success?, @stdout.bytesize < 4500,
+                @stdout.include?("k0 (blocked): riddim send worker --resolve-key k0 '<answer>'"),
+                @stdout.match?(/\d+ more open decisions omitted \(byte cap\)/)], @stderr
+end
+
+Then('readiness diagnostics include:') do |table|
+  assert_predicate @status, :success?, @stderr
+  table.raw.flatten.each { |text| assert_includes @stdout, text }
+end
+
 Then('the local-only result is {string}') do |outcome|
   assert_equal [true, "#{outcome}\n"], [@status.success?, @stdout], @stderr
 end
@@ -130,7 +160,11 @@ Then('the unrelated blocker remains open') do
   _out, errors, status = run_riddim('report', 'worker', '--generation', generation, 'done [at=18]: tested')
   assert_predicate status, :success?, errors
   @stdout, @stderr, @status = run_riddim('result', 'worker')
-  assert_equal "reported (not ready): done [at=18]: tested\n", @stdout
+  assert_equal 'reported (not ready): done [at=18]: tested [not ready: open decisions: beta (blocked): ' \
+               "riddim send worker --resolve-key beta '<answer>'; " \
+               'replace <answer> with a warranted answer for each key, ' \
+               'then obtain a fresh done report; Git checks, review and exact-SHA human approval still required]' \
+               "\n", @stdout
   @stdout, @stderr, @status = run_riddim('send', 'worker', '--resolve-key', 'beta', 'Proceed')
   assert_predicate @status, :success?, @stderr
   _out, errors, status = run_riddim('report', 'worker', '--generation', generation, 'done [at=19]: tested')
@@ -154,7 +188,12 @@ Then('the answer is stored but its decision remains open for repair') do
   warning = @stderr
   records = Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg'))
   @stdout, @stderr, @status = run_riddim('result', 'worker')
-  assert_equal [1, true, true, 0, "reported: needs-decision [at=16]: choose A\n"],
+  expected = 'reported: needs-decision [at=16]: choose A [not ready: open decisions: default (needs-decision): ' \
+             "riddim send worker --resolve-key default '<answer>'; " \
+             'replace <answer> with a warranted answer for each key, then obtain a fresh done report; ' \
+             'no current done report; obtain a fresh done report after addressing gates; ' \
+             "Git checks, review and exact-SHA human approval still required]\n"
+  assert_equal [1, true, true, 0, expected],
                [sent_status, warning.include?('do not resend; decision default close unconfirmed'),
                 records.length == 1 && File.read(records.first).include?('Choose A'), @status.exitstatus, @stdout]
 end

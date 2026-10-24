@@ -171,6 +171,35 @@ Feature: Land an approved local-only worker branch into local main
     When I run riddim merge-local with the approved head
     Then merge-local refuses the open decision gate
 
+  Scenario: A partial answer leaves the other key and failed history distinct
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "failed [at=120]: tests failed"
+    And the worker reports "needs-decision [at=121] [key=alpha]: choose A"
+    And the worker reports "blocked [at=122] [key=beta]: wait for B"
+    And the supervisor answers key "alpha" with "Use main"
+    And the worker reports "done [at=124]: work committed"
+    And the operator approves the reviewed worker branch tip
+    When I run riddim merge-local with the approved head
+    Then merge-local refuses with readiness diagnostics:
+      | open decisions: beta (blocked) |
+      | riddim send worker --resolve-key beta '<answer>' |
+      | failed history remains a gate; investigate the failure (key resolution cannot clear it) |
+      | Git checks, review and exact-SHA human approval still required |
+
+  Scenario: An answer requires a fresh done even after an earlier done
+    Given a local-only task was started
+    And the task input is removed after launch
+    And the worker commits a change in its own branch
+    And the worker reports "blocked [at=122]: waiting"
+    And the worker reports "done [at=123]: work committed"
+    And the supervisor answers key "default" with "Use main"
+    And the operator approves the reviewed worker branch tip
+    When I run riddim merge-local with the approved head
+    Then merge-local refuses with readiness diagnostics:
+      | no current done report; obtain a fresh done report after addressing gates |
+
   Scenario: Land the exact reviewed tip after an explicit answer and later done
     Given a local-only task was started
     And the task input is removed after launch

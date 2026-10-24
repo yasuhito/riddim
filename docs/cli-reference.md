@@ -601,7 +601,13 @@ current activity. A `done` event becomes `ready` **only** if the recorded
 linked worktree is still in the same repository, its branch has a commit past
 the recorded start HEAD, that commit is the branch tip, its worktree has no
 tracked or untracked changes, and `main` is an ancestor of that tip. Otherwise
-it remains `reported (not ready)`. An earlier `blocked`, `failed`, or
+it remains `reported (not ready)`. `result`, the fleet report string, and a status-gated
+`merge-local` refusal explain outstanding status gates using the same evidence. They list
+open keys and kinds with `send --resolve-key` examples; replace the quoted `<answer>`
+placeholder with a warranted answer. Long lists disclose omitted keys at the byte cap;
+inspect the generation's status file for the rest. These are read-only hints, not automatic
+answers or landing approval. Git-only non-readiness retains the existing summary.
+An earlier `blocked`, `failed`, or
 `needs-decision` event cannot be cleared by a later `done`. For an open
 `blocked` or `needs-decision` key, use
 `bin/riddim send <name> --resolve-key <key> <answer...>` to store the answer

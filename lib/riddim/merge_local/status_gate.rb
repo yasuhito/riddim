@@ -12,9 +12,11 @@ module Riddim
     end
 
     def verify_done_report!(name, generation)
-      return if Result.ungated_done?(name, generation)
+      status = Result.read_status(Result.path(name, generation))
+      return if status.last&.start_with?('done ') && !status.open_gate
 
-      raise Refused, 'worker has no ungated done report; refusing the merge'
+      diagnostics = Result.status_diagnostics(status, name)
+      raise Refused, "worker has no ungated done report; refusing the merge: #{diagnostics}"
     end
 
     # Direct file appends bypass the name lock. If one races with Git itself,
