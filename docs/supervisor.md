@@ -88,7 +88,14 @@ historical failures or Git checks. Ask the worker for a fresh `done` after resol
 then recheck `result`. See [reports and readiness](cli-reference.md#local-only-result-handoff)
 for the detailed contract.
 
-Once ready, inspect the committed diff:
+Once ready, first inspect the changed-file scope:
+
+```sh
+riddim review-diff <name> --stat
+```
+
+Then always inspect the full committed diff for code review; the stat summary is
+not a substitute for review or approval:
 
 ```sh
 riddim review-diff <name>
