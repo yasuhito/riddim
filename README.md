@@ -203,6 +203,13 @@ recovery instructions; a running observer is not proof every worker is readable.
 
 ## Development
 
+For changes to `yasuhito/riddim` itself, follow the
+[supervisor-operated PR procedure](docs/repository-development.md): publish before
+local landing, verify CI, and obtain explicit human approval to merge the reviewed
+head. Its one-time policy bootstrap and supervisor reload gate apply. This is an
+external supervisor workflow, not a CLI PR feature; workers and other projects
+retain the local-only delivery rules above.
+
 From the **Riddim checkout**, install the configured Ruby and test dependencies,
 then run unit tests, disposable CLI scenarios, Gherkin checks and RuboCop:
 

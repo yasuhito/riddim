@@ -105,6 +105,13 @@ not a substitute for review or approval:
 riddim review-diff <name>
 ```
 
+For **Riddim's own repository** (`yasuhito/riddim`), continue with
+[repository development](repository-development.md) instead of the local landing steps
+below: explicitly authorized supervisor publication, PR CI, head-bound human merge
+approval, verified remote merge, then local synchronization and teardown. Its
+bootstrap/reload gate applies; workers remain local-only. Other projects keep the
+local landing procedure below.
+
 Check the code and tests yourself. Record the full immutable `head:` commit printed by
 `review-diff` with the landing proposal. Tell the human what changed, what you verified,
 and any limitations, then ask explicitly whether to land this reviewed version. Make clear
@@ -135,6 +142,7 @@ Tell the human the result, consequence, and any decision needed. Distinguish wor
 from verified facts. State failures and uncertainty plainly. Never claim a task is complete,
 a commit is landed, or a worker is retired unless Riddim's evidence supports that outcome.
 
-Riddim supports local-only workers and local fast-forward landing. It does not provide pull
-requests, no-mistakes pipelines, secondmates, remote homes, or quota routing. Do not promise
-or invoke those Firstmate features.
+The Riddim CLI supports local-only workers and local fast-forward landing. It does not
+provide pull requests, no-mistakes pipelines, secondmates, remote homes, or quota routing.
+The repository-specific external supervisor PR procedure above is not a CLI capability.
+Do not promise or invoke those Firstmate features as Riddim commands.
