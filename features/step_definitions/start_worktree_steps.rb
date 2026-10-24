@@ -9,6 +9,11 @@ Given('a local Git project for worktree start') do
   git = ->(*args) { Open3.capture3('git', '-C', @project, *args) }
   raise 'git init failed' unless git.call('init', '-q').last.success?
 
+  # Linked worktrees share this fixture's identity, including later dirty commits.
+  { 'user.name' => 'Riddim', 'user.email' => 'test@example.invalid' }.each do |key, value|
+    raise 'git identity config failed' unless git.call('config', '--local', key, value).last.success?
+  end
+
   File.write(File.join(@project, 'tracked.txt'), "base\n")
   raise 'git add failed' unless git.call('add', 'tracked.txt').last.success?
   raise 'git commit failed' unless git.call('-c', 'user.name=Riddim', '-c', 'user.email=test@example.invalid',
