@@ -25,6 +25,11 @@ module RiddimWorld
     directory
   end
 
+  # Worktree scenarios run a disposable installation, never the live runtime.
+  def riddim_cli
+    @riddim_cli || RIDDIM
+  end
+
   # Every Herdr invocation the fake executable observed, in order.
   def herdr_invocations
     log = File.join(@herdr_directory, 'invocations')

@@ -112,6 +112,16 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then the local-only result is "ready: done [at=17]: tests passed"
 
+  Scenario: A legacy sibling worker remains ready at its recorded path
+    Given a legacy sibling local-only task was started
+    And the worker commits a change in its own branch
+    And the worker reports "done [at=17]: tests passed"
+    When I run riddim with:
+      """
+      result worker
+      """
+    Then the local-only result is "ready: done [at=17]: tests passed"
+
   Scenario: Untracked work prevents a ready claim
     Given a local-only task was started
     And the worker commits a change in its own branch

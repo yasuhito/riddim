@@ -533,8 +533,42 @@ bin/riddim start <name> --worktree
 ```
 
 From a Git checkout (or a directory inside one), this creates a **new linked
-worktree** beside the checkout's root, named `<project>-riddim-<name>`, on a
-new `riddim/<name>` branch at the checkout's **local HEAD**. It never fetches,
+worktree** at `<worktree-root>/<project>-<repository-id>/<name>`, on a new
+`riddim/<name>` branch at the checkout's **local HEAD**. `<worktree-root>` is
+`.riddim-worktrees` beside the primary checkout of the running Riddim installation,
+even if its CLI is invoked from a linked Riddim checkout. For example, an installation
+at `~/Work/riddim` uses `~/Work/.riddim-worktrees`. Without Git metadata, Riddim uses
+`.riddim-worktrees` beside its installation directory. Neither the target project
+nor config/state overrides select the storage root.
+
+The project label is the primary target checkout's basename (sanitized and capped
+at 64 characters). The repository ID is the full SHA-256 of the canonical absolute
+Git common-directory path: linked checkouts share an identity; separate local
+clones do not, even with identical names or remotes. Moving a clone can change its
+future destination, but existing workers always use their recorded absolute paths.
+There is no migration, pool, Treehouse dependency, or automatic tool installation.
+
+Existing destinations are refused, including empty directories and symlinks.
+Parent symlinks and non-directories are refused; central storage directories must
+belong to the current user and must not be group- or world-writable. Failed
+allocation only attempts to remove newly created, still-identical empty
+directories. It never recursively deletes work or another worker's directory.
+Normal teardown removes only the recorded worktree, leaving shared parents.
+These pathname checks coordinate cooperating local processes, not a sandbox
+against a same-user process racing filesystem changes.
+
+Storage is outside the Riddim checkout, so its Git status, searches, lint, test and
+feature discovery do not recurse into workers. No additional ignore rules or
+RuboCop exclusions replace existing defaults (including vendor exclusions).
+
+Pi loads the target worktree's context files and its usual global/shared-ancestor
+instructions, without inheriting Riddim's project instructions. Riddim does not
+filter context, disable context discovery, or copy the target's original ancestor
+instructions into storage. Native supervisor startup remains limited to the
+primary Riddim checkout; unmarked central workers do not auto-start it. The existing
+explicit `supervise` entrypoint from other directories remains unchanged.
+
+Riddim uses Ruby's standard library and Git to allocate fresh worktrees. It never fetches,
 resets, reuses a worktree or branch, or copies uncommitted changes. An existing
 record, destination, or branch refuses rather than overwrites. The worktree
 must be clean and must resolve to a different root of the same Git repository,

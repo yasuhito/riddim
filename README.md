@@ -145,8 +145,16 @@ Type a bounded request into the supervisor's Pi conversation, for example:
 
 The supervisor prepares the task and launches the worker in a background
 Herdr workspace without changing focus. For a project named `my-app`, that
-worker uses a sibling checkout `my-app-riddim-docs-example` and branch
-`riddim/docs-example`. Existing names, worktrees and branches are not overwritten.
+worker uses `<worktree-root>/my-app-<repository-id>/docs-example` and branch
+`riddim/docs-example`. All target projects share `.riddim-worktrees` beside the
+primary Riddim installation: `~/Work/riddim` uses `~/Work/.riddim-worktrees`.
+A linked Riddim CLI resolves that same primary installation, never a nested root.
+Keeping storage outside the Riddim repository avoids inheriting its project
+instructions; Pi still loads target and global instructions normally.
+The ID identifies the canonical local Git common directory, so independent clones
+with the same name stay separate. Existing workers keep their recorded paths;
+nothing is migrated. Existing names, worktrees and branches are not overwritten.
+This uses Ruby's standard library and Git only, without Treehouse or pooled worktrees.
 You stay in the supervisor conversation; you do not need to write task files
 or run worker reporting commands yourself.
 

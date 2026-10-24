@@ -33,7 +33,7 @@ def run_riddim(*)
   environment = { 'HERDR_SESSION' => nil }.merge(@environment || {})
   Bundler.with_unbundled_env do
     options = @working_directory ? { chdir: @working_directory } : {}
-    Open3.capture3(environment, RiddimWorld::RIDDIM, *, **options)
+    Open3.capture3(environment, riddim_cli, *, **options)
   end
 end
 
