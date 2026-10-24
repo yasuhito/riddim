@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim");
 const root = resolve(dirname(cli), "..");
@@ -319,27 +319,30 @@ export default function (pi: ExtensionAPI) {
   let eligible = true;
   let supervisorInstructions: string | null = null;
   let startupFailure: string | null = null;
-  pi.on("session_start", async (_event, ctx) => {
+  let startup: Promise<void> = Promise.resolve();
+  async function initialize(ctx: ExtensionContext): Promise<void> {
     eligible = true;
     supervisorInstructions = null;
     startupFailure = null;
     // Explicit supervise remains usable from external projects and linked
     // runtimes. Native discovery alone must never promote a linked worker.
-    if (ctx.cwd && realpathSync(ctx.cwd) === realpathSync(root) &&
-        process.env.RIDDIM_SUPERVISE !== root) {
-      try {
+    try {
+      if (ctx.cwd && realpathSync(ctx.cwd) === realpathSync(root) &&
+          process.env.RIDDIM_SUPERVISE !== root) {
         const prepared = JSON.parse(execFileSync("ruby", [resolve(root, "scripts/pi_supervisor_startup.rb"), ctx.cwd],
           { encoding: "utf8", timeout: 5000 }));
         if (!prepared) { eligible = false; return; }
         Object.assign(process.env, prepared);
         home = prepared.RIDDIM_STATE_DIR;
         supervisorInstructions = readFileSync(resolve(root, "docs/supervisor.md"), "utf8");
-      } catch (error) {
-        eligible = false;
-        startupFailure = `Riddim native startup FAILED: ${String(error)}. Do not supervise or start workers until repaired.`;
-        ctx.ui.notify(startupFailure, "error");
-        return;
       }
+    } catch (error) {
+      eligible = false;
+      startupFailure = `Riddim native startup FAILED: ${String(error)}. Do not supervise or start workers until repaired. ` +
+        "Fix the reported prerequisite, then use /reload or restart Pi from this checkout. " +
+        "/riddim-watch-arm cannot rerun native bootstrap.";
+      ctx.ui.notify(startupFailure, "error");
+      return;
     }
     if (!home) return;
     active = true;
@@ -348,10 +351,25 @@ export default function (pi: ExtensionAPI) {
       startupFailure = "Riddim native startup FAILED: watcher ownership/readiness was not established. " +
         "Do not supervise or start workers until ownership is unambiguous and the watcher is ready.";
     }
+  }
+  pi.on("session_start", (_event, ctx) => {
+    // Publish the gate before even a synchronous initialization failure can
+    // send a follow-up into before_agent_start.
+    startup = Promise.resolve().then(() => initialize(ctx));
+    return startup;
   });
-  pi.on("before_agent_start", (event) => {
+  pi.on("before_agent_start", async (event) => {
+    // Pi's sendUserMessage binding is fire-and-forget: a failure follow-up
+    // can start a run before session_start completes. Never publish the role
+    // until the startup prerequisite has settled and ownership is verified.
+    await startup;
     if (startupFailure) event.systemPromptOptions.sections.riddim_startup = startupFailure;
-    else if (supervisorInstructions) event.systemPromptOptions.sections.riddim_supervisor = supervisorInstructions;
+    else if (supervisorInstructions &&
+             !event.systemPromptOptions.appendSystemPrompt.includes(supervisorInstructions.trim())) {
+      // A pre-native supervise process may already have appended this contract
+      // without the newer launcher marker. Keep that legacy reload idempotent.
+      event.systemPromptOptions.sections.riddim_supervisor = supervisorInstructions;
+    }
   });
   pi.on("session_shutdown", async () => {
     active = false;
@@ -384,7 +402,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("riddim-watch-arm", {
     description: "Repair a failed Riddim Supervisor notification watcher in the selected home",
     handler: async (_args, ctx) => {
-      if (!eligible) { ctx.ui.notify("Riddim native startup is ineligible or failed", "error"); return; }
+      if (!eligible) {
+        ctx.ui.notify(startupFailure || "Riddim native startup is ineligible: a plain primary checkout is required", "error");
+        return;
+      }
       if (!home) { ctx.ui.notify("Set RIDDIM_STATE_DIR before starting Pi", "error"); return; }
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = null;

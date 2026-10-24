@@ -27,6 +27,7 @@ class PiNativeStartupTest < Minitest::Test
     PiStallLab::LabServer.config(@home, @server.addr[1])
     @processes = []
     @events = []
+    @shim = install_supervise_dependencies
   end
 
   def teardown
@@ -50,13 +51,14 @@ class PiNativeStartupTest < Minitest::Test
     out
   end
 
-  def start_pi(cwd: @checkout, state: nil, actor: nil, trust: true)
+  def start_pi(cwd: @checkout, state: nil, actor: nil, trust: true, extra_args: [])
     env = { 'PI_CODING_AGENT_DIR' => @home, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => state, 'RIDDIM_ACTOR' => actor, 'RIDDIM_SUPERVISE' => nil }
+            'RIDDIM_STATE_DIR' => state, 'RIDDIM_ACTOR' => actor, 'RIDDIM_SUPERVISE' => nil,
+            'PATH' => @shim }
     process = Bundler.with_unbundled_env do
-      Open3.popen3(env, 'pi', trust ? '--approve' : '--no-approve', '--mode', 'rpc', '--no-tools', '--no-skills',
+      Open3.popen3(env, @real_pi, trust ? '--approve' : '--no-approve', '--mode', 'rpc', '--no-tools', '--no-skills',
                    '--no-prompt-templates', '--no-context-files', '--model', 'stall-lab/test',
-                   '--thinking', 'off', chdir: cwd)
+                   '--thinking', 'off', *extra_args, chdir: cwd)
     end
     @processes << process
     process
@@ -67,7 +69,7 @@ class PiNativeStartupTest < Minitest::Test
     input.puts JSON.generate(type: type, id: type, **payload)
     Timeout.timeout(20) do
       loop do
-        row = JSON.parse(output.gets || raise('Pi exited'))
+        row = JSON.parse(output.gets || raise("Pi exited: #{process[2].read}"))
         @events << row
         return row if row['type'] == 'response' && row['id'] == type
       end
@@ -148,9 +150,11 @@ class PiNativeStartupTest < Minitest::Test
     wait_for_ready(owner)
     contender = start_pi
     response(contender, 'get_state')
-    socket = Timeout.timeout(20) { PiStallLab::LabServer.receive_request(@server) }
-    PiStallLab::LabServer.send_ok(socket)
-    socket.close
+    body = model_request
+
+    refute_includes body.to_s, 'You coordinate Riddim'
+    assert_includes body.to_s, 'Do not supervise or start workers'
+    refute_includes @events.to_s, 'Riddim watcher ready'
     response(contender, 'get_state')
 
     assert_includes @events.to_s, 'Riddim watcher FAILED'
@@ -163,6 +167,39 @@ class PiNativeStartupTest < Minitest::Test
     refute watcher_locked?(@state), 'contender took over the released watcher lock'
   end
 
+  def test_missing_herdr_is_refused_before_state_or_watcher_initialization
+    File.unlink(File.join(@shim, 'herdr'))
+    process = start_pi
+    response(process, 'get_state')
+
+    assert_includes @events.to_s, 'Herdr is not reachable in session'
+    refute_path_exists File.join(@checkout, 'state')
+    process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
+    body = model_request
+
+    refute_includes body.to_s, 'You coordinate Riddim'
+    assert_includes body.to_s, 'Do not supervise or start workers'
+  end
+
+  def test_stopped_herdr_is_refused_before_state_or_watcher_initialization
+    File.write(@herdr_status, 'stopped')
+    process = start_pi
+    response(process, 'get_state')
+
+    assert_includes @events.to_s, 'Herdr server is not running'
+    refute_path_exists File.join(@checkout, 'state')
+  end
+
+  def model_request
+    socket = Timeout.timeout(20) { PiStallLab::LabServer.accept_http_request(@server) }
+    JSON.parse(PiStallLab::LabServer.read_body(socket))
+  ensure
+    if socket
+      PiStallLab::LabServer.send_ok(socket)
+      socket.close
+    end
+  end
+
   def test_symlinked_selected_state_is_refused
     real = File.join(@root, 'real-state')
     Dir.mkdir(real)
@@ -173,15 +210,40 @@ class PiNativeStartupTest < Minitest::Test
 
     assert_includes @events.to_s, 'native startup FAILED'
     refute_path_exists File.join(real, '.notification-watcher.lock')
+    response(process, 'prompt', message: '/riddim-watch-arm')
+
+    assert_includes @events.to_s, 'use /reload or restart Pi'
+    refute_includes @events.to_s, 'Riddim watcher ready'
+    File.unlink(selected)
+    process.first.close
+
+    assert process.last.join(8), 'failed bootstrap process did not shut down'
+    @state = selected
+    wait_for_ready(start_pi(state: selected))
+
+    assert watcher_locked?(selected), 'restart did not retry bootstrap after the path was repaired'
+  end
+
+  def test_legacy_supervise_without_marker_does_not_duplicate_contract
+    @state = File.join(@root, 'selected-state')
+    args = ['-e', File.join(@checkout, '.pi/extensions/riddim-notifications.ts'),
+            '--append-system-prompt', File.join(@checkout, 'docs/supervisor.md')]
+    process = start_pi(state: @state, extra_args: args)
+    wait_for_ready(process)
+    process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
+    body = model_request
+
+    assert_equal 1, body.to_s.scan('You coordinate Riddim').size
   end
 
   def test_existing_supervise_uses_one_watcher_with_native_discovery_enabled
     @state = File.join(@root, 'selected-state')
-    shim = install_supervise_dependencies
+    alias_root = File.join(@root, 'alias')
+    File.symlink(@checkout, alias_root)
     env = { 'PI_CODING_AGENT_DIR' => @home, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => "#{shim}:#{ENV.fetch('PATH')}" }
+            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => @shim }
     process = Bundler.with_unbundled_env do
-      Open3.popen3(env, File.join(@checkout, 'bin/riddim'), 'supervise', chdir: @checkout)
+      Open3.popen3(env, File.join(alias_root, 'bin/riddim'), 'supervise', chdir: alias_root)
     end
     @processes << process
     wait_for_ready(process)
@@ -190,20 +252,30 @@ class PiNativeStartupTest < Minitest::Test
     assert_equal 1, children.size
     assert watcher_locked?(@state)
     refute_path_exists File.join(@checkout, 'state')
+    process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
+    body = model_request
+
+    assert_equal 1, body.to_s.scan('You coordinate Riddim').size
   end
 
   def install_supervise_dependencies
     shim = File.join(@root, 'bin')
     Dir.mkdir(shim)
-    real_pi = run!('which', 'pi').strip
+    @real_pi = run!('which', 'pi').strip
+    %w[ruby git bash sh node].each do |command|
+      File.symlink(run!('which', command).strip, File.join(shim, command))
+    end
     File.write(File.join(shim, 'pi'), <<~SH)
       #!/bin/sh
-      exec "#{real_pi}" "$@" --approve --mode rpc --no-tools --no-skills --no-prompt-templates --no-context-files --model stall-lab/test --thinking off
+      exec "#{@real_pi}" "$@" --approve --mode rpc --no-tools --no-skills --no-prompt-templates --no-context-files --model stall-lab/test --thinking off
     SH
-    File.write(File.join(shim, 'herdr'), <<~SH)
-      #!/bin/sh
-      echo '{"client":{"protocol":14,"version":"0.8.0"},"server":{"running":true,"version":"0.8.0"}}'
-    SH
+    @herdr_status = File.join(@root, 'herdr-status')
+    File.write(@herdr_status, 'running')
+    File.write(File.join(shim, 'herdr'), <<~RUBY)
+      #!#{RbConfig.ruby}
+      running = File.read(#{@herdr_status.dump}).strip == 'running'
+      puts %({"client":{"protocol":14,"version":"0.8.0"},"server":{"running":\#{running},"version":"0.8.0"}})
+    RUBY
     %w[pi herdr].each { |name| File.chmod(0o700, File.join(shim, name)) }
     shim
   end

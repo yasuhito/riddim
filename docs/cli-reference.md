@@ -40,7 +40,11 @@ configured profile. Explicit `RIDDIM_STATE_DIR` overrides remain effective.
 Linked task worktrees and all nonempty `RIDDIM_ACTOR` values are excluded.
 A live owner is never taken over; watcher readiness, bounded recovery and exact
 notification acknowledgement retain their existing contracts. Initial trust and
-runtime dependencies are not bypassed. Startup does not spawn workers.
+runtime dependencies are not bypassed. Native startup verifies the selected Herdr
+client/server before preparing state or starting the watcher. Startup does not spawn workers.
+If native bootstrap fails, fix the reported prerequisite and use `/reload` or restart
+Pi from the same checkout. `/riddim-watch-arm` repairs a watcher after bootstrap;
+it cannot rerun a failed bootstrap.
 
 For a different target project, retain the explicit entrypoint:
 

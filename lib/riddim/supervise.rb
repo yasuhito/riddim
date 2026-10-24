@@ -72,17 +72,22 @@ module Riddim
     # never a task worktree or a caller-selected working directory.
     def native_environment(cwd)
       return if ENV.fetch('RIDDIM_ACTOR', '') != ''
-      return unless File.realpath(cwd) == File.realpath(RuntimePaths::ROOT)
-
-      root = File.realpath(RuntimePaths::ROOT)
-      return unless RuntimePaths.git_path(root, '--show-toplevel') == root
-      return unless RuntimePaths.git_path(root, '--absolute-git-dir') ==
-                    RuntimePaths.git_path(root, '--path-format=absolute', '--git-common-dir')
+      return unless primary_checkout?(cwd)
 
       validate_resources!
+      verify_herdr!
       state_dir = File.expand_path(Ownership.state_dir)
       prepare_state_dir!(state_dir)
       launch_environment(state_dir)
+    end
+
+    def primary_checkout?(cwd)
+      root = File.realpath(RuntimePaths::ROOT)
+      return false unless File.realpath(cwd) == root
+
+      RuntimePaths.git_path(root, '--show-toplevel') == root &&
+        RuntimePaths.git_path(root, '--absolute-git-dir') ==
+          RuntimePaths.git_path(root, '--path-format=absolute', '--git-common-dir')
     end
 
     def launch_environment(state_dir)
@@ -103,6 +108,6 @@ module Riddim
 
     private_class_method :validate_resources!, :prepare_state_dir!, :verify_herdr!, :herdr_failure_detail,
                          :unreachable_herdr_message, :resolve_pi_executable,
-                         :launch_environment, :launch_arguments
+                         :primary_checkout?, :launch_environment, :launch_arguments
   end
 end
