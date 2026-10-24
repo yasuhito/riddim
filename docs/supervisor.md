@@ -45,8 +45,12 @@ riddim notifications scan
 ```
 
 Check the notification's worker name and generation against the scan result. Read the
-worker's report and any evidence needed to understand it. Follow up with the worker or the
-human as needed. Reserved sequence `0` (`unreported-idle` or `unreported-stop`) is an
+worker's report and any evidence needed to understand it. Use existing report/result
+evidence when it suffices rather than reading the pane for every report. Use
+`riddim peek <name>` (the last 40 lines by default) when a report is ambiguous, to diagnose
+a stop or block, or to inspect unreported attention. Request more lines with
+`riddim peek <name> <lines>` only if the default tail is insufficient. Follow up with the
+worker or the human as needed. Reserved sequence `0` (`unreported-idle` or `unreported-stop`) is an
 attention observation, not a Worker claim: inspect the worker and unlanded work. It
 authorizes neither restart nor cleanup. Both kinds share one attention slot per
 generation; acknowledging it does not consume later Worker reports. A notification is not a report, and neither is human approval.
