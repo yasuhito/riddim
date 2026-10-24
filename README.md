@@ -1,5 +1,7 @@
 # Riddim
 
+English | [日本語](README.ja.md)
+
 Riddim lets you ask a [Pi](https://pi.dev) supervisor to delegate coding work
 in [Herdr](https://github.com/herdrdev/herdr). Workers edit and commit in
 separate Git worktrees. The supervisor coordinates them, reviews their work,
