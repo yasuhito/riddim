@@ -11,6 +11,12 @@ require_relative '../scripts/pi_stall_server'
 class PiWorkerStartupTest < Minitest::Test
   SOURCE = File.expand_path('..', __dir__)
 
+  def setup
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
+  end
+
   # rubocop:disable-next Metrics/MethodLength
   def prepare_project(root)
     project = File.join(root, 'project')

@@ -190,3 +190,16 @@ mise install
 bundle install
 bundle exec rake
 ```
+
+The real-Pi notification and worker-startup tests run automatically when `pi`
+is available on PATH, using isolated Pi configuration and a loopback model
+without credentials. They report skips when Pi is absent, including in the
+Ruby-only CI job; the remaining tests still run. To verify the startup
+lock-collision regression with Pi installed, run:
+
+```sh
+bundle exec ruby -Itest test/pi_worker_startup_test.rb --verbose
+```
+
+Expect 1 test, 11 assertions and no skips. A skipped test does not verify real
+Pi startup.
