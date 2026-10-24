@@ -16,6 +16,13 @@ Start a worker only with a task file and the local-only delivery mode:
 riddim start <name> --worktree --task-file <path> --mode local-only
 ```
 
+New workers for every target project live at
+`<parent-of-primary-riddim>/.riddim-worktrees/<project>-<repository-id>/<name>/`,
+outside the Riddim repository so its project instructions do not leak into workers.
+A linked Riddim CLI resolves storage beside that primary installation, not its own worktree.
+Use the recorded `project` and `worktree` paths for existing workers, including
+older sibling worktrees. Never move them to match the current default.
+
 Keep the task file outside the project checkout. Give the worker a bounded task and tell it
 to report through Riddim. Do not ask a worker to push, open a pull request, or land its work.
 
