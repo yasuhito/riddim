@@ -30,6 +30,33 @@ Feature: Start a Pi worker in an isolated Git worktree
       """
     Then the primary runtime remains clean with central workers outside it
 
+  Scenario Outline: Use the actual primary installation with relocated Git metadata
+    Given Riddim runs from a "<layout>" primary installation
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the worker lives in the central runtime without changing the target parent
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | submodule        |
+
+  Scenario Outline: Refuse an ambiguous linked runtime before allocating a worker
+    Given Riddim runs from a "<layout>" primary installation
+    And Riddim is invoked from its linked runtime
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the ambiguous runtime is refused without worker assets in Git metadata
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | submodule        |
+
   Scenario: Linked target checkouts share the repository's central identity
     Given the target is accessed through a linked checkout
     When I run riddim with:
