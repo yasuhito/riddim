@@ -69,6 +69,33 @@ Given('the target is accessed through a linked checkout') do
   @working_directory = linked
 end
 
+Given('the target is a linked checkout with {string} metadata') do |layout|
+  parent = new_temporary_directory
+  @target_common = File.join(parent, 'target.git')
+  if layout == 'separate-git-dir'
+    central_git!(@project, 'init', '-q', '--separate-git-dir', @target_common)
+  else
+    central_git!(parent, 'clone', '--bare', '-q', @project, @target_common)
+  end
+  @working_directory = File.join(new_temporary_directory, 'linked-target')
+  source = layout == 'bare' ? @target_common : @project
+  central_git!(source, 'worktree', 'add', '-qb', 'target-source', @working_directory)
+  @target_head = central_git!(@working_directory, 'rev-parse', 'HEAD')
+  @target_worktrees = central_git!(@target_common, 'worktree', 'list', '--porcelain')
+end
+
+Then('the ambiguous linked target is refused before creating any worker assets') do
+  storage = File.join(File.dirname(@runtime), '.riddim-worktrees')
+  branch_exists = Open3.capture3('git', '-C', @target_common, 'show-ref', '--verify', '--quiet',
+                                 'refs/heads/riddim/worker').last.success?
+  assert_equal [1, true, false, false, true, false, @target_head, @target_worktrees],
+               [@status.exitstatus, @stderr.include?('unsupported linked Git layout'),
+                File.exist?(storage), File.exist?(scenario_record_path('worker')),
+                herdr_invocations.none? { |line| line.include?('workspace create') }, branch_exists,
+                central_git!(@working_directory, 'rev-parse', 'HEAD'),
+                central_git!(@target_common, 'worktree', 'list', '--porcelain')], @stderr
+end
+
 Given('the central storage has an unsafe {string}') do |kind|
   @untouched = new_temporary_directory
   File.write(File.join(@untouched, 'keep'), 'unchanged')
