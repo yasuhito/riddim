@@ -88,15 +88,28 @@ class NotificationSessionRaceTest < Minitest::Test
     run_scenario('notification_home_replacement.mjs', expected: [], marker: 'RIDDIM_CORRUPT_LOCK')
   end
 
+  def refuse_live_herdr(root)
+    bin = File.join(root, 'bin')
+    Dir.mkdir(bin)
+    File.write(File.join(bin, 'herdr'), <<~RUBY)
+      #!#{RbConfig.ruby}
+      File.write(#{File.join(root, 'unexpected-herdr').dump}, ARGV.join(' '))
+      abort 'notification lifecycle fixture must not contact live Herdr'
+    RUBY
+    File.chmod(0o700, File.join(bin, 'herdr'))
+    "#{bin}:#{ENV.fetch('PATH')}"
+  end
+
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-  def run_scenario(script, expected:, marker: nil, backend: nil)
+  def run_scenario(script, expected:, marker: nil, backend: 'notification_stop_backend')
     Dir.mktmpdir('riddim-session-race-') do |root|
       state = File.join(root, 'state')
       FileUtils.mkdir_p(state)
       status_path = File.join(state, "worker.#{GEN}.status")
       File.write(status_path, '', perm: 0o600)
       write_notification_worker(state, GEN)
-      env = { 'RIDDIM_ACTOR' => nil, 'RIDDIM_STATE_DIR' => state, 'RIDDIM_STATUS_PATH' => status_path,
+      env = { 'PATH' => refuse_live_herdr(root),
+              'RIDDIM_ACTOR' => nil, 'RIDDIM_STATE_DIR' => state, 'RIDDIM_STATUS_PATH' => status_path,
               'RIDDIM_FIRST_ID' => "worker.#{GEN}.1",
               'RIDDIM_EXTENSION' => File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__) }
       env[marker] = '1' if marker
@@ -107,12 +120,12 @@ class NotificationSessionRaceTest < Minitest::Test
 
       assert_predicate result, :success?, "#{output}\n#{error}"
       pending, scan_error, scan_status = Bundler.with_unbundled_env do
-        Open3.capture3({ 'RIDDIM_STATE_DIR' => state }, File.expand_path('../bin/riddim', __dir__),
-                       'notifications', 'scan')
+        Open3.capture3(env, File.expand_path('../bin/riddim', __dir__), 'notifications', 'scan')
       end
 
       assert_predicate scan_status, :success?, scan_error
       assert_equal(expected, JSON.parse(pending).map { |entry| entry.fetch('id') })
+      refute_path_exists File.join(root, 'unexpected-herdr')
     end
   end
 end
