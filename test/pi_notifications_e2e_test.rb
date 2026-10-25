@@ -226,7 +226,9 @@ class PiNotificationsE2ETest < Minitest::Test
     end
     reporter = Process.detach(pid)
 
-    assert reporter.join(1), 'a hung observation held the Worker report lock for over one second'
+    # This includes Ruby/Git startup, not just the observer's half-second lock budget.
+    # Stay well below the injected 60-second hang without a one-second scheduling race.
+    assert reporter.join(5), 'a hung observation blocked Worker report progress'
     assert_predicate reporter.value, :success?, File.read(diagnostic)
     assert_includes notification.to_s, "worker.#{GEN}.1"
     socket = request
