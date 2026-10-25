@@ -541,6 +541,12 @@ at `~/Work/riddim` uses `~/Work/.riddim-worktrees`. Without Git metadata, Riddim
 `.riddim-worktrees` beside its installation directory. Neither the target project
 nor config/state overrides select the storage root.
 
+A primary installation with submodule or separate Git metadata uses its actual
+checkout directory, not the Git admin directory. For a linked runtime or target,
+Riddim must verify the listed primary path as a working checkout of the same repository.
+Ambiguous layouts, including linked checkouts with relocated primary Git metadata,
+refuse before allocation rather than guessing a storage path inside Git metadata.
+
 The project label is the primary target checkout's basename (sanitized and capped
 at 64 characters). The repository ID is the full SHA-256 of the canonical absolute
 Git common-directory path: linked checkouts share an identity; separate local
