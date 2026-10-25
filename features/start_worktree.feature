@@ -65,6 +65,19 @@ Feature: Start a Pi worker in an isolated Git worktree
       """
     Then the worker lives in the central runtime without changing the target parent
 
+  Scenario Outline: Refuse ambiguous linked targets before allocating a worker
+    Given the target is a linked checkout with "<layout>" metadata
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the ambiguous linked target is refused before creating any worker assets
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | bare             |
+
   Scenario Outline: Refuse unsafe central storage without touching other paths
     Given the central storage has an unsafe "<kind>"
     When I run riddim with:
