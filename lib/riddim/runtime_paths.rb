@@ -31,6 +31,22 @@ module Riddim
     end
 
     def primary_checkout(root)
+      # Git's first worktree-list row can name relocated metadata, not a checkout.
+      common = git_path(root, '--path-format=absolute', '--git-common-dir')
+      return git_path(root, '--show-toplevel') if git_path(root, '--absolute-git-dir') == common
+
+      candidate = listed_primary(root)
+      return candidate if verified_primary?(candidate, common)
+
+      raise Error, "cannot locate verified primary checkout for #{root}; unsupported linked Git layout"
+    end
+
+    def verified_primary?(candidate, common)
+      candidate != common && git_path(candidate, '--show-toplevel') == candidate &&
+        git_path(candidate, '--absolute-git-dir') == common
+    end
+
+    def listed_primary(root)
       stdout, stderr, status = Open3.capture3(GIT_ENV, 'git', '-C', root, 'worktree', 'list', '--porcelain', '-z')
       first = stdout.split("\0", 2).first
       unless status.success? && first&.start_with?('worktree ')

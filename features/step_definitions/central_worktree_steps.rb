@@ -22,9 +22,45 @@ Given('Riddim runs from a linked runtime checkout') do
   central_git!(@runtime, 'init', '-q')
   central_git!(@runtime, 'add', '.')
   central_git!(@runtime, 'commit', '-qm', 'runtime')
+  step 'Riddim is invoked from its linked runtime'
+end
+
+Given('Riddim is invoked from its linked runtime') do
+  @runtime_common = central_git!(@runtime, 'rev-parse', '--path-format=absolute', '--git-common-dir')
   linked = File.join(new_temporary_directory, 'linked-runtime')
   central_git!(@runtime, 'worktree', 'add', '-qb', 'runtime-worker', linked)
   @riddim_cli = File.join(linked, 'bin', 'riddim')
+end
+
+Given('Riddim runs from a {string} primary installation') do |layout|
+  if layout == 'separate-git-dir'
+    admin = File.join(new_temporary_directory, 'runtime.git')
+    central_git!(@runtime, 'init', '-q', '--separate-git-dir', admin)
+  else
+    central_git!(@runtime, 'init', '-q')
+  end
+  central_git!(@runtime, 'add', '.')
+  central_git!(@runtime, 'commit', '-qm', 'runtime')
+  prepare_submodule_runtime if layout == 'submodule'
+  @riddim_cli = File.join(@runtime, 'bin', 'riddim')
+  @worktree = central_worker_path(@project)
+end
+
+def prepare_submodule_runtime
+  superproject = File.join(new_temporary_directory, 'superproject')
+  Dir.mkdir(superproject)
+  central_git!(superproject, 'init', '-q')
+  central_git!(superproject, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', @runtime, 'riddim')
+  central_git!(superproject, 'commit', '-qm', 'runtime submodule')
+  @runtime = File.join(superproject, 'riddim')
+end
+
+Then('the ambiguous runtime is refused without worker assets in Git metadata') do
+  wrong_root = File.join(File.dirname(@runtime_common), '.riddim-worktrees')
+  assert_equal [1, true, false, false, false, true],
+               [@status.exitstatus, @stderr.include?('cannot locate verified primary checkout'),
+                File.exist?(@worktree), File.exist?(wrong_root), File.exist?(scenario_record_path('worker')),
+                herdr_invocations.none? { |line| line.include?('workspace create') }], @stderr
 end
 
 Given('the target is accessed through a linked checkout') do
