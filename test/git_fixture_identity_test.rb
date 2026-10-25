@@ -16,12 +16,13 @@ class GitFixtureIdentityTest < Minitest::Test
         'GIT_AUTHOR_NAME' => nil, 'GIT_AUTHOR_EMAIL' => nil,
         'GIT_COMMITTER_NAME' => nil, 'GIT_COMMITTER_EMAIL' => nil, 'EMAIL' => nil
       }
-      output, status = Bundler.with_unbundled_env do
-        Open3.capture2e(environment, RbConfig.ruby, '-rbundler/setup', Gem.bin_path('cucumber', 'cucumber'),
-                        'features/discard.feature', '--name',
-                        '^Dirty inspection presents a reviewable exact inventory$', '--format', 'progress',
-                        chdir: File.expand_path('..', __dir__))
-      end
+      # Keep Bundler's original environment so unbundled CLI subprocesses do not
+      # inherit vendored native gems built for a different Ruby than their shebang.
+      output, status = Open3.capture2e(
+        environment, RbConfig.ruby, '-rbundler/setup', Gem.bin_path('cucumber', 'cucumber'),
+        'features/discard.feature', '--name', '^Dirty inspection presents a reviewable exact inventory$',
+        '--format', 'progress', chdir: File.expand_path('..', __dir__)
+      )
 
       assert_equal [true, true], [status.success?, output.include?('1 scenario (1 passed)')], output
     end
