@@ -106,6 +106,34 @@ and repository publication procedures; routine follow-through cannot bypass thei
 Routine review, investigation, answers, waits and steering stay visible in outcome reports
 without redundant human gates. Reports and notification acknowledgements grant no new permission.
 
+## Bounded waiting
+
+For normal builds, tests and external waits, use one foreground command with an explicit
+outer tool timeout sized for known runtime and within the harness limit. Full Riddim
+validation has exceeded 500 seconds; a 900-second outer budget is appropriate, not a
+change to test deadlines, retries or skips. Where policy permits a blocking wait, bound
+its own hold below the outer timeout. Do not fragment waiting into repeated sleep/check
+model turns or background a command just to poll it. Existing worker notifications remain
+asynchronous: end the turn when awaiting a worker report, without polling its inbox or activity.
+
+An outer tool-command timeout alone proves neither test/CI failure nor a human decision.
+Inspect actual output and the precise owned processes, artifacts or remote operation after
+an interruption; preserve evidence outside the checkout before another invocation. Diagnose
+real failures, including invocation/configuration errors. Do not assume timeout cancelled
+work or duplicate a mutation, dispatch or answer. Reattach to an existing operation only
+where supported and authorized; otherwise retain it and report the precise uncertainty.
+
+Repository-specific restrictions take precedence: Riddim's own PR procedure allows bounded
+CI inspection, not automatic workflow watchers or retries. Still-pending checks remain
+pending and block merging, not a new human-decision gate or evidence of green/approval.
+Report a temporary wait once when useful, then give outcome updates rather than waiting
+chatter. End the turn for a genuine human decision; do not poll for the answer.
+
+This is a smaller subset of Firstmate's optional `config/wait-no-turns` policy in
+`bin/fm-brief.sh` (worker/scout briefs) and `bin/fm-dod-lib.sh` (foreground pipeline drive):
+bounded foreground holds, decision waits without turns, and no double submission. It adds
+no Firstmate pipeline, wait flag, watcher, retry mechanism or new permission to Riddim.
+
 ## Review, land, and retire
 
 For a worker's completion claim, inspect readiness before attempting a merge:
