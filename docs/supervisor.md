@@ -22,8 +22,8 @@ to report through Riddim. Do not ask a worker to push, open a pull request, or l
 Use `riddim fleet` to review the recorded workers. Use `riddim busy-state <name>` to inspect
 Pi activity and `riddim peek <name>` to read the exact pane's output. Activity is not
 completion. Use `riddim send <name> <message...>` to steer a worker. Use
-`riddim interrupt <name>` only when you need to cancel its current turn. An accepted message
-or interrupt is not a worker reply or proof of cancellation.
+`riddim interrupt <name>` under the [follow-through policy](#supervisor-owned-follow-through).
+An accepted message or interrupt is not a worker reply or proof of cancellation.
 
 Record observed CLI failures in [the operational backlog](operational-backlog.md)
 or an issue before moving on. Distinguish expected safety refusals from confirmed bugs.
@@ -50,7 +50,8 @@ evidence when it suffices rather than reading the pane for every report. Use
 `riddim peek <name>` (the last 40 lines by default) when a report is ambiguous, to diagnose
 a stop or block, or to inspect unreported attention. Request more lines with
 `riddim peek <name> <lines>` only if the default tail is insufficient. Follow up with the
-worker or the human as needed. Reserved sequence `0` (`unreported-idle` or `unreported-stop`) is an
+worker or the human under [supervisor-owned follow-through](#supervisor-owned-follow-through).
+Reserved sequence `0` (`unreported-idle` or `unreported-stop`) is an
 attention observation, not a Worker claim: inspect the worker and unlanded work. It
 authorizes neither restart nor cleanup. Both kinds share one attention slot per
 generation; acknowledging it does not consume later Worker reports. A notification is not a report, and neither is human approval.
@@ -75,6 +76,35 @@ original home for reports written during the outage, handle them, and ask the hu
 `/riddim-watch-arm`. Do not claim recovery until the extension confirms the watcher is ready.
 If either identity differs or cannot be verified, stop and explain that recovery is uncertain;
 never scan a replacement home as the original.
+
+## Supervisor-owned follow-through
+
+On notifications and fleet checks, carry out already-authorized review and investigation;
+answer worker questions from the task brief or recorded human instructions rather than
+asking the human to say continue. Use the [readiness procedure](#review-land-and-retire)
+for keyed answers and fresh completion evidence.
+
+For an explicitly reported temporary prerequisite, inspect whether that specific condition
+has cleared, such as a reported Unity process releasing a needed resource or a pending CI
+result becoming available. When verified clear, use `riddim send <name>` to steer continuation
+within the existing task. If still pending or unverifiable, report the wait and uncertainty
+without inventing a human decision. This is event-driven follow-through, not a periodic
+liveness loop or a CI watcher.
+
+For evidenced confusion or looping, inspect first, then use `riddim interrupt <name>` only
+with a safe corrective instruction sent through `riddim send <name>`. Slow tests, native idle,
+and unknown or stopped endpoints alone do not justify interruption, restart, or teardown.
+If safe steering cannot continue the task, retain work and report the precise blocker;
+Riddim has no relaunch API. This is a smaller subset of Firstmate's
+`.agents/skills/stuck-crewmate-recovery/SKILL.md` live-endpoint escalation and
+`bin/fm-branch-prompt.sh` routine-versus-captain handling: inspect, send, and evidenced interrupt
+only, not its recovery lifecycle.
+
+Legal consent, credentials or device unlock, publication authority, exact-head landing
+approval, and destructive changes remain human gates. Follow the existing review/landing
+and repository publication procedures; routine follow-through cannot bypass their safeguards.
+Routine review, investigation, answers, waits and steering stay visible in outcome reports
+without redundant human gates. Reports and notification acknowledgements grant no new permission.
 
 ## Review, land, and retire
 

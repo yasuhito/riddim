@@ -35,6 +35,28 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       | Report stopped, not retired                                                                                     |
       | Do not auto-stop active follow-up or unreported idle workers                                                      |
 
+  Scenario: Deliver supervisor-owned follow-through without expanding human authority
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then Pi receives supervisor follow-through instructions:
+      | instruction                                                                                                                                 |
+      | On notifications and fleet checks, carry out already-authorized review and investigation                                                    |
+      | answer worker questions from the task brief or recorded human instructions                                                                  |
+      | For an explicitly reported temporary prerequisite, inspect whether that specific condition has cleared                                      |
+      | a reported Unity process releasing a needed resource                                                                                        |
+      | When verified clear, use `riddim send <name>` to steer continuation within the existing task                                                |
+      | If still pending or unverifiable, report the wait and uncertainty without inventing a human decision                                        |
+      | This is event-driven follow-through, not a periodic liveness loop or a CI watcher                                                           |
+      | For evidenced confusion or looping, inspect first, then use `riddim interrupt <name>` only with a safe corrective instruction               |
+      | Slow tests, native idle, and unknown or stopped endpoints alone do not justify interruption, restart, or teardown                           |
+      | If safe steering cannot continue the task, retain work and report the precise blocker; Riddim has no relaunch API                           |
+      | Legal consent, credentials or device unlock, publication authority, exact-head landing approval, and destructive changes remain human gates |
+      | Follow the existing review/landing and repository publication procedures                                                                    |
+      | Routine review, investigation, answers, waits and steering stay visible in outcome reports without redundant human gates                    |
+      | Reports and notification acknowledgements grant no new permission                                                                           |
+
   Scenario: Select the repository state directory when no override is set
     Given no explicit Riddim state directory
     When I run riddim with:

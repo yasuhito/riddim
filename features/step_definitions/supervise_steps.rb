@@ -55,7 +55,7 @@ Then('Pi receives the supervisor launch arguments and selected state directory')
   assert_equal 0o700, pi_capture.fetch('state_dir_mode')
 end
 
-Then('Pi receives supervisor retirement instructions:') do |table|
+Then(/^Pi receives supervisor (?:retirement|follow-through) instructions:$/) do |table|
   prompt = pi_capture.fetch('supervisor_prompt').split.join(' ')
   table.hashes.each { |row| assert_includes prompt, row.fetch('instruction') }
 end
