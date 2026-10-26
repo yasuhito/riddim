@@ -29,22 +29,27 @@ class PiNativeStartupTest < Minitest::Test
     Dir.mkdir(@config)
     File.write(File.join(@config, 'agent-profile'), "pi stall-lab/test low\n")
     @processes = []
+    @streams = {}
     @events = []
     @shim = install_supervise_dependencies
   end
 
   def teardown
-    @processes&.reverse_each do |input, output, error, waiter|
-      input.close unless input.closed?
-      unless waiter.join(8)
-        Process.kill('TERM', waiter.pid)
-        waiter.join(5)
-      end
-      output.close
-      error.close
-    end
+    @processes&.reverse_each { |process| close_process(process) }
     @server&.close
     FileUtils.remove_entry(@root) if @root
+  end
+
+  def close_process(process)
+    input, output, error, waiter = process
+    input.close unless input.closed?
+    unless waiter.join(8)
+      Process.kill('TERM', waiter.pid)
+      raise "Test-owned Pi #{waiter.pid} did not stop after TERM" unless waiter.join(5)
+    end
+    @streams.fetch(waiter.pid).fetch(:readers).each(&:join)
+    output.close
+    error.close
   end
 
   def run!(*args)
@@ -67,16 +72,31 @@ class PiNativeStartupTest < Minitest::Test
                    '--no-prompt-templates', '--no-context-files', '--model', 'stall-lab/test',
                    '--thinking', 'off', *extra_args, chdir: cwd)
     end
+    record_process(process)
+  end
+
+  def record_process(process)
     @processes << process
+    _, output, error, waiter = process
+    queue = Queue.new
+    # Pi emits the full system prompt before HTTP dispatch. Consume both pipes
+    # continuously, including while the test waits on HTTP rather than RPC.
+    stdout = Thread.new do
+      output.each_line { |line| queue << line }
+    ensure
+      queue << nil
+    end
+    stderr = Thread.new { error.read }
+    @streams[waiter.pid] = { queue: queue, readers: [stdout, stderr] }
     process
   end
 
   def response(process, type, **payload)
-    input, output = process
-    input.puts JSON.generate(type: type, id: type, **payload)
+    process.first.puts JSON.generate(type: type, id: type, **payload)
+    queue = @streams.fetch(process.last.pid).fetch(:queue)
     Timeout.timeout(20) do
       loop do
-        row = JSON.parse(output.gets || raise("Pi exited: #{process[2].read}"))
+        row = JSON.parse(queue.pop || raise('Pi exited before its RPC response'))
         @events << row
         return row if row['type'] == 'response' && row['id'] == type
       end
@@ -251,7 +271,7 @@ class PiNativeStartupTest < Minitest::Test
     process = Bundler.with_unbundled_env do
       Open3.popen3(env, File.join(alias_root, 'bin/riddim'), 'supervise', chdir: alias_root)
     end
-    @processes << process
+    record_process(process)
     wait_for_ready(process)
     children = File.read("/proc/#{process.last.pid}/task/#{process.last.pid}/children").split
 
@@ -306,11 +326,10 @@ class PiNativeStartupTest < Minitest::Test
     assert_equal '[]', result.dig('data', 'output').strip
     assert_equal 0o700, File.stat(@state).mode & 0o777
     process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
-    socket = Timeout.timeout(20) { PiStallLab::LabServer.accept_http_request(@server) }
-    body = JSON.parse(PiStallLab::LabServer.read_body(socket))
+    body = model_request
 
-    assert_includes body.to_s, 'You coordinate Riddim'
-    PiStallLab::LabServer.send_ok(socket)
-    socket.close
+    system_prompt = body.fetch('messages').find { |message| message.fetch('role') == 'system' }.fetch('content')
+
+    assert_includes system_prompt, File.read(File.join(SOURCE, 'docs/supervisor.md'))
   end
 end

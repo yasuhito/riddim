@@ -55,6 +55,11 @@ Then('Pi receives the supervisor launch arguments and selected state directory')
   assert_equal 0o700, pi_capture.fetch('state_dir_mode')
 end
 
+Then('Pi receives supervisor retirement instructions:') do |table|
+  prompt = pi_capture.fetch('supervisor_prompt').split.join(' ')
+  table.hashes.each { |row| assert_includes prompt, row.fetch('instruction') }
+end
+
 Then('Pi receives the supervisor launch arguments and default state directory') do
   assert_equal expected_supervisor_arguments, pi_capture.fetch('argv')
   assert_equal @default_state_dir, pi_capture.fetch('state_dir')
@@ -144,7 +149,9 @@ def fake_pi_script
     state_dir = ENV.fetch('RIDDIM_STATE_DIR')
     riddim = ENV.fetch('PATH').split(':').map { |dir| File.join(dir, 'riddim') }
                 .find { |path| File.file?(path) && File.executable?(path) }
+    prompt_path = ARGV.fetch(ARGV.index('--append-system-prompt') + 1)
     File.write(ENV.fetch('PI_CAPTURE'), JSON.generate(argv: ARGV, state_dir: state_dir, riddim: riddim,
+                                                       supervisor_prompt: File.read(prompt_path),
                                                        state_dir_mode: File.stat(state_dir).mode & 0o777))
     File.write(ENV.fetch('PI_STARTED'), 'started')
   RUBY

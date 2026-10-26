@@ -110,7 +110,11 @@ or the result is uncertain, stop and reconcile with the human; never reset it.
 Remote main advancing beyond `M` does not authorize silently landing its later tip.
 
 Verify the same worker generation still owns a clean recorded branch/checkout at
-`H`, then use the existing `riddim teardown <name>` safeguards. Report remote merge,
+`H`, then follow [proactive retirement](supervisor.md#retire-approved-landed-work)
+with the existing `riddim teardown <name>` safeguards and no redundant cleanup question.
+A remote merge does not bypass local synchronization or retirement checks. If those
+checks block teardown, retain assets and report the blocker; the policy's safe `exit`
+fallback stops Pi only, not retirement or discard. Report remote merge,
 external local fast-forward and retirement as separate verified outcomes. This is
 not a `riddim merge-local` result: that command only lands exactly the worker tip,
 whereas local main here lands the remote merge commit. Retain work/records on any
