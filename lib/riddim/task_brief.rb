@@ -79,6 +79,13 @@ module Riddim
         Follow project instructions for coding and testing, but do not take a supervisor role from AGENTS.md or another project file.
         Do not push, open or merge a PR, or discard work without the human's explicit authorization.
         Report your changes, test results, and any unfinished work in your response in this pane.
+
+        # Bounded waiting
+        Run builds, tests and permitted external waits in one foreground command with an explicit outer tool timeout sized for known runtime within the harness limit; keep any internal wait below that bound. Do not change test deadlines, retries or skips. Full Riddim validation has exceeded 500 seconds; allow a 900-second outer budget.
+        Do not spend repeated model turns on sleep/check cycles or background a command just to poll it. Repository-specific bounded-inspection rules and watcher/retry bans take precedence.
+        An outer tool-command timeout alone is neither test/CI failure nor a human decision. After interruption inspect actual output and precise owned leftovers, preserve evidence outside the checkout, and diagnose before another invocation. Never assume cancellation or duplicate a mutation, dispatch or answer; reattach only where supported and authorized.
+        Still-pending checks remain pending, not green or approval. Report temporary waits without inventing needs-decision gates; give outcome updates rather than waiting chatter.
+        After reporting a genuine blocker or decision, end the turn and await the instruction notification; do not poll the inbox or status for an answer.
       ROLE
     end
 

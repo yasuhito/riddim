@@ -50,6 +50,11 @@ Task/publication authority is not merge approval and does not authorize pushing
 Inspect the live PR (`gh pr view <number> --repo yasuhito/riddim --json
 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup`)
 and its latest workflow/check runs, not just a cached green summary.
+Use bounded inspection under the [waiting discipline](supervisor.md#bounded-waiting),
+not `gh pr checks --watch`, polling loops or automatic workflow retries. Normal CI
+runtime or a short inspection timeout does not create a human decision: retain pending
+checks as pending, report the wait once, and end the turn if no other authorized work
+remains. Reinspect on relevant follow-up; do not spend repeated turns sleeping/checking.
 
 - Require the expected CI from the reviewed `.github/workflows/ci.yml` to exist.
   Currently this is the `CI` workflow's `test` job running `bundle exec rake` on PRs.

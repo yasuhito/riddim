@@ -281,7 +281,11 @@ class PiNativeStartupTest < Minitest::Test
     process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
     body = model_request
 
-    assert_equal 1, body.to_s.scan('You coordinate Riddim').size
+    system_prompt = body.fetch('messages').find { |message| message.fetch('role') == 'system' }.fetch('content')
+
+    assert_equal [1, true],
+                 [body.to_s.scan('You coordinate Riddim').size,
+                  system_prompt.include?(File.read(File.join(SOURCE, 'docs/supervisor.md')))]
   end
 
   def test_existing_supervise_does_not_hide_missing_isolated_profile
