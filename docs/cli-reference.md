@@ -43,8 +43,9 @@ notification acknowledgement retain their existing contracts. Initial trust and
 runtime dependencies are not bypassed. Native startup verifies the selected Herdr
 client/server before preparing state or starting the watcher. Startup does not spawn workers.
 If native bootstrap fails, fix the reported prerequisite and use `/reload` or restart
-Pi from the same checkout. `/riddim-watch-arm` repairs a watcher after bootstrap;
-it cannot rerun a failed bootstrap.
+Pi from the same checkout while idle, not streaming or compacting. Reload reruns startup;
+it does not repair prerequisites or ownership. Verify original home/lock evidence before
+[manual watcher recovery](#drain-and-acknowledge-local-only-reports).
 
 For a different target project, retain the explicit entrypoint:
 
@@ -706,7 +707,7 @@ For opt-in Supervisor Pi follow-ups, start Pi with an explicitly selected
 `RIDDIM_STATE_DIR` and load `.pi/extensions/riddim-notifications.ts` (as a
 trusted project extension or with `pi -e`). Only an unmarked operator activates
 supervision; every nonempty `RIDDIM_ACTOR`, including the launcher's `branch`,
-disables supervisor callbacks and repair commands before startup. It binds one
+disables supervisor callbacks before startup. It binds one
 observer per home, reconciles actionable reports and stop observations, and sends stable notification IDs, source home
 and watcher-lock identities, and handling instructions via Pi's
 non-interrupting `followUp` API. The extension checks a fresh successor, the
@@ -716,15 +717,21 @@ at most three automatic retries per session, with 250/500/1000 ms backoff. Retri
 require the original home and lock identities, retire the old child first, and
 verify fresh successor readiness. Successful recovery is quiet; exhausted retries
 or ambiguous ownership alert the supervisor. A contested initial arm or changed
-home/lock is never taken over automatically. Explicit repair resets the retry
+home/lock is never taken over automatically. Pi reload replaces the runtime and retry
 budget. Failed handling-successor startup still alerts with the pending report
 rather than withholding it.
 Before scanning after a failure, verify the original selected home and watcher
 lock; actionable follow-ups include their identities. If either changed,
 recover reports from the original home manually; never scan the replacement as
 though it were the source. Otherwise run `notifications scan` to inspect reports
-written during downtime. Repair the selected home or competing watcher before
-using `/riddim-watch-arm`; a refused arm is not a healthy watcher. If Pi cannot
+written during downtime. Only after verifying BOTH original identities and pending evidence,
+repair prerequisites and ask the human to use Pi's built-in `/reload` while idle, not streaming
+or compacting. Reload awaits shutdown, reloads resources and runs session startup; it forgets
+in-memory bindings and binds current paths. It cannot repair replaced home/lock, changed
+ownership, invalid bootstrap, Herdr failure or another owner. Mismatched or unknown identities
+require stopping and recovering the original source, never scanning a replacement as original.
+Verify fresh watcher readiness before claiming recovery. This removes Firstmate's optional
+manual-arm convenience, not its automatic continuity safety contract. If Pi cannot
 deliver a failure follow-up, inspect Pi stderr and drain manually. After
 handling, drain with `notifications scan` and acknowledge individual presented
 IDs. Pi accepting or consuming a follow-up never acknowledges it. Session

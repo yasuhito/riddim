@@ -165,9 +165,9 @@ class PiNativeStartupTest < Minitest::Test
 
     refute_path_exists @state
     refute_path_exists File.join(linked, 'state')
-    response(process, 'prompt', message: '/riddim-watch-arm')
+    commands = response(process, 'get_commands')
 
-    assert_includes @events.to_s, 'ineligible'
+    refute_includes commands.to_s, 'riddim-watch-arm'
     refute_path_exists @state
   end
 
@@ -237,8 +237,9 @@ class PiNativeStartupTest < Minitest::Test
 
     assert_includes @events.to_s, 'native startup FAILED'
     refute_path_exists File.join(real, '.notification-watcher.lock')
-    response(process, 'prompt', message: '/riddim-watch-arm')
+    commands = response(process, 'get_commands')
 
+    refute_includes commands.to_s, 'riddim-watch-arm'
     assert_includes @events.to_s, 'use /reload or restart Pi'
     refute_includes @events.to_s, 'Riddim watcher ready'
     File.unlink(selected)

@@ -8,10 +8,8 @@ const messages = [];
 const notices = [];
 const events = new Map();
 let offerCount = 0;
-let arm;
 extension({
   on(name, handler) { events.set(name, handler); },
-  registerCommand(_name, command) { arm = command.handler; },
   sendUserMessage(text, options) {
     assert.equal(options.deliverAs, "followUp");
     messages.push(text);
@@ -34,10 +32,9 @@ appendFileSync(process.env.RIDDIM_STATUS_PATH, "blocked [at=1]: held claim\n");
 await until(() => notices.some((row) => row.text.includes("follow-up acceptance timed out")));
 assert.equal(offerCount, 1);
 await until(() => messages.some((text) => text.includes("Riddim watcher FAILED")));
-await until(async () => {
-  await arm("", ctx);
-  return notices.at(-1)?.text === "Riddim watcher ready";
-});
+// Boundary-only lifecycle check; actual /reload is covered by the TUI E2E.
+await events.get("session_shutdown")({}, ctx);
+await events.get("session_start")({}, ctx);
 await until(() => offerCount === 2);
 assert.equal(messages.filter((text) => text.includes(process.env.RIDDIM_FIRST_ID)).length, 2);
 await events.get("session_shutdown")({}, ctx);

@@ -71,11 +71,15 @@ Unexpected observer exits or stale heartbeats get bounded automatic recovery aga
 original ownership identities. Routine recovery does not need human slash-command entry.
 If recovery is exhausted or ownership is ambiguous, the extension reports failure.
 Verify that the selected `RIDDIM_STATE_DIR` and
-watcher-lock identities still match its follow-up before scanning. When both match, scan the
-original home for reports written during the outage, handle them, and ask the human to run
-`/riddim-watch-arm`. Do not claim recovery until the extension confirms the watcher is ready.
-If either identity differs or cannot be verified, stop and explain that recovery is uncertain;
-never scan a replacement home as the original.
+watcher-lock identities still match the ORIGINAL source evidence before scanning or reload.
+When both match, scan the original home for reports written during the outage and handle them;
+ACK remains explicit. After repairing prerequisites, ask the human to run Pi's built-in `/reload`
+while idle (not streaming or compacting) as exceptional manual recovery. Reload awaits extension
+shutdown, reloads resources, then runs session startup; it discards in-memory bindings and binds
+current paths. It does not fix changed ownership, replaced home/lock, invalid bootstrap, Herdr
+failure or another owner. Do not claim recovery until fresh watcher readiness is verified.
+If either original identity differs or cannot be verified, stop and recover the original source;
+never scan a replacement home as the original or use reload to bless it.
 
 ## Supervisor-owned follow-through
 
