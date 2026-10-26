@@ -129,9 +129,48 @@ Never transfer consent to a changed head.
 Report the merge result faithfully. If the merge fails or its result is uncertain, say so and
 inspect before taking another action.
 
-Run `riddim teardown <name>` only after the approved commit has landed in local `main` and
-the worker's work is clean. Never tear down unlanded work. Do not use any worker report or
-successful teardown message to claim a merge that did not happen.
+### Retire approved landed work
+
+After verifying head-bound human-approved landing in local `main`, retire the worker without
+asking for redundant cleanup consent. Use ordinary `riddim teardown <name>` with no flags
+once all of these checks pass:
+
+- Verify the same worker generation and reviewed head, its ungated `done` history, clean
+  recorded worker branch/checkout, clean project checkout on `main`, and worker tip ancestry
+  in local `main`. Use the [normal teardown guards](cli-reference.md#retire-an-already-landed-local-only-worker);
+  post-merge Git readiness can differ from pre-landing `result` readiness.
+- Confirm no pending work, dependent worker, or process needs the worker or its checkout.
+  Retain workers with active follow-up or a consumer dependency; explain what still needs them.
+  Stop only exact owned services proven no longer needed after checking their consumers.
+  Unknown ownership or dependencies means retain and report, not generic process killing.
+- Preserve only the review, approval, test and outcome evidence and artifacts needed after
+  retirement. Verify the retained evidence exists and is readable outside the checkout
+  before removal; a worker's claim that it archived something is not proof. Normal teardown
+  retains generation-local evidence as described in the CLI reference.
+
+Reconcile already-landed completed workers on later notifications and fleet checks using
+these same checks, then retire where safe rather than merely reporting them idle. A done
+report, native idle, or sequence 0 attention alone authorizes neither landing nor cleanup.
+Automatic retirement is not automatic landing or publication.
+
+Report the precise blocker and retain assets on a refusal or uncertain/partial teardown;
+inspect what remains before any further action. A remote PR merge alone does not satisfy
+local teardown guards: stale or dirty local main, an unlanded worker tip, or unresolved
+decisions/history blocks retirement. Never force, reset, stash, modify a dirty user main,
+delete assets by hand, or clear status gates just to retire. Follow the repository-specific
+synchronization procedure where applicable; otherwise report the failed proof to the human.
+
+For a genuinely finished, unneeded worker whose safe termination is proven, use ordinary
+`riddim exit <name>` if teardown is blocked. This stops Pi while retaining the pane, record,
+worktree, branch and evidence. Report stopped, not retired, and explain the remaining
+retirement blocker. Do not auto-stop active follow-up or unreported idle workers. Never
+use a worker report or successful teardown message to claim a merge that did not happen.
+
+This is a smaller subset of Firstmate's `bin/fm-branch-prompt.sh` landed-task reconciliation
+and no-flags teardown policy, triggered there by `bin/fm-watch.sh` merge-landed wakes.
+Riddim uses existing notifications and supervisor checks, normal teardown's safety refusals,
+and `exit`'s stop-without-removal distinction (`bin/fm-control.sh` in Firstmate). It adds no
+PR watcher, leases, remote workers, multiagent recovery, force path, or auto-delete daemon.
 
 For abandoned work, use the [separate irreversible discard procedure](cli-reference.md#discard-abandoned-local-only-work-with-separate-approval).
 Stopping a worker or approving landing does not authorize discard.

@@ -198,6 +198,8 @@ class PiNativeStartupTest < Minitest::Test
   end
 
   def model_request
+    # Drain prompt events before waiting for HTTP: a full RPC stdout pipe blocks dispatch.
+    response(@processes.last, 'get_state')
     socket = Timeout.timeout(20) { PiStallLab::LabServer.accept_http_request(@server) }
     JSON.parse(PiStallLab::LabServer.read_body(socket))
   ensure
@@ -306,11 +308,10 @@ class PiNativeStartupTest < Minitest::Test
     assert_equal '[]', result.dig('data', 'output').strip
     assert_equal 0o700, File.stat(@state).mode & 0o777
     process.first.puts JSON.generate(type: 'prompt', message: 'Describe your role')
-    socket = Timeout.timeout(20) { PiStallLab::LabServer.accept_http_request(@server) }
-    body = JSON.parse(PiStallLab::LabServer.read_body(socket))
+    body = model_request
 
     assert_includes body.to_s, 'You coordinate Riddim'
-    PiStallLab::LabServer.send_ok(socket)
-    socket.close
+    assert_includes body.to_s, 'asking for redundant cleanup consent'
+    assert_includes body.to_s, 'Report stopped, not retired'
   end
 end

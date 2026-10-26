@@ -295,7 +295,10 @@ Stops the recorded Pi agent and reports one of Firstmate's exit verdicts:
 `already-stopped` (idempotent: the recovery-grade state already reads dead),
 or `endpoint-gone` (a positively running recorded server proves the pane
 itself is gone). The pane and the ownership record are preserved in every
-outcome; record cleanup is a separate decision, never part of exit.
+outcome; exit also retains the worktree, branch and evidence. It is stopping,
+not retirement or discard. For a proven finished, unneeded worker blocked from
+teardown, follow [supervisor retirement policy](supervisor.md#retire-approved-landed-work);
+idle alone is not permission to stop.
 
 A busy agent is interrupted first, with `interrupt`'s own verification. The
 composer must then be proven `empty` by `composer-state` before the pi exit
@@ -859,8 +862,13 @@ This is a **destructive, explicit** local-only subset of Firstmate's
 `fm-teardown.sh`, not an approval or merge command. Firstmate also manages
 Treehouse pool slots, remote/PR tasks, backlog transitions, and forced discard.
 Riddim's separate `discard` command below implements exact-snapshot local discard;
-it has no pool, remote/PR, or backlog cleanup. First merge the reviewed worker
-branch into local `main` with separate human approval. `teardown` then requires an ungated `done`
+it has no pool, remote/PR, or backlog cleanup. First land the reviewed worker
+head in local `main` with head-bound human approval, using the applicable
+[landing procedure](supervisor.md#review-land-and-retire). After verifying that
+landing, the supervisor proactively invokes ordinary teardown without redundant
+cleanup consent when the [retirement checks](supervisor.md#retire-approved-landed-work)
+pass, including on later notifications or fleet checks. This is supervisor policy,
+not an automatic CLI action or landing authority. `teardown` then requires an ungated `done`
 report, the current ownership generation, a clean linked worker checkout on its
 recorded branch, a clean project checkout on `main`, and proof that the worker
 branch tip is already in local `main`. No `--force` is available.

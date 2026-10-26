@@ -15,6 +15,26 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       """
     Then Pi receives the supervisor launch arguments and selected state directory
 
+  Scenario: Deliver proactive retirement policy with its safety boundaries to Pi
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then Pi receives supervisor retirement instructions:
+      | instruction                                                                                                    |
+      | retire the worker without asking for redundant cleanup consent                                                  |
+      | Reconcile already-landed completed workers on later notifications and fleet checks                               |
+      | A done report, native idle, or sequence 0 attention alone authorizes neither landing nor cleanup                  |
+      | Retain workers with active follow-up or a consumer dependency                                                    |
+      | Verify the retained evidence exists and is readable outside the checkout                                         |
+      | Stop only exact owned services proven no longer needed after checking their consumers                           |
+      | Report the precise blocker and retain assets on a refusal                                                        |
+      | A remote PR merge alone does not satisfy local teardown guards                                                   |
+      | Never force, reset, stash, modify a dirty user main, delete assets by hand, or clear status gates just to retire   |
+      | For a genuinely finished, unneeded worker whose safe termination is proven, use ordinary `riddim exit <name>`     |
+      | Report stopped, not retired                                                                                     |
+      | Do not auto-stop active follow-up or unreported idle workers                                                      |
+
   Scenario: Select the repository state directory when no override is set
     Given no explicit Riddim state directory
     When I run riddim with:
