@@ -15,10 +15,8 @@ let oldOffered = false;
 
 function fakePi() {
   const events = new Map();
-  let command;
   const pi = {
     on(name, handler) { events.set(name, handler); },
-    registerCommand(_name, value) { command = value.handler; },
     sendUserMessage(text, options) {
       assert.equal(options.deliverAs, "followUp");
       messages.push(text);
@@ -33,7 +31,6 @@ function fakePi() {
   return {
     start: () => events.get("session_start")({}, ctx),
     shutdown: () => events.get("session_shutdown")({}, ctx),
-    arm: () => command("", ctx),
   };
 }
 
@@ -59,12 +56,10 @@ rejectOld(new Error("late old-session rejection"));
 await delay(100);
 assert.equal(messages.length, 2, "old callback must not notify the new session");
 assert.equal(notices.length, 0, "old callback must not claim a failure in the new session");
-await successor.arm();
-assert.deepEqual(notices.at(-1), { text: "Riddim watcher ready", kind: "info" });
+assert.equal(notices.length, 0);
 appendFileSync(status, "done [at=2]: second claim\n");
 await until(() => messages.some((text) => text.includes(second)));
-await successor.arm();
-assert.deepEqual(notices.at(-1), { text: "Riddim watcher ready", kind: "info" });
+assert.equal(notices.length, 0);
 await delay(700); // The verified owner has had time to reconcile its exclusions.
 assert.equal(messages.filter((text) => text.includes(first)).length, 2,
   "old callback must not remove the successor's accepted identity");

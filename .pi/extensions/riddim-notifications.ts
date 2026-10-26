@@ -77,7 +77,9 @@ export default function (pi: ExtensionAPI) {
     // Failure is a Supervisor follow-up, never an acknowledgement.
     try {
       void Promise.resolve(pi.sendUserMessage(`Riddim watcher FAILED: ${reason}. ` +
-        "Verify the original home before running riddim notifications scan; repair with /riddim-watch-arm.",
+        "Verify the ORIGINAL home and watcher-lock identities and pending reports before scanning or asking the human to use /reload while idle. " +
+        "If either identity differs or is unknown, stop and recover the original source; never scan a replacement as the original. " +
+        "Reload rebinds current paths; it does not repair ownership or prerequisites. Confirm watcher readiness before claiming recovery.",
       { deliverAs: "followUp" })).catch((error: unknown) => {
         console.error(`riddim failure follow-up rejected: ${String(error)}`);
       });
@@ -87,7 +89,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Retry only a previously verified observer, never a contested startup lock.
-  // The budget is session-wide (manual repair resets it), so a crash loop cannot
+  // The budget is runtime-wide (Pi reload replaces it), so a crash loop cannot
   // turn successful readiness frames into an unbounded restart storm.
   function recover(reason: string, epoch: number, originalHome: string, originalLock: string | null): void {
     if (!active || serial !== epoch || retryTimer || recovering || recoveryBlocked) return;
@@ -316,12 +318,10 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  let eligible = true;
   let supervisorInstructions: string | null = null;
   let startupFailure: string | null = null;
   let startup: Promise<void> = Promise.resolve();
   async function initialize(ctx: ExtensionContext): Promise<void> {
-    eligible = true;
     supervisorInstructions = null;
     startupFailure = null;
     // Explicit supervise remains usable from external projects and linked
@@ -331,16 +331,14 @@ export default function (pi: ExtensionAPI) {
           process.env.RIDDIM_SUPERVISE !== root) {
         const prepared = JSON.parse(execFileSync("ruby", [resolve(root, "scripts/pi_supervisor_startup.rb"), ctx.cwd],
           { encoding: "utf8", timeout: 5000 }));
-        if (!prepared) { eligible = false; return; }
+        if (!prepared) return;
         Object.assign(process.env, prepared);
         home = prepared.RIDDIM_STATE_DIR;
         supervisorInstructions = readFileSync(resolve(root, "docs/supervisor.md"), "utf8");
       }
     } catch (error) {
-      eligible = false;
       startupFailure = `Riddim native startup FAILED: ${String(error)}. Do not supervise or start workers until repaired. ` +
-        "Fix the reported prerequisite, then use /reload or restart Pi from this checkout. " +
-        "/riddim-watch-arm cannot rerun native bootstrap.";
+        "Fix the reported prerequisite, then use /reload or restart Pi from this checkout.";
       ctx.ui.notify(startupFailure, "error");
       return;
     }
@@ -398,23 +396,5 @@ export default function (pi: ExtensionAPI) {
     arming = null;
     accepted.clear(); // Restart replays every unacknowledged report.
     batches.length = 0;
-  });
-  pi.registerCommand("riddim-watch-arm", {
-    description: "Repair a failed Riddim Supervisor notification watcher in the selected home",
-    handler: async (_args, ctx) => {
-      if (!eligible) {
-        ctx.ui.notify(startupFailure || "Riddim native startup is ineligible: a plain primary checkout is required", "error");
-        return;
-      }
-      if (!home) { ctx.ui.notify("Set RIDDIM_STATE_DIR before starting Pi", "error"); return; }
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = null;
-      retryAttempts = 0;
-      recoveryBlocked = false;
-      const healthy = await arm();
-      if (healthy) startupFailure = null;
-      ctx.ui.notify(healthy ? "Riddim watcher ready" : "Riddim watcher FAILED; inspect pending notifications",
-        healthy ? "info" : "error");
-    },
   });
 }

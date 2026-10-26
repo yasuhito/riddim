@@ -20,7 +20,7 @@ try {
       registerCommand(name) { commands.push(name); },
     });
     assert.deepEqual(events, ["session_start", "before_agent_start", "session_shutdown"]);
-    assert.deepEqual(commands, ["riddim-watch-arm"]);
+    assert.deepEqual(commands, []);
   }
 } finally {
   if (previous === undefined) delete process.env.RIDDIM_ACTOR;
