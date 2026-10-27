@@ -222,6 +222,26 @@ class SchedulesTest < Minitest::Test
     assert_equal 'pending', S.list.first['occurrence']['status']
   end
 
+  def test_unfinished_marker_cannot_bless_existing_nonempty_document
+    row = create
+    lock = File.join(@root, S::Store::LOCK)
+
+    assert_equal '1', File.read(lock)
+    File.write(lock, '')
+
+    assert_raises(S::Error) { S.list }
+    assert_equal row['id'], stored.fetch('schedules').first.fetch('id')
+    assert_raises(S::Error) { create }
+  end
+
+  def test_aliased_initialization_lock_is_refused_before_flock
+    File.link(File.join(@root, S::Store::WATCHER), File.join(@root, S::Store::LOCK))
+
+    assert_raises(S::Error) { create }
+    refute_path_exists File.join(@root, S::Store::FILE)
+    assert_empty File.read(File.join(@root, S::Store::WATCHER))
+  end
+
   def test_missing_previously_created_store_is_not_silently_empty_or_reinitialized
     create
     file = File.join(@root, S::Store::FILE)

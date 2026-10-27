@@ -10,10 +10,13 @@ require 'tmpdir'
 require 'fileutils'
 require 'time'
 require_relative '../scripts/pi_stall_server'
+require_relative 'support/notification_worker_fixture'
 
 # Actual Pi and CLI, with disposable state and a loopback-only model.
 # rubocop:disable-next Metrics/ClassLength, Metrics/MethodLength, Metrics/AbcSize, Minitest/MultipleAssertions, Metrics/CyclomaticComplexity
 class ScheduledPromptsE2ETest < Minitest::Test
+  include NotificationWorkerFixture
+
   CLI = File.expand_path('../bin/riddim', __dir__)
   EXT = File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__)
 
@@ -31,12 +34,38 @@ class ScheduledPromptsE2ETest < Minitest::Test
 
   def start_pi(session_file = nil)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil }
+            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => "#{fault_shim}:#{ENV.fetch('PATH')}" }
     args = ['pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
             '--no-prompt-templates', '--no-context-files', '-e', EXT, '--session-dir', File.join(@root, 'pi-sessions'),
             '--model', 'stall-lab/test', '--thinking', 'off']
     args += ['--session', session_file] if session_file
     @input, @output, @error, @wait = Bundler.with_unbundled_env { Open3.popen3(env, *args, chdir: @root) }
+  end
+
+  def fault_shim
+    dir = File.join(@root, 'bin')
+    FileUtils.mkdir_p(dir)
+    path = File.join(dir, 'ruby')
+    File.write(path, <<~SH)
+      #!/bin/sh
+      if [ "$1" = "#{CLI}" ]; then
+        if [ "$2" = "watch-notifications" ]; then
+          if [ -e "#{@root}/deny-successor" ]; then
+            echo refused >> "#{@root}/successor-refusals"
+            echo 'injected successor refusal' >&2
+            exit 1
+          fi
+          echo spawn >> "#{@root}/watcher-spawns"
+        elif [ "$2" = "schedule" ] && [ "$3" = "offer" ] && [ -e "#{@root}/deny-offer" ]; then
+          echo refused >> "#{@root}/offer-refusals"
+          echo 'injected scheduled offer refusal' >&2
+          exit 1
+        fi
+      fi
+      exec "#{RbConfig.ruby}" "$@"
+    SH
+    File.chmod(0o700, path)
+    dir
   end
 
   def stop_pi
@@ -52,8 +81,19 @@ class ScheduledPromptsE2ETest < Minitest::Test
     @error.close
   end
 
+  def stop_initial_creation
+    if @paused_creation
+      Process.kill('KILL', @paused_creation.pid) if @paused_creation.alive?
+      @paused_creation.join(2)
+    end
+    [@create_input, @create_output, @create_error].compact.each { |io| io.close unless io.closed? }
+  end
+
   def teardown
+    stop_initial_creation
     stop_pi
+    @model_thread&.kill
+    @model_thread&.join
     @server&.close
     return unless @root
 
@@ -225,14 +265,231 @@ class ScheduledPromptsE2ETest < Minitest::Test
     until_event { |item| item['type'] == 'agent_settled' }
   end
 
-  def test_corrupt_schedule_store_fails_observer_without_dispatch_or_silent_repair
+  def respond_automatically
+    @model_thread = Thread.new do
+      loop do
+        socket = PiStallLab::LabServer.receive_request(@server)
+        PiStallLab::LabServer.send_ok(socket)
+        socket.close
+      end
+    end
+  end
+
+  def worker_report(sequence = 1)
+    generation = 's1767200000.4242.7'
+    write_notification_worker(@state, generation)
+    path = File.join(@state, "worker.#{generation}.status")
+    File.write(path, '', perm: 0o600) unless File.exist?(path)
+    out, err, result = Bundler.with_unbundled_env do
+      Open3.capture3({ 'RIDDIM_STATE_DIR' => @state }, CLI, 'report', 'worker', '--generation', generation,
+                     "blocked [at=#{sequence}]: ordinary Worker report #{sequence}")
+    end
+
+    assert_predicate result, :success?, "#{out}\n#{err}"
+    "worker.#{generation}.#{sequence}"
+  end
+
+  def worker_delivered(id)
+    message = until_event do |item|
+      item['type'] == 'message_start' && item.dig('message', 'role') == 'user' &&
+        item.dig('message', 'content').to_s.include?("Pending IDs: #{id}")
+    end
+    until_event { |item| item['type'] == 'agent_settled' }
+    message.to_s
+  end
+
+  def test_corrupt_schedule_store_withholds_prompts_but_keeps_worker_reports_and_observer_alive
     create(at: Time.now + 60)
     store = File.join(@state, '.scheduled-prompts.json')
+    original = File.read(store)
+    before = File.readlines(File.join(@root, 'watcher-spawns')).size
     File.write(store, '{corrupt')
-    observer_failure
+    respond_automatically
+    id = worker_report
+    text = worker_delivered(id)
 
+    assert_includes text, id
     assert_equal '{corrupt', File.read(store)
-    refute_includes @events.to_s, 'Riddim scheduled prompt'
+    assert_equal before + 1, File.readlines(File.join(@root, 'watcher-spawns')).size
+    refute_includes @events.to_s, 'Riddim watcher FAILED'
+    refute_includes @events.to_s, '$(not-a-shell-command)'
+    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    assert_equal(1, @events.count do |item|
+      item['type'] == 'extension_ui_request' &&
+          item['message'].to_s.include?('Riddim scheduled prompts FAILED')
+    end)
+    File.write(store, original)
+    cli('cancel', cli('list').fetch(0).fetch('id'))
+  end
+
+  def test_missing_established_schedule_store_does_not_block_worker_reports
+    create(at: Time.now + 60)
+    File.unlink(File.join(@state, '.scheduled-prompts.json'))
+    respond_automatically
+    id = worker_report
+
+    assert_includes worker_delivered(id), id
+    refute_includes @events.to_s, 'Riddim watcher FAILED'
+    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+  end
+
+  def with_paused_observer
+    pid = File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.map(&:to_i).fetch(0)
+    Process.kill('STOP', pid)
+    yield
+  ensure
+    Process.kill('CONT', pid) if pid
+  end
+
+  def mixed_batch(fault)
+    # Pause only the exact owned observer, briefly, so one real scan sees both
+    # the Worker report and scheduled occurrence. This is not a timeout race.
+    with_paused_observer do
+      schedule = create
+      id = worker_report
+      File.write(File.join(@root, fault), '')
+      [schedule, id]
+    end
+  end
+
+  def test_failed_successor_does_not_discard_worker_text_in_a_mixed_batch
+    respond_automatically
+    schedule, id = mixed_batch('deny-successor')
+    text = worker_delivered(id)
+
+    assert_includes text, 'successor readiness/liveness unverified'
+    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    refute_includes @events.to_s, '$(not-a-shell-command)'
+    row = cli('list').find { |entry| entry.fetch('id') == schedule.fetch('id') }
+
+    refute row.fetch('occurrence').fetch('offered')
+    assert_equal 'pending', row.fetch('occurrence').fetch('status')
+    cli('cancel', schedule.fetch('id'))
+
+    assert_empty cli('scan', '--session', @session)
+    assert_equal 'cancelled', cli('list').fetch(0).fetch('occurrence').fetch('status')
+  end
+
+  def test_failed_offer_preserves_worker_delivery_and_pending_schedule_replays_after_same_session_restart
+    respond_automatically
+    schedule, id = mixed_batch('deny-offer')
+
+    assert_includes worker_delivered(id), id
+    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    refute_includes @events.to_s, '$(not-a-shell-command)'
+    row = cli('list').find { |entry| entry.fetch('id') == schedule.fetch('id') }
+
+    refute row.fetch('occurrence').fetch('offered')
+    assert_equal 'pending', row.fetch('occurrence').fetch('status')
+    second = worker_report(2)
+
+    assert_includes worker_delivered(second), second
+    assert_equal 1, File.readlines(File.join(@root, 'offer-refusals')).size
+    _out, _err, refused_ack = Bundler.with_unbundled_env do
+      Open3.capture3({ 'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil },
+                     CLI, 'schedule', 'ack', row.fetch('occurrence').fetch('id'), '--session', @session)
+    end
+
+    refute_predicate refused_ack, :success?
+    file = state.fetch('sessionFile')
+    stop_pi
+    @model_thread.kill
+    @model_thread.join
+    @model_thread = nil
+    File.unlink(File.join(@root, 'deny-offer'))
+    # Handle the ordinary report so the restart only replays scheduled work.
+    [id, second].each do |report_id|
+      out, err, result = Bundler.with_unbundled_env do
+        Open3.capture3({ 'RIDDIM_STATE_DIR' => @state }, CLI, 'notifications', 'ack', report_id)
+      end
+
+      assert_predicate result, :success?, "#{out}\n#{err}"
+    end
+    start_pi(file)
+
+    assert_equal @session, state.fetch('sessionId')
+    assert_includes delivered, "scheduled.#{schedule.fetch('id')}.1"
+    cli('ack', "scheduled.#{schedule.fetch('id')}.1", '--session', @session)
+
+    assert_empty cli('scan', '--session', @session)
+  end
+
+  def paused_initial_create
+    path = File.join(@root, 'initial-prompt.txt')
+    File.write(path, 'Explicitly authorized initialization recovery')
+    env = { 'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil,
+            'RUBYOPT' => "-r#{File.expand_path('support/schedule_initialization_pause', __dir__)}",
+            'RIDDIM_INIT_SIGNAL' => File.join(@root, 'init-signal'),
+            'RIDDIM_INIT_RELEASE' => File.join(@root, 'init-release') }
+    @create_input, @create_output, @create_error, @paused_creation = Bundler.with_unbundled_env do
+      Open3.popen3(env, CLI, 'schedule', 'create', '--session', @session, '--every', '30m', '--prompt-file', path)
+    end
+    Timeout.timeout(5) { sleep 0.01 until File.exist?(env.fetch('RIDDIM_INIT_SIGNAL')) }
+  end
+
+  def test_interrupted_first_lock_creation_recovers_through_real_cli_without_lock_replacement
+    paused_initial_create
+    lock = File.join(@state, '.scheduled-prompts.lock')
+    original_inode = File.stat(lock).ino
+    Process.kill('KILL', @paused_creation.pid)
+    @paused_creation.join(2)
+    schedule = create
+
+    assert_equal original_inode, File.stat(lock).ino
+    assert_includes delivered, "scheduled.#{schedule.fetch('id')}.1"
+    refute_includes @events.to_s, 'Riddim watcher FAILED'
+  end
+
+  def test_first_create_contender_can_initialize_while_original_opener_is_paused_before_flock
+    paused_initial_create
+    original_inode = File.stat(File.join(@state, '.scheduled-prompts.lock')).ino
+    contender = create(at: Time.now + 60)
+    File.write(File.join(@root, 'init-release'), '')
+
+    assert @paused_creation.join(5), 'paused CLI failed to finish after release'
+    assert_predicate @paused_creation.value, :success?, @create_error.read
+    original = JSON.parse(@create_output.read)
+    rows = cli('list')
+
+    assert_equal [original.fetch('id'), contender.fetch('id')].sort, rows.map { |row| row.fetch('id') }.sort
+    assert_equal original_inode, File.stat(File.join(@state, '.scheduled-prompts.lock')).ino
+  end
+
+  def initialization_disk_failure(stage)
+    path = File.join(@root, 'initial-prompt.txt')
+    File.write(path, 'Explicitly authorized initialization after disk recovery')
+    env = { 'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'RIDDIM_INIT_FAULT' => stage,
+            'RUBYOPT' => "-r#{File.expand_path('support/schedule_initialization_pause', __dir__)}" }
+    # Ensure the faulted writer, not the scanner, reaches this initialization
+    # boundary first. Resume the original observer before testing recovery.
+    _out, error, result = with_paused_observer do
+      Bundler.with_unbundled_env do
+        Open3.capture3(env, CLI, 'schedule', 'create', '--session', @session, '--every', '30m', '--prompt-file', path)
+      end
+    end
+
+    refute_predicate result, :success?
+    assert_includes error, 'No space left on device'
+    lock = File.join(@state, '.scheduled-prompts.lock')
+    before = File.stat(lock).ino
+    schedule = create
+
+    assert_equal before, File.stat(lock).ino
+    assert_equal([schedule.fetch('id')], cli('list').map { |row| row.fetch('id') })
+    assert_includes delivered, "scheduled.#{schedule.fetch('id')}.1"
+    refute_includes @events.to_s, 'Riddim watcher FAILED'
+  end
+
+  def test_disk_failure_after_first_open_does_not_permanently_poison_initialization
+    initialization_disk_failure('open')
+  end
+
+  def test_disk_failure_after_initial_empty_document_can_recover_without_losing_work
+    initialization_disk_failure('ready')
+  end
+
+  def test_disk_failure_after_durable_ready_marker_keeps_empty_store_safe_for_next_creation
+    initialization_disk_failure('committed')
   end
 
   def test_replaced_source_lock_refuses_schedule_delivery_and_rebinding

@@ -73,8 +73,10 @@ module Riddim
       # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def document!(value, bindings)
         keys!(value, %w[schema home watcher_lock store_lock schedules])
-        raise Error, 'scheduled prompt source ownership changed or schema is corrupt' unless
-          value['schema'] == Store::SCHEMA && bindings.all? { |key, binding| value[key] == binding }
+        raise Error, 'scheduled prompt schema is corrupt' unless value['schema'] == Store::SCHEMA
+        raise SourceChanged, 'scheduled prompt shared source ownership changed' unless
+          bindings.values_at('home', 'watcher_lock') == value.values_at('home', 'watcher_lock')
+        raise Error, 'schedule store lock ownership changed' unless value['store_lock'] == bindings['store_lock']
 
         rows = value['schedules']
         raise Error, 'corrupt scheduled prompt inventory' unless rows.is_a?(Array) && rows.size <= MAX_SCHEDULES

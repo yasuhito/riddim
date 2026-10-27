@@ -10,6 +10,9 @@ module Riddim
   module Schedules
     class Error < Ownership::Error; end
 
+    # Shared home/watcher identity is authoritative for ordinary reports too.
+    class SourceChanged < Error; end
+
     module_function
 
     def operator!

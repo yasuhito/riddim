@@ -104,6 +104,15 @@ coalesce into one stable outstanding ID, keeping fixed cadence without a storm.
 Cancellation prevents future offers, not retraction of an offered, queued or
 already-delivered follow-up. Inspect the documented `offered` uncertainty.
 
+A `Riddim scheduled prompts FAILED` diagnostic withholds scheduled content, not
+ordinary Worker reports, and grants no new authority. It does not consume observer
+recovery attempts. Inspect scheduled state only after verifying the original
+source identities; never delete locks or pending work to silence it. Failed offers
+remain unhandled and are withheld for that runtime to avoid retry storms. After
+repair, use a matching-session `schedule scan` for explicit handling, or ask the
+human for same-session `/reload` while idle to replay them. Shared home/watcher
+ownership failures remain full observer failures, not isolated schedule errors.
+
 This adds no default schedules, always-on monitoring, new permission or automatic
 skill changes. The prohibition of periodic liveness loops and Riddim's own
 repository CI watchers/retries remains in force. Do not use schedules to bypass

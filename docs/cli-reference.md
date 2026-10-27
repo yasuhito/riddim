@@ -824,8 +824,36 @@ retract it. The latest occurrence becomes `cancelled` unless already handled;
 `offered` records this uncertainty, not successful delivery. A previously
 presented occurrence can still be explicitly handling-ACKed after cancellation.
 
-Schedules use a separate schema and private, locked atomic store. They are not
-Worker claims or human authorization for landing, publication or destruction.
+Schedules use a separate schema and private, locked atomic store. Initialization
+is serialized by the store lock, not by which process opened it first. An empty
+store-lock marker means initialization is unfinished: only a validated empty
+initial document can be recovered. The empty document is durably published before
+a ready marker (`1`) is fsynced; only then may any schedule be written. Thus a
+crash or disk failure before readiness is safely recoverable using the same lock
+inode. A ready marker plus missing data, or an unfinished marker with a nonempty
+document, refuses instead of silently discarding work. Never delete, truncate or
+replace a marker to recover an established source. The shared watcher-lock marker
+remains empty and retains its original lifetime-ownership contract.
+
+Invalid/unavailable scheduled state withholds scheduled content only. A bounded
+`Riddim scheduled prompts FAILED` diagnostic does not stop ordinary Worker report
+watching, suppress the native supervisor role or spend observer recovery attempts.
+It includes no prompt text or parser excerpts. Scan diagnostics clear after a
+healthy scan. Real shared home/watcher ownership failures still stop the observer;
+a schedule error must not bless changed shared identities.
+
+A failed scheduled offer (including unverified successor readiness) also cannot
+discard ordinary Worker IDs from the same batch. Those retain their existing
+degraded-successor delivery contract. The unoffered occurrence stays durable and
+unhandled, not accepted/ACKed. Failed IDs are withheld for that extension runtime,
+with one diagnostic per source/ID, rather than churn observers or retry delivery
+unboundedly. After repairing prerequisites and verifying original identities,
+use `schedule scan --session <verified-Pi-ID>` for explicit handling, or ask the
+human for same-session `/reload` while idle to replay withheld occurrences. This
+is separate from bounded recovery of an actually failed observer.
+
+Schedules are not Worker claims or human authorization for landing, publication
+or destruction.
 Every schedule operation and watcher scheduling is operator-only: nonempty
 `RIDDIM_ACTOR`, including workers and unknown values, refuses. Supplying an ID is
 an operational routing assertion, not cryptographic proof of human consent.

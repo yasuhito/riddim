@@ -55,6 +55,7 @@ module Riddim
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       next_observation = last_beat
       observation_after = nil
+      schedule_status = nil
       # rubocop:disable-next Metrics/BlockLength
       loop do
         verify_owner!(directory, lock, selected_home)
@@ -64,14 +65,19 @@ module Riddim
         budget = observe_activity ? Notifications::ProbeBudget.new(after: observation_after) : nil
         entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget)
         observation_after = budget.last_name if budget
-        ids = entries.map(&:id)
-        ids.concat(Schedules.pending(session: session)) if ENV.fetch(Actor::VARIABLE, '').empty?
+        scheduled_ids, status = scheduled_pending(session)
+        ids = entries.map(&:id) + scheduled_ids
         ids.reject! { |id| exclude.include?(id) }
         verify_owner!(directory, lock, selected_home)
         unless ready
           stat = lock.stat
           announce('ready', nonce, lock: "#{stat.dev}:#{stat.ino}")
           ready = true
+        end
+        if status && status != schedule_status
+          schedule_status = status
+          announce(status, nonce, home: Schedules::Store.identity(directory.stat),
+                                  lock: Schedules::Store.identity(lock.stat))
         end
         unless ids.empty?
           home_stat = directory.stat
@@ -89,6 +95,18 @@ module Riddim
         end
         sleep interval
       end
+    end
+
+    def scheduled_pending(session)
+      return [[], nil] unless ENV.fetch(Actor::VARIABLE, '').empty? && Schedules.present?
+
+      [Schedules.pending(session: session), 'schedule-ok']
+    rescue Schedules::SourceChanged
+      raise # Shared source ownership failure must still stop the observer.
+    rescue Schedules::Error, Result::Error, SystemCallError
+      # Never put parser excerpts or saved prompt text on the diagnostic wire.
+      # The caller rechecks shared descriptors before publishing readiness/status.
+      [[], 'schedule-error']
     end
 
     def verify_owner!(directory, lock, selected_home)
