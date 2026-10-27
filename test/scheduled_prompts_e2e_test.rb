@@ -21,6 +21,10 @@ class ScheduledPromptsE2ETest < Minitest::Test
   EXT = File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__)
 
   def setup
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH', '').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
+
     @root = Dir.mktmpdir('riddim-scheduled-pi-')
     @state = File.join(@root, 'state')
     Dir.mkdir(@state, 0o700)

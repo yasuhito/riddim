@@ -219,15 +219,35 @@ bundle install
 bundle exec rake
 ```
 
-The real-Pi notification and worker-startup tests run automatically when `pi`
-is available on PATH, using isolated Pi configuration and a loopback model
-without credentials. They report skips when Pi is absent, including in the
-Ruby-only CI job; the remaining tests still run. To verify the startup
-lock-collision regression with Pi installed, run:
+The real-Pi notification, scheduled-prompt and worker-startup tests run
+automatically when `pi` is available on PATH, using isolated Pi configuration
+and a loopback model without credentials. They report explicit skips when Pi
+is absent, including in the Ruby-only CI job; the remaining tests still run.
+This is an executable-availability boundary, not a blanket CI skip: a present
+but broken Pi executable must fail rather than silently skip. Ruby-only CI
+success does not verify real-Pi prompt delivery or session lifecycle.
+
+To verify the startup lock-collision regression with Pi installed, run:
 
 ```sh
 bundle exec ruby -Itest test/pi_worker_startup_test.rb --verbose
 ```
 
 Expect 1 test, 11 assertions and no skips. A skipped test does not verify real
-Pi startup.
+Pi startup. Run the scheduled-prompt lifecycle suite with Pi installed too,
+requiring no skips:
+
+```sh
+bundle exec ruby -Itest test/scheduled_prompts_e2e_test.rb --verbose
+```
+
+The optional-Pi boundary itself has an unconditional subprocess regression:
+
+```sh
+bundle exec ruby -Itest test/scheduled_prompts_availability_test.rb --verbose
+```
+
+It checks absent/nonexecutable Pi, skipped teardown without leftover fixtures,
+and a deliberately broken executable that must still fail. It does not provide
+real-Pi delivery coverage. No Pi installation step or runtime dependency is added
+to the Ruby-only workflow.
