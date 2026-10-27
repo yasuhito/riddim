@@ -11,7 +11,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim");
 const root = resolve(dirname(cli), "..");
 let home = process.env.RIDDIM_STATE_DIR && resolve(process.env.RIDDIM_STATE_DIR);
-const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.(0|[1-9]\d*)$/;
+const identity = /^(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9})$/;
+const scheduledIdentity = /^scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9}$/;
+const sessionIdentity = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
@@ -55,6 +57,7 @@ export default function (pi: ExtensionAPI) {
   let boundLock: string | null = null;
   let arming: Promise<boolean> | null = null;
   let active = false;
+  let recipient: string | null = null;
   let serial = 0;
   let inFlight: number | null = null;
   const batches: Batch[] = [];
@@ -161,7 +164,9 @@ export default function (pi: ExtensionAPI) {
     if (!binding) { failure("selected home is unavailable", epoch); return false; }
     boundHome = binding;
     const nonce = randomBytes(16).toString("hex");
-    const proc = spawn("ruby", [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"], {
+    const args = [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"];
+    if (recipient) args.push("--session", recipient);
+    const proc = spawn("ruby", args, {
       env: { ...process.env, RIDDIM_STATE_DIR: home },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -273,15 +278,14 @@ export default function (pi: ExtensionAPI) {
         const successor = healthy ? readyChild : null;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
-        const content = `Riddim Supervisor notification from home ${batch.home}, watcher lock ${batch.lock}. ` +
-          `Pending IDs: ${ids.join(", ")}. Verify both identities in the selected home before running ` +
-          "riddim notifications scan; if changed, recover from the original home manually. " +
-          "Handle the reports, then explicitly ack each presented ID. " +
-          `Reports are Worker claims; sequence 0 is unreported idle/stop attention, not completion. ` +
-          `Neither is Git readiness or Landing approval. ${detail}`;
         if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;
         try {
+          const content = notificationContent(batch, ids, healthy, detail);
+          if (!content) continue; // Cancelled/handled before the durable offer.
+          if (batch.home !== homeIdentity() || batch.lock !== lockIdentity()) {
+            throw new Error("selected home or watcher lock changed before follow-up");
+          }
           await Promise.race([
             Promise.resolve(pi.sendUserMessage(content, { deliverAs: "followUp" })),
             new Promise<never>((_resolve, reject) => {
@@ -307,6 +311,40 @@ export default function (pi: ExtensionAPI) {
       if (inFlight === epoch) inFlight = null;
       if (active && serial === epoch && batches.length > 0) void deliver(epoch);
     }
+  }
+
+  function notificationContent(batch: Batch, ids: string[], healthy: boolean, detail: string): string {
+    const parts: string[] = [];
+    const reports = ids.filter((id) => !scheduledIdentity.test(id));
+    if (reports.length) {
+      parts.push(`Riddim Supervisor notification from home ${batch.home}, watcher lock ${batch.lock}. ` +
+        `Pending IDs: ${reports.join(", ")}. Verify both identities in the selected home before running ` +
+        "riddim notifications scan; if changed, recover from the original home manually. " +
+        "Handle the reports, then explicitly ack each presented ID. " +
+        "Reports are Worker claims; sequence 0 is unreported idle/stop attention, not completion. " +
+        `Neither is Git readiness or Landing approval. ${detail}`);
+    }
+    for (const id of ids.filter((id) => scheduledIdentity.test(id))) {
+      if (!recipient || !healthy) throw new Error("scheduled recipient or watcher readiness unverified");
+      // This atomic, durable offer is NOT an ACK or proof of sendUserMessage
+      // consumption. Cancellation before it withholds content; after it cannot
+      // retract a follow-up already in flight. No shell or terminal input.
+      const offered = JSON.parse(execFileSync("ruby", [cli, "schedule", "offer", id,
+        "--session", recipient, "--home", batch.home, "--lock", batch.lock],
+      { env: { ...process.env, RIDDIM_STATE_DIR: home }, encoding: "utf8", timeout: 5000,
+        maxBuffer: 128 * 1024 }));
+      if (!offered) continue;
+      if (offered.kind !== "scheduled-prompt" || offered.id !== id || offered.session !== recipient ||
+          typeof offered.prompt !== "string") throw new Error("invalid scheduled prompt offer");
+      parts.push(`Riddim scheduled prompt ${id} for Pi session ${recipient}, from home ${batch.home}, ` +
+        `watcher lock ${batch.lock}. Scheduled prompts are not Worker reports, sequence 0, Git readiness, ` +
+        "or human landing/publication/destruction approval. Act only within the human-authorized scope. " +
+        "After handling, explicitly acknowledge this occurrence (not just receipt) with " +
+        `riddim schedule ack ${id} --session ${recipient}. Delivery may replay until ACK; ` +
+        "it does not promise exactly-once task side effects. Cancellation cannot retract an in-flight follow-up.\n\n" +
+        offered.prompt);
+    }
+    return parts.join("\n\n");
   }
 
   function waitForClose(proc: ChildProcess): Promise<void> {
@@ -343,6 +381,10 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     if (!home) return;
+    // Only Pi's actual durable session metadata can route scheduled content.
+    // A missing/ephemeral/unknown identity never binds itself implicitly.
+    const actualId = ctx.sessionManager?.getSessionId();
+    recipient = actualId && sessionIdentity.test(actualId) && ctx.sessionManager?.getSessionFile() ? actualId : null;
     active = true;
     notifyFailure = (message) => ctx.ui.notify(message, "error");
     if (!await arm() && supervisorInstructions) {
@@ -371,6 +413,7 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", async () => {
     active = false;
+    recipient = null;
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
     retryAttempts = 0;

@@ -2,18 +2,21 @@
 
 require 'json'
 require_relative 'notifications'
+require_relative 'schedules'
 
 module Riddim
   # One observer per selected home. The lock spans every scan and wait; no
   # Worker command or Herdr input is involved. A new process must acquire the
   # lock and complete a scan before it can announce readiness.
   module Watcher
-    IDENTITY = /\A[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)\z/
+    IDENTITY = /\A(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9})\z/
 
     module_function
 
     # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-    def run(nonce:, exclude: [], interval: 0.25)
+    def run(nonce:, exclude: [], interval: 0.25, session: nil)
+      Schedules.operator! unless session.nil?
+      Schedules::Validation.session!(session) unless session.nil?
       raise ArgumentError, 'invalid watcher nonce' unless nonce.match?(/\A[0-9a-f]{32}\z/)
       raise ArgumentError, 'invalid interval' unless interval.positive?
 
@@ -30,7 +33,7 @@ module Riddim
             File.open('.notification-watcher.lock', File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |file|
               Result.verify_private_file!(file)
               bind!(file)
-              observe(nonce, exclude, interval, directory, file)
+              observe(nonce, exclude, interval, directory, file, session: session)
             end
           ensure
             ENV['RIDDIM_STATE_DIR'] = previous_home
@@ -45,8 +48,8 @@ module Riddim
       raise Notifications::Error, 'watcher already bound to this home'
     end
 
-    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-    def observe(nonce, exclude, interval, directory, lock)
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity, Metrics/ParameterLists
+    def observe(nonce, exclude, interval, directory, lock, session:)
       selected_home = directory.path
       ready = false
       last_beat = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -61,18 +64,20 @@ module Riddim
         budget = observe_activity ? Notifications::ProbeBudget.new(after: observation_after) : nil
         entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget)
         observation_after = budget.last_name if budget
-        entries.reject! { |entry| exclude.include?(entry.id) }
+        ids = entries.map(&:id)
+        ids.concat(Schedules.pending(session: session)) if ENV.fetch(Actor::VARIABLE, '').empty?
+        ids.reject! { |id| exclude.include?(id) }
         verify_owner!(directory, lock, selected_home)
         unless ready
           stat = lock.stat
           announce('ready', nonce, lock: "#{stat.dev}:#{stat.ino}")
           ready = true
         end
-        unless entries.empty?
+        unless ids.empty?
           home_stat = directory.stat
           lock_stat = lock.stat
           announce('pending', nonce,
-                   ids: entries.map(&:id),
+                   ids: ids,
                    home: "#{home_stat.dev}:#{home_stat.ino}",
                    lock: "#{lock_stat.dev}:#{lock_stat.ino}")
           break
