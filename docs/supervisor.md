@@ -112,6 +112,9 @@ remain unhandled and are withheld for that runtime to avoid retry storms. After
 repair, use a matching-session `schedule scan` for explicit handling, or ask the
 human for same-session `/reload` while idle to replay them. Shared home/watcher
 ownership failures remain full observer failures, not isolated schedule errors.
+This includes mismatches with the durably recorded original identities at fresh
+startup or reload. A copied home must refuse; copying is not a migration/rebinding
+API and cannot authorize scanning a replacement as the original.
 
 This adds no default schedules, always-on monitoring, new permission or automatic
 skill changes. The prohibition of periodic liveness loops and Riddim's own

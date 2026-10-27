@@ -839,8 +839,12 @@ Invalid/unavailable scheduled state withholds scheduled content only. A bounded
 `Riddim scheduled prompts FAILED` diagnostic does not stop ordinary Worker report
 watching, suppress the native supervisor role or spend observer recovery attempts.
 It includes no prompt text or parser excerpts. Scan diagnostics clear after a
-healthy scan. Real shared home/watcher ownership failures still stop the observer;
-a schedule error must not bless changed shared identities.
+healthy scan. This isolation applies to corrupt schedule payloads, not uncertainty
+about the original source. Both live home/watcher ownership changes and a mismatch
+with their durably recorded identities stop the observer, including on fresh
+startup or `/reload`. A copied/migrated home is an expected safety refusal, not a
+supported migration. Recover the original source; never scan a replacement as
+though it were the original or downgrade its identity mismatch to a payload error.
 
 A failed scheduled offer (including unverified successor readiness) also cannot
 discard ordinary Worker IDs from the same batch. Those retain their existing
