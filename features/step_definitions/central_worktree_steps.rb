@@ -30,6 +30,9 @@ Given('Riddim is invoked from its linked runtime') do
   linked = File.join(new_temporary_directory, 'linked-runtime')
   central_git!(@runtime, 'worktree', 'add', '-qb', 'runtime-worker', linked)
   @riddim_cli = File.join(linked, 'bin', 'riddim')
+  @runtime_worktrees = central_git!(@runtime, 'worktree', 'list', '--porcelain')
+  @target_head = central_git!(@project, 'rev-parse', 'HEAD')
+  @target_worktrees = central_git!(@project, 'worktree', 'list', '--porcelain')
 end
 
 Given('Riddim runs from a {string} primary installation') do |layout|
@@ -61,6 +64,11 @@ Then('the ambiguous runtime is refused without worker assets in Git metadata') d
                [@status.exitstatus, @stderr.include?('cannot locate verified primary checkout'),
                 File.exist?(@worktree), File.exist?(wrong_root), File.exist?(scenario_record_path('worker')),
                 herdr_invocations.none? { |line| line.include?('workspace create') }], @stderr
+  assert_equal [@runtime_worktrees, @target_head, @target_worktrees],
+               [central_git!(@runtime, 'worktree', 'list', '--porcelain'),
+                central_git!(@project, 'rev-parse', 'HEAD'),
+                central_git!(@project, 'worktree', 'list', '--porcelain')]
+  assert_equal ['.meta-worker.lock'], Dir.children(scenario_state_dir).sort
 end
 
 Given('the target is accessed through a linked checkout') do
@@ -94,6 +102,7 @@ Then('the ambiguous linked target is refused before creating any worker assets')
                 herdr_invocations.none? { |line| line.include?('workspace create') }, branch_exists,
                 central_git!(@working_directory, 'rev-parse', 'HEAD'),
                 central_git!(@target_common, 'worktree', 'list', '--porcelain')], @stderr
+  assert_equal ['.meta-worker.lock'], Dir.children(scenario_state_dir).sort
 end
 
 Given('the central storage has an unsafe {string}') do |kind|

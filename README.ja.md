@@ -158,7 +158,7 @@ Herdr ワークスペースでワーカーを起動します。プロジェク�
 ワーカーは `<worktree-root>/my-app-<repository-id>/docs-example` と、
 ブランチ `riddim/docs-example` を使います。全プロジェクトの保存先は、Riddim の元の
 インストール先と同じ親ディレクトリにある `.riddim-worktrees` です。
-たとえば `~/Work/riddim` なら `~/Work/.riddim-worktrees` に保存します。
+たとえば `~/src/riddim` なら `~/src/.riddim-worktrees` に保存します。
 リンクされた Riddim CLI から起動しても、この保存先は変わりません。
 Riddim リポジトリの外に置くことで、そのプロジェクト指示がワーカーに混ざるのを防ぎます。
 Pi は対象プロジェクトとグローバルの指示を通常どおり読み込みます。
