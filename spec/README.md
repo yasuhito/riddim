@@ -16,7 +16,7 @@ PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`B
 
 ## 通知の引き継ぎ: NotificationHandoff
 
-`NotificationHandoff.tla`は、Riddimの通知拡張を同じfactoryで停止・再開したとき、旧コールバックが後続の配送状態を変更しないことと、未処理レポートの保持を検査する。104個の到達状態で、旧配送の成功・拒否と後続処理の順を入れ替える。実際の`/reload`は拡張ランタイムを置き換えるため、この同じfactoryを使うテストとは区別する。
+`NotificationHandoff.tla`は、Riddimの通知拡張を同じfactoryで停止・再開したとき、旧コールバックが後続の配送状態を変更しないことを検査する。未処理レポートの保持は、削除・ACK遷移を含まないこのモデル内の構造を確かめるsanity invariantであり、永続化を独立に検証するものではない。選んだコールバックガードの負例も永続化は検査しない。実装側の保持はRubyテストの停止後のscanで確かめる。104個の到達状態で、旧配送の成功・拒否と後続処理の順を入れ替える。実際の`/reload`は拡張ランタイムを置き換えるため、この同じfactoryを使うテストとは区別する。
 
 状態と実装の対応、観測列の照合、外部コピーでの負例、仮定と検証範囲は[NotificationHandoff.md](NotificationHandoff.md)に記録した。Piへの配送受理は、人による処理やACKではない。全実行のrefinement証明や、end-to-endのexactly-onceを主張するモデルではない。
 

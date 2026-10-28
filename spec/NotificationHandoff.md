@@ -119,28 +119,40 @@ OfferA, ShutdownA, StartB, OfferB1, RejectA, Publish2, OfferB2, ShutdownB
 
 A offers ID 1, B reoffers it after shutdown clears suppression, stale A rejection
 leaves B alone, and B offers ID 2 without another ID 1. Both rows remain pending.
-`RejectA` records rejection injection plus the fixture's existing bounded assertions,
-not an instrumented internal callback. `StartB` is invocation, not a ready-frame
-observation. `FinishB1/2`, scans and accepted-map changes are hidden.
+Only `OfferA`, `OfferB1` and `OfferB2` are observations at follow-up callbacks.
+`ShutdownA`, `StartB`, `RejectA`, `Publish2` and `ShutdownB` are driver checkpoints:
+shutdown completion, start invocation, rejection injection plus the existing bounded
+assertions, status append, and final shutdown completion respectively. They are
+not observations of the corresponding internal model transitions. In particular,
+`StartB` does not observe readiness and `RejectA` does not instrument completion.
+`FinishB1/2`, scans and accepted-map changes are hidden. Offer labels assume the
+scenario's report messages; the existing message-count/notice assertions, rather
+than the label assignment alone, reject unexpected failure notifications.
 
 An external TLC witness check adds `ObservedNotReached == trace # <<...>>` using
 the actual JSON output and asks TLC to refute it. TLC reaches that exact projection
 while the normal safety checks remain enabled. This is trace-level compatibility
-of one sampled run and the stated macro abstraction, **not a refinement proof**
-for all executions. The fixture does not expose internal accepted/inFlight state;
+of one sampled run and the stated macro abstraction, **not full-state conformance
+or a refinement proof** for all executions. The fixture does not expose internal accepted/inFlight state;
 its no-duplicate and later-delivery assertions are indirect evidence.
 
 The rejected model transition is `OfferB1; SettleA(reject)` with `serial = B`:
 `accepted = {1}` must not become `{}`. In an external disposable copy only, remove
 `/\ serial = "A"` from the PlusCal rejection condition, regenerate with `pcal.trans`,
 and TLC reports `LatePredecessorIsolated` at that transition (31 distinct states
-before stopping). The model retains the independent process and failure guards.
+before stopping). The model retains the separate process-identity and failure
+guards, but this does not independently prove their safety across shutdown internals.
 
 In a separate implementation copy, remove only catch's
 `if (serial !== epoch) return;`. The same regression reports
 `old callback must not remove the successor's accepted identity`, `3 !== 2`.
 ID 1 is repeated when ID 2 causes rearming after A deleted B's suppression entry.
-The existing independent process-identity/failure guards remain intact. No real
+The existing process-identity/failure guards remain intact. This mutant isolates
+the accepted-map stale-epoch guard effect within the stated macro abstraction;
+it does not independently establish that every other guard is safe. Atomic
+`ShutdownA` excludes the interval after `serial` changes but before child cleanup,
+which the real shutdown handler's `await waitForClose` allows. The model therefore
+cannot establish process-identity/failure guard behavior in that interval. No real
 product bug was repaired by removing this negative mutation; the production
 extension is unchanged. Fixture shutdown now runs in `finally` so an assertion
 failure also retires its owned notification watcher process.
