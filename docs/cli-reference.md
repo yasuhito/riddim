@@ -537,7 +537,7 @@ worktree** at `<worktree-root>/<project>-<repository-id>/<name>`, on a new
 `riddim/<name>` branch at the checkout's **local HEAD**. `<worktree-root>` is
 `.riddim-worktrees` beside the primary checkout of the running Riddim installation,
 even if its CLI is invoked from a linked Riddim checkout. For example, an installation
-at `~/Work/riddim` uses `~/Work/.riddim-worktrees`. Without Git metadata, Riddim uses
+at `~/src/riddim` uses `~/src/.riddim-worktrees`. Without Git metadata, Riddim uses
 `.riddim-worktrees` beside its installation directory. Neither the target project
 nor config/state overrides select the storage root.
 

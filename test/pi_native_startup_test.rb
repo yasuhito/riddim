@@ -199,7 +199,7 @@ class PiNativeStartupTest < Minitest::Test
     process = Bundler.with_unbundled_env do
       Open3.popen3(pi_environment(state: @state), File.join(linked_runtime, 'bin/riddim'), 'supervise', chdir: cwd)
     end
-    @processes << process
+    record_process(process)
     wait_for_ready(process)
     response(process, 'prompt', message: 'Describe your role')
     body = model_request
