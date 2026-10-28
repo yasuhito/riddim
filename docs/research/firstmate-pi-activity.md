@@ -1,6 +1,6 @@
 # Firstmate の Pi 活動判定 (ソース調査)
 
-調査対象は `/home/yasuhito/Work/oss/firstmate` の作業チェックアウト、HEAD `ac2ed3b2`。調査時 `git status --short` は空で、`main` は `origin/main` より3コミット遅れている。以下の `bin/...`、`.pi/...`、`tests/...` はすべてこの Firstmate チェックアウト相対の参照。ソースとテストを静的に読んだ結果であり、稼働中の Pi/Herdr を観測・操作した結果でも、過去の Riddim の Pi 問題の原因診断でもない。テストは実行していない。
+調査対象は [Firstmate](https://github.com/kunchenguid/firstmate) のコミット [`ac2ed3b2c7827b7de4771db9a43a562cf8e86803`](https://github.com/kunchenguid/firstmate/tree/ac2ed3b2c7827b7de4771db9a43a562cf8e86803)。調査時の作業チェックアウトでは `git status --short` は空で、`main` は `origin/main` より3コミット遅れていた。以下の `bin/...`、`.pi/...`、`tests/...` はすべてこのコミットのリポジトリルート相対の参照であり、現在のチェックアウトの HEAD を指すものではない。ソースとテストを静的に読んだ結果であり、稼働中の Pi/Herdr を観測・操作した結果でも、過去の Riddim の Pi 問題の原因診断でもない。テストは実行していない。
 
 ## 判定するもの、判定しないもの
 

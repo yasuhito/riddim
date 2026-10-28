@@ -127,7 +127,8 @@ requests. No discarded audit commit needs to be restored.
   was attempted during that reproduction. The original worker was later retired.
 - Herdr 0.9.5 `agent get w13E:p1` in session `default` reports Pi at the
   recorded workspace `w13E` and tab `w13E:t1`, with both cwd fields matching
-  `/home/yasuhito/Work/riddim-riddim-sol-repair`, but neither `name` nor
+  `/home/example/projects/riddim-riddim-sol-repair` (a representative path
+  substituted for the original local path here and in the fixture), but neither `name` nor
   `agent_session`. Herdr's `src/api/schema/agents.rs`, `AgentInfo`, declares
   both fields optional and omits absent values. A missing name is not proof
   of a different occupant. Herdr names are mutable live-occupant aliases,
