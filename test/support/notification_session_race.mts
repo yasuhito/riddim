@@ -10,6 +10,9 @@ const first = env("RIDDIM_FIRST_ID");
 const second = first.replace(/\.1$/, ".2");
 const notices: Notice[] = [];
 const messages: string[] = [];
+// Scenario-specific observable projection, named after NotificationHandoff labels.
+// RejectA marks injection plus the existing assertions, not an internal hook.
+const trace: string[] = [];
 let rejectOld: ((reason: Error) => void) | undefined;
 let oldOffered = false;
 
@@ -22,8 +25,10 @@ function fakePi() {
       messages.push(text);
       if (text.includes(first) && !oldOffered) {
         oldOffered = true;
+        trace.push("OfferA");
         return new Promise<void>((_resolve, reject) => { rejectOld = reject; });
       }
+      trace.push(text.includes(second) ? "OfferB2" : "OfferB1");
     },
   };
   const ctx: FixtureContext = { ui: { notify(text, kind) { notices.push({ text, kind }); } } };
@@ -43,25 +48,36 @@ async function until(predicate: () => boolean) {
 }
 
 const old = fakePi();
-old.start();
-appendFileSync(status, "blocked [at=1]: first claim\n");
-await until(() => oldOffered);
-// Exercise the stricter same-factory lifecycle: the pending continuation still
-// closes over the old epoch even if the next session reuses this extension.
-await old.shutdown();
-const successor = old;
-successor.start();
-await until(() => messages.filter((text) => text.includes(first)).length === 2);
-required(rejectOld, "old follow-up rejection")(new Error("late old-session rejection"));
-await delay(100);
-assert.equal(messages.length, 2, "old callback must not notify the new session");
-assert.equal(notices.length, 0, "old callback must not claim a failure in the new session");
-assert.equal(notices.length, 0);
-appendFileSync(status, "done [at=2]: second claim\n");
-await until(() => messages.some((text) => text.includes(second)));
-assert.equal(notices.length, 0);
-await delay(700); // The verified owner has had time to reconcile its exclusions.
-assert.equal(messages.filter((text) => text.includes(first)).length, 2,
-  "old callback must not remove the successor's accepted identity");
-assert.equal(readFileSync(status, "utf8").split("\n").filter(Boolean).length, 2);
-await successor.shutdown();
+try {
+  old.start();
+  appendFileSync(status, "blocked [at=1]: first claim\n");
+  await until(() => oldOffered);
+  // Exercise the stricter synthetic same-factory lifecycle: the pending
+  // continuation closes over the old epoch when start reuses this factory.
+  // Real Pi /reload instead loads a replacement extension runtime.
+  await old.shutdown();
+  trace.push("ShutdownA");
+  const successor = old;
+  trace.push("StartB");
+  successor.start();
+  await until(() => messages.filter((text) => text.includes(first)).length === 2);
+  required(rejectOld, "old follow-up rejection")(new Error("late old-session rejection"));
+  await delay(100);
+  assert.equal(messages.length, 2, "old callback must not notify the new session");
+  assert.equal(notices.length, 0, "old callback must not claim a failure in the new session");
+  assert.equal(notices.length, 0);
+  trace.push("RejectA");
+  appendFileSync(status, "done [at=2]: second claim\n");
+  trace.push("Publish2");
+  await until(() => messages.some((text) => text.includes(second)));
+  assert.equal(notices.length, 0);
+  await delay(700); // The verified owner has had time to reconcile its exclusions.
+  assert.equal(messages.filter((text) => text.includes(first)).length, 2,
+    "old callback must not remove the successor's accepted identity");
+  assert.equal(readFileSync(status, "utf8").split("\n").filter(Boolean).length, 2);
+} finally {
+  // Also retire the fixture's own watcher when a negative-copy assertion fails.
+  await old.shutdown();
+}
+trace.push("ShutdownB");
+console.log(JSON.stringify({ trace }));

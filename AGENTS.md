@@ -10,7 +10,7 @@ Use the five canonical triage labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-This is a single-context repository. See `docs/agents/domain.md`.
+When explaining concepts to the human, follow [CONTEXT.md](CONTEXT.md); for user-facing updates, follow [Talk in outcomes](docs/supervisor.md#talk-in-outcomes). See `docs/agents/domain.md` for domain-document discovery.
 
 ### Development direction
 
