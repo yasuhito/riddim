@@ -33,5 +33,9 @@ A worker report that calls for the supervisor's attention, such as a completion 
 **Supervisor notification**:
 An alert that an actionable report needs the supervisor's attention. Delivery or receipt is not evidence that the report was reviewed or approved.
 
+**通知の対応済み記録 (Notification handling record)**:
+スーパーバイザーがその通知に必要な対応を済ませ、再提示が不要であることの記録で、この記録を残すことを「通知を対応済みにする」という。受信・閲覧だけでは対応済みにはならず、タスク完了、取り込み承認、レポートやコードの削除を意味しない。
+_Avoid_: ACK, 受領確認, 承認, 通知を消す
+
 **Landing approval**:
 A human's authorization to incorporate the exact worker branch tip they reviewed. Neither a worker's completion claim nor Git readiness grants it.
