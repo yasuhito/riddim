@@ -35,9 +35,11 @@ remaining states and no violations (one worker, breadth-first search).
   accepted IDs, child/readiness bookkeeping and failure count. It must also leave
   B's `inFlight` untouched. Clearing an old A flight is permitted: shutdown does
   not reset `inFlight` in the implementation.
-- `UnhandledRecoverable` checks that every modeled published row remains in the
-  unhandled queue. It does not assert eventual delivery or handling. No action in
-  this scenario is authorized to acknowledge a report.
+- `UnhandledRecoverable` checks structural preservation within this model:
+  `rows` are only added and `handled` never changes, so every modeled published
+  row remains in the unhandled queue. This does not independently verify storage,
+  ACK or crash retention, nor assert eventual delivery or handling. The separate
+  real CLI pending-row assertions provide empirical retention evidence.
 
 There is **no fairness assumption** and no liveness property. Infinite stuttering
 is allowed; PlusCal's generated `Termination` formula is not configured for checking.
@@ -148,9 +150,9 @@ failure also retires its owned notification watcher process.
 Pi 1.4.0's installed `docs/extensions.md` ("Add it to Pi" and "Understand the
 runtime lifecycle") states reload replaces the extension runtime, with
 `session_shutdown -> load replacement extension runtime -> session_start`.
-Its `docs/sessions.md` defines a session as a conversation. Read at
-`/home/yasuhito/.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/`;
-external evidence retains those files and their hashes.
+Its `docs/sessions.md` defines a session as a conversation. Both paths are relative
+to the installed `@earendil-works/pi-coding-agent` 1.4.0 package root. External
+evidence retains the exact local installation path, those files and their hashes.
 
 Pinned upstream sources:
 
