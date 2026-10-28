@@ -8,6 +8,7 @@ require 'tmpdir'
 require_relative '../scripts/pi_stall_server'
 
 # Real Git allocation and Pi context discovery, with only a loopback model.
+# rubocop:disable-next Metrics/ClassLength
 class CentralWorktreeContextTest < Minitest::Test
   SOURCE = File.expand_path('..', __dir__)
   GLOBAL = 'GLOBAL_CONTEXT_PROBE: Keep legitimate personal instructions.'
@@ -15,8 +16,11 @@ class CentralWorktreeContextTest < Minitest::Test
   TARGET = 'TARGET_CONTEXT_PROBE: Edit only the assigned target project.'
   RUNTIME = 'RIDDIM_CONTEXT_PROBE: Coordinate workers; do not edit target projects.'
 
+  # rubocop:disable-next Metrics/MethodLength, Metrics/AbcSize
   def setup
-    skip 'Pi executable unavailable on PATH' unless system('pi', '--version', out: File::NULL, err: File::NULL)
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
 
     @root = Dir.mktmpdir('riddim-context-')
     @runtime = File.join(@root, 'riddim')
@@ -72,26 +76,53 @@ class CentralWorktreeContextTest < Minitest::Test
       'RIDDIM_ACTOR' => 'branch', 'RIDDIM_SUPERVISE' => nil, 'RIDDIM_STATE_DIR' => File.join(@root, 'state') }
   end
 
-  # rubocop:disable-next Metrics/MethodLength, Metrics/AbcSize
+  # rubocop:disable-next Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity
   def request_context
     args = %w[--print --no-tools --no-session --model stall-lab/test --thinking off]
     Bundler.with_unbundled_env do
       Open3.popen3(pi_environment, 'pi', *args, 'Describe instructions.', chdir: @worker) do |input, out, err, wait|
         input.close
-        socket = PiStallLab::LabServer.accept_http_request(@server)
-        request = JSON.parse(PiStallLab::LabServer.read_body(socket))
-        PiStallLab::LabServer.send_ok(socket)
-        socket.close
-        Timeout.timeout(20) { out.read }
-        diagnostics = err.read
-        raise "Pi startup failed: #{diagnostics}" unless wait.value.success?
+        diagnostics = +''
+        readers = [Thread.new { out.read }, Thread.new { err.each_line { |line| diagnostics << line } }]
+        requester = Thread.new { read_context_request }
+        requester.report_on_exception = false
+        Timeout.timeout(20) do
+          status = wait.value
+          readers.each(&:value)
+          raise "Pi startup failed: #{diagnostics}" unless status.success?
 
-        request.fetch('messages').select { |message| message['role'] == 'system' }.to_json
+          requester.value
+        end
+      rescue Timeout::Error
+        raise "Pi context timed out: #{diagnostics}"
       ensure
-        socket&.close unless socket&.closed?
-        Process.kill('TERM', wait.pid) if wait.alive?
+        stop_context_process(wait)
+        requester&.kill
+        requester&.join(5)
+        readers&.each { |reader| raise 'Pi pipe reader did not stop' unless reader.join(5) }
       end
     end
+  end
+
+  def read_context_request
+    socket = PiStallLab::LabServer.accept_http_request(@server)
+    request = JSON.parse(PiStallLab::LabServer.read_body(socket))
+    PiStallLab::LabServer.send_ok(socket)
+    request.fetch('messages').select { |message| message['role'] == 'system' }.to_json
+  ensure
+    socket&.close
+  end
+
+  def stop_context_process(wait)
+    return if wait.join(0)
+
+    Process.kill('TERM', wait.pid)
+    return if wait.join(5)
+
+    Process.kill('KILL', wait.pid)
+    raise "Test-owned Pi #{wait.pid} did not stop after KILL" unless wait.join(5)
+  rescue Errno::ESRCH
+    raise "Test-owned Pi #{wait.pid} was not reaped" unless wait.join(5)
   end
 
   def test_real_pi_keeps_target_and_global_context_without_riddim_context
