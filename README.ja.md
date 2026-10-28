@@ -225,17 +225,35 @@ fast-forward できます。両方のチェックアウトに未コミットの�
 ワーカーと他のプロジェクトには、上記の local-only の規則が引き続き適用されます。
 
 **Riddim のチェックアウト**で、指定の Ruby とテスト用の依存関係をインストールし、
-ユニットテスト、使い捨ての環境での CLI シナリオ、Gherkin のチェック、RuboCop を実行します。
+ユニットテスト、使い捨ての環境での CLI シナリオ、Gherkin のチェック、RuboCop、
+通知テストの型チェックを実行します。開発には Node >=22.19.0 と npm も必要です。
+`test/support` の独立したパッケージには開発用の TypeScript と Node の型だけを置きます。
+CLI の実行時依存関係は増えません。
 
 ```sh
 mise install
 bundle install
+npm --prefix test/support ci --ignore-scripts
 bundle exec rake
 ```
 
-PATH 上に `pi` があれば、実際の Pi を使う通知テストとワーカー起動テストも自動で
+対象を絞って確認するには、次を実行します。
+
+```sh
+bundle exec rake typecheck
+bundle exec ruby -Itest test/notification_session_race_test.rb --verbose
+bundle exec rake lint
+```
+
+型チェックは現在の七つの `.mts` 通知シナリオと、小さなテスト用インターフェースを対象にします。
+誤った API 呼び出しを拒否するコンパイル専用の回帰テストも含みます。
+Node は型を除去して直接実行します。動的に読み込む拡張との境界は型チェックの対象外です。
+本番の拡張と Pi の全 API の互換性や、実際の Pi の動作を確認するものではありません。
+CI には Pi のパッケージをインストールしません。
+
+PATH 上に `pi` があれば、実際の Pi を使う通知テスト、定期プロンプトテスト、ワーカー起動テストも自動で
 実行します。独立した Pi 設定とローカルのループバックモデルを使い、認証情報は不要です。
-Pi がない場合はスキップを報告します。Ruby のみの CI ジョブも同様です。
+Pi がない場合はスキップを報告します。Pi を入れない CI ジョブも同様です。
 それ以外のテストは引き続き実行します。Pi をインストールした環境で、起動時の
 ロック競合に関する回帰テストを確認するには、次を実行してください。
 

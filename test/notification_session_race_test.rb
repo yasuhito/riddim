@@ -16,36 +16,36 @@ class NotificationSessionRaceTest < Minitest::Test
   GEN = 's1767200000.4242.7'
 
   def test_only_unset_or_empty_operator_actor_registers_extension_callbacks
-    run_scenario('notification_actor_boundary.mjs', expected: [])
+    run_scenario('notification_actor_boundary.mts', expected: [])
   end
 
   def test_late_predecessor_rejection_cannot_claim_successor_or_lose_later_report
-    run_scenario('notification_session_race.mjs', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
+    run_scenario('notification_session_race.mts', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
   end
 
   def test_live_idle_without_a_report_is_delivered_after_stability_and_busy_reset
-    run_scenario('notification_stop.mjs', expected: ["worker.#{GEN}.0", "worker.#{GEN}.1"],
+    run_scenario('notification_stop.mts', expected: ["worker.#{GEN}.0", "worker.#{GEN}.1"],
                                           backend: 'notification_stop_backend', marker: 'RIDDIM_TEST_IDLE')
   end
 
   def test_unreported_stop_is_delivered_once_without_a_worker_report
-    run_scenario('notification_stop.mjs', expected: ["worker.#{GEN}.0"], backend: 'notification_stop_backend')
+    run_scenario('notification_stop.mts', expected: ["worker.#{GEN}.0"], backend: 'notification_stop_backend')
   end
 
   def test_unsettled_follow_up_times_out_and_can_be_rearmed
-    run_scenario('notification_delivery_timeout.mjs', expected: ["worker.#{GEN}.1"])
+    run_scenario('notification_delivery_timeout.mts', expected: ["worker.#{GEN}.1"])
   end
 
   def test_replaced_home_cannot_claim_old_watch_as_ready
-    run_scenario('notification_home_replacement.mjs', expected: [])
+    run_scenario('notification_home_replacement.mts', expected: [])
   end
 
   def test_pending_report_stays_with_replaced_home
-    run_scenario('notification_pending_home_replacement.mjs', expected: [])
+    run_scenario('notification_pending_home_replacement.mts', expected: [])
   end
 
   def test_delivery_keeps_source_identity_when_home_changes_at_acceptance
-    run_scenario('notification_delivery_home_replacement.mjs', expected: [])
+    run_scenario('notification_delivery_home_replacement.mts', expected: [])
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
@@ -81,11 +81,11 @@ class NotificationSessionRaceTest < Minitest::Test
   end
 
   def test_replaced_lock_marker_cannot_claim_old_watch_as_ready
-    run_scenario('notification_home_replacement.mjs', expected: [], marker: 'RIDDIM_REPLACE_LOCK')
+    run_scenario('notification_home_replacement.mts', expected: [], marker: 'RIDDIM_REPLACE_LOCK')
   end
 
   def test_corrupt_lock_marker_cannot_claim_old_watch_as_ready
-    run_scenario('notification_home_replacement.mjs', expected: [], marker: 'RIDDIM_CORRUPT_LOCK')
+    run_scenario('notification_home_replacement.mts', expected: [], marker: 'RIDDIM_CORRUPT_LOCK')
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength

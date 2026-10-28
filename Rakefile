@@ -44,5 +44,13 @@ task :gherkin do
 end
 
 task test: %i[unit features]
-task lint: %i[rubocop gherkin]
+desc 'Type-check notification fixtures (install test/support npm dependencies first)'
+task :typecheck do
+  abort 'Missing TypeScript; run npm --prefix test/support ci --ignore-scripts first' unless
+    File.file?('test/support/node_modules/typescript/bin/tsc')
+
+  sh 'npm', '--prefix', 'test/support', 'run', 'typecheck'
+end
+
+task lint: %i[rubocop gherkin typecheck]
 task default: %i[test lint]

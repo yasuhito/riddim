@@ -211,20 +211,38 @@ external supervisor workflow, not a CLI PR feature; workers and other projects
 retain the local-only delivery rules above.
 
 From the **Riddim checkout**, install the configured Ruby and test dependencies,
-then run unit tests, disposable CLI scenarios, Gherkin checks and RuboCop:
+then run unit tests, disposable CLI scenarios, Gherkin checks, RuboCop and
+notification fixture type checks. Development also requires Node >=22.19.0 and
+npm; the isolated `test/support` package contains only development dependencies
+(TypeScript and Node types), not CLI runtime dependencies:
 
 ```sh
 mise install
 bundle install
+npm --prefix test/support ci --ignore-scripts
 bundle exec rake
 ```
+
+For focused checks:
+
+```sh
+bundle exec rake typecheck
+bundle exec ruby -Itest test/notification_session_race_test.rb --verbose
+bundle exec rake lint
+```
+
+Type checking covers the seven current `.mts` notification scenarios and their
+small explicit fixture interface, including compile-only invalid-use regressions.
+Node runs these files directly by stripping types. The dynamic extension import
+is an unchecked boundary: this does not type-check the production extension
+against Pi's full API or replace real-Pi tests. No Pi package is installed for CI.
 
 The real-Pi notification, scheduled-prompt and worker-startup tests run
 automatically when `pi` is available on PATH, using isolated Pi configuration
 and a loopback model without credentials. They report explicit skips when Pi
-is absent, including in the Ruby-only CI job; the remaining tests still run.
+is absent, including in the no-Pi CI job; the remaining tests still run.
 This is an executable-availability boundary, not a blanket CI skip: a present
-but broken Pi executable must fail rather than silently skip. Ruby-only CI
+but broken Pi executable must fail rather than silently skip. No-Pi CI
 success does not verify real-Pi prompt delivery or session lifecycle.
 
 To verify the startup lock-collision regression with Pi installed, run:
@@ -250,4 +268,4 @@ bundle exec ruby -Itest test/scheduled_prompts_availability_test.rb --verbose
 It checks absent/nonexecutable Pi, skipped teardown without leftover fixtures,
 and a deliberately broken executable that must still fail. It does not provide
 real-Pi delivery coverage. No Pi installation step or runtime dependency is added
-to the Ruby-only workflow.
+to the no-Pi workflow.
