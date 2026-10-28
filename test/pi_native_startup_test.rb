@@ -16,7 +16,9 @@ class PiNativeStartupTest < Minitest::Test
   SOURCE = File.expand_path('..', __dir__)
 
   def setup
-    skip 'Pi executable unavailable on PATH' unless system('pi', '--version', out: File::NULL, err: File::NULL)
+    skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH').split(File::PATH_SEPARATOR).any? do |dir|
+      File.executable?(File.join(dir, 'pi')) && File.file?(File.join(dir, 'pi'))
+    end
 
     @root = Dir.mktmpdir('riddim-native-startup-')
     @checkout = File.join(@root, 'checkout')
@@ -157,7 +159,7 @@ class PiNativeStartupTest < Minitest::Test
   end
 
   def test_unmarked_linked_worktree_cannot_become_supervisor_even_with_selected_home
-    linked = File.join(@root, 'worker')
+    linked = File.join(@root, '.riddim-worktrees', 'riddim-local', 'worker')
     run!('git', '-C', @checkout, 'worktree', 'add', '--quiet', '-b', 'worker', linked)
     @state = File.join(@root, 'selected-state')
     process = start_pi(cwd: linked, state: @state)
@@ -169,6 +171,46 @@ class PiNativeStartupTest < Minitest::Test
 
     refute_includes commands.to_s, 'riddim-watch-arm'
     refute_path_exists @state
+  end
+
+  def central_target_worktree
+    target = File.join(@root, 'target')
+    run!('git', 'init', '--quiet', target)
+    run!('git', '-C', target, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+         'commit', '--allow-empty', '-qm', 'base')
+    linked = File.join(@root, '.riddim-worktrees', 'target-local', 'worker')
+    run!('git', '-C', target, 'worktree', 'add', '--quiet', '-b', 'worker', linked)
+    linked
+  end
+
+  def test_unmarked_foreign_central_worktree_does_not_discover_supervision
+    @state = File.join(@root, 'selected-state')
+    process = start_pi(cwd: central_target_worktree, state: @state)
+    commands = response(process, 'get_commands')
+
+    refute_includes commands.to_s, 'riddim-watch-arm'
+    refute_path_exists @state
+    refute_path_exists File.join(@checkout, 'state')
+  end
+
+  def test_linked_runtime_explicit_supervise_from_central_worktree_keeps_selected_home
+    linked_runtime = File.join(@root, '.riddim-worktrees', 'riddim-local', 'runtime')
+    run!('git', '-C', @checkout, 'worktree', 'add', '--quiet', '-b', 'runtime', linked_runtime)
+    @state = File.join(@root, 'selected-state')
+    cwd = central_target_worktree
+    process = Bundler.with_unbundled_env do
+      Open3.popen3(pi_environment(state: @state), File.join(linked_runtime, 'bin/riddim'), 'supervise', chdir: cwd)
+    end
+    record_process(process)
+    wait_for_ready(process)
+    response(process, 'prompt', message: 'Describe your role')
+    body = model_request
+
+    assert watcher_locked?(@state)
+    assert_equal 1, body.to_s.scan('You coordinate Riddim').size
+    refute_path_exists File.join(cwd, 'state')
+    refute_path_exists File.join(linked_runtime, 'state')
+    refute_path_exists File.join(@checkout, 'state')
   end
 
   def test_competing_session_refuses_without_taking_over_after_owner_exits

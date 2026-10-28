@@ -15,6 +15,102 @@ Feature: Start a Pi worker in an isolated Git worktree
       """
     Then the worker has a separate linked worktree at the project's HEAD
 
+  Scenario: Keep target parents clean with central runtime storage
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the worker lives in the central runtime without changing the target parent
+
+  Scenario: Resolve a linked runtime back to its primary installation
+    Given Riddim runs from a linked runtime checkout
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the primary runtime remains clean with central workers outside it
+
+  Scenario Outline: Use the actual primary installation with relocated Git metadata
+    Given Riddim runs from a "<layout>" primary installation
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the worker lives in the central runtime without changing the target parent
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | submodule        |
+
+  Scenario Outline: Refuse an ambiguous linked runtime before allocating a worker
+    Given Riddim runs from a "<layout>" primary installation
+    And Riddim is invoked from its linked runtime
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the ambiguous runtime is refused without worker assets in Git metadata
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | submodule        |
+
+  Scenario: Linked target checkouts share the repository's central identity
+    Given the target is accessed through a linked checkout
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the worker lives in the central runtime without changing the target parent
+
+  Scenario Outline: Refuse ambiguous linked targets before allocating a worker
+    Given the target is a linked checkout with "<layout>" metadata
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the ambiguous linked target is refused before creating any worker assets
+
+    Examples:
+      | layout           |
+      | separate-git-dir |
+      | bare             |
+
+  Scenario Outline: Refuse unsafe central storage without touching other paths
+    Given the central storage has an unsafe "<kind>"
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then unsafe central storage is refused without changing its contents
+
+    Examples:
+      | kind                |
+      | root symlink        |
+      | repository symlink  |
+      | root file           |
+      | repository file     |
+      | writable root       |
+      | destination symlink |
+
+  Scenario: Remove only newly created empty storage after a branch collision
+    Given the worker branch already exists without a worktree
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then the failed allocation leaves no central directories or changed branch
+
+  Scenario: Keep same-name independent repositories in separate central directories
+    Given another independent project with the same basename has a worker
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then both repositories have separate central workers
+
   Scenario: Refuse a checkout hook that changes the new branch's HEAD
     Given the project has an earlier commit and a post-checkout hook resets the worker branch
     When I run riddim with:

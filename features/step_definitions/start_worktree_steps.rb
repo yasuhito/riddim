@@ -19,7 +19,12 @@ Given('a local Git project for worktree start') do
   raise 'git commit failed' unless git.call('-c', 'user.name=Riddim', '-c', 'user.email=test@example.invalid',
                                             'commit', '-qm', 'base').last.success?
 
-  @worktree = File.join(File.dirname(@project), 'project-riddim-worker')
+  @runtime = File.join(new_temporary_directory, 'runtime')
+  FileUtils.mkdir_p(File.join(@runtime, 'bin'))
+  FileUtils.cp(RiddimWorld::RIDDIM, File.join(@runtime, 'bin', 'riddim'))
+  %w[lib scripts].each { |directory| FileUtils.cp_r(File.expand_path("../../#{directory}", __dir__), @runtime) }
+  @riddim_cli = File.join(@runtime, 'bin', 'riddim')
+  @worktree = central_worker_path(@project)
   @working_directory = @project
 end
 
@@ -205,7 +210,7 @@ Given('the new pane stays outside the linked worktree') do
 end
 
 Given('the worker worktree destination already exists') do
-  Dir.mkdir(@worktree)
+  FileUtils.mkdir_p(@worktree)
   File.write(File.join(@worktree, 'untouched'), 'keep')
 end
 

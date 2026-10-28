@@ -16,6 +16,46 @@ module Riddim
 
     module_function
 
+    # Resolve code running in a linked checkout back to its primary installation.
+    # Config/state overrides do not relocate storage. Non-Git installs use ROOT.
+    def installation_root
+      root = File.realpath(ROOT)
+      return root unless File.exist?(File.join(root, '.git')) || File.symlink?(File.join(root, '.git'))
+
+      primary_checkout(root)
+    end
+
+    # A sibling keeps workers outside the installation's project instructions.
+    def worktree_root
+      File.join(File.dirname(installation_root), '.riddim-worktrees')
+    end
+
+    def primary_checkout(root)
+      # Git's first worktree-list row can name relocated metadata, not a checkout.
+      common = git_path(root, '--path-format=absolute', '--git-common-dir')
+      return git_path(root, '--show-toplevel') if git_path(root, '--absolute-git-dir') == common
+
+      candidate = listed_primary(root)
+      return candidate if verified_primary?(candidate, common)
+
+      raise Error, "cannot locate verified primary checkout for #{root}; unsupported linked Git layout"
+    end
+
+    def verified_primary?(candidate, common)
+      candidate != common && git_path(candidate, '--show-toplevel') == candidate &&
+        git_path(candidate, '--absolute-git-dir') == common
+    end
+
+    def listed_primary(root)
+      stdout, stderr, status = Open3.capture3(GIT_ENV, 'git', '-C', root, 'worktree', 'list', '--porcelain', '-z')
+      first = stdout.split("\0", 2).first
+      unless status.success? && first&.start_with?('worktree ')
+        raise Error, "cannot locate primary checkout for #{root}: #{stderr.strip}"
+      end
+
+      File.realpath(first.delete_prefix('worktree '))
+    end
+
     def activate!
       fields = read_for_source
       return unless fields
