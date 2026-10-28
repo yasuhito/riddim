@@ -323,6 +323,22 @@ class PiNativeStartupTest < Minitest::Test
     shim
   end
 
+  def test_corrupt_scheduled_state_does_not_suppress_native_supervisor_contract_or_readiness
+    @state = File.join(@checkout, 'state')
+    Dir.mkdir(@state, 0o700)
+    File.write(File.join(@state, '.scheduled-prompts.lock'), '', perm: 0o600)
+    File.write(File.join(@state, '.scheduled-prompts.json'), '{corrupt', perm: 0o600)
+    process = start_pi
+    wait_for_ready(process)
+    body = model_request # The bounded schedule diagnostic initiates this request.
+
+    assert watcher_locked?(@state)
+    assert_includes body.to_s, 'You coordinate Riddim'
+    refute_includes body.to_s, 'Do not supervise or start workers'
+    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    refute_includes @events.to_s, 'Riddim watcher FAILED'
+  end
+
   def test_fresh_clone_initializes_default_home_and_injects_supervisor_contract
     @state = File.join(@checkout, 'state')
     process = start_pi

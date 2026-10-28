@@ -11,7 +11,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/riddim");
 const root = resolve(dirname(cli), "..");
 let home = process.env.RIDDIM_STATE_DIR && resolve(process.env.RIDDIM_STATE_DIR);
-const identity = /^([a-z][a-z0-9_-]{0,31})\.(s\d+\.\d+\.\d+)\.(0|[1-9]\d*)$/;
+const identity = /^(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9})$/;
+const scheduledIdentity = /^scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9}$/;
+const sessionIdentity = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
@@ -55,10 +57,16 @@ export default function (pi: ExtensionAPI) {
   let boundLock: string | null = null;
   let arming: Promise<boolean> | null = null;
   let active = false;
+  let recipient: string | null = null;
   let serial = 0;
   let inFlight: number | null = null;
   const batches: Batch[] = [];
   const accepted = new Map<string, Set<string>>();
+  // Failed offers are withheld for this runtime, never counted as accepted.
+  // A bounded diagnostic directs explicit repair/scan or same-session reload;
+  // observer churn must not become an unbounded schedule delivery retry loop.
+  const withheld = new Map<string, Set<string>>();
+  const scheduleAlerts = new Set<string>();
   let notifyFailure: ((message: string) => void) | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryAttempts = 0;
@@ -86,6 +94,23 @@ export default function (pi: ExtensionAPI) {
     } catch (error) {
       console.error(`riddim failure follow-up rejected: ${String(error)}`);
     }
+  }
+
+  function scheduleFailure(key: string, reason: string, epoch: number): void {
+    if (!active || serial !== epoch || scheduleAlerts.has(key)) return;
+    scheduleAlerts.add(key);
+    const message = `Riddim scheduled prompts FAILED: ${reason}. Scheduled content is withheld, not handled. ` +
+      "Ordinary Worker report watching is independent. Verify the ORIGINAL home/watcher-lock identities, " +
+      "then inspect schedule list and repair scheduled state without deleting ownership or pending work. " +
+      "After repair, use schedule scan with your verified Pi session ID for explicit handling, or ask the human " +
+      "for same-session /reload while idle to replay withheld occurrences. No scheduled task was ACKed.";
+    console.error(message);
+    try { notifyFailure?.(message); } catch { /* No observer recovery for a schedule diagnostic. */ }
+    try {
+      void Promise.resolve(pi.sendUserMessage(message, { deliverAs: "followUp" })).catch(() => {
+        console.error("riddim scheduled failure follow-up rejected; inspect scheduled state manually");
+      });
+    } catch { console.error("riddim scheduled failure follow-up rejected; inspect scheduled state manually"); }
   }
 
   // Retry only a previously verified observer, never a contested startup lock.
@@ -161,14 +186,19 @@ export default function (pi: ExtensionAPI) {
     if (!binding) { failure("selected home is unavailable", epoch); return false; }
     boundHome = binding;
     const nonce = randomBytes(16).toString("hex");
-    const proc = spawn("ruby", [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"], {
+    const args = [cli, "watch-notifications", "--nonce", nonce, "--exclude-stdin"];
+    if (recipient) args.push("--session", recipient);
+    const proc = spawn("ruby", args, {
       env: { ...process.env, RIDDIM_STATE_DIR: home },
       stdio: ["pipe", "pipe", "pipe"],
     });
     child = proc;
     proc.stdin?.on("error", () => { /* An early watcher refusal closes stdin. */ });
     const currentLock = lockIdentity();
-    proc.stdin?.end(JSON.stringify([...(accepted.get(`${binding}/${currentLock}`) ?? [])]));
+    const source = `${binding}/${currentLock}`;
+    proc.stdin?.end(JSON.stringify([...new Set([
+      ...(accepted.get(source) ?? []), ...(withheld.get(source) ?? []),
+    ])]));
     let stdout = "";
     let stderr = "";
     let ready = false;
@@ -208,6 +238,11 @@ export default function (pi: ExtensionAPI) {
           finishReady(true);
         } else if (frame.type === "beat" && ready) {
           verifiedAt = performance.now();
+        } else if ((frame.type === "schedule-error" || frame.type === "schedule-ok") && ready &&
+          frame.home === binding && frame.lock === boundLock) {
+          const key = `scan:${binding}/${frame.lock}`;
+          if (frame.type === "schedule-ok") scheduleAlerts.delete(key);
+          else scheduleFailure(key, "scheduled state is unavailable or invalid", epoch);
         } else if (frame.type === "pending" && ready && Array.isArray(frame.ids) &&
           frame.ids.length > 0 && frame.ids.every((id) => identity.test(id)) &&
           frame.home === binding && frame.lock === boundLock) {
@@ -273,15 +308,14 @@ export default function (pi: ExtensionAPI) {
         const successor = healthy ? readyChild : null;
         const detail = healthy ? "Watcher successor is ready." :
           "Watcher FAILED: successor readiness/liveness unverified; repair supervision.";
-        const content = `Riddim Supervisor notification from home ${batch.home}, watcher lock ${batch.lock}. ` +
-          `Pending IDs: ${ids.join(", ")}. Verify both identities in the selected home before running ` +
-          "riddim notifications scan; if changed, recover from the original home manually. " +
-          "Handle the reports, then explicitly ack each presented ID. " +
-          `Reports are Worker claims; sequence 0 is unreported idle/stop attention, not completion. ` +
-          `Neither is Git readiness or Landing approval. ${detail}`;
         if (!healthy) ids.forEach((id) => accepted.get(source)!.delete(id));
         let deliveryTimeout: ReturnType<typeof setTimeout> | undefined;
         try {
+          const content = notificationContent(batch, ids, healthy, detail, epoch);
+          if (!content) continue; // Cancelled/handled before the durable offer.
+          if (batch.home !== homeIdentity() || batch.lock !== lockIdentity()) {
+            throw new Error("selected home or watcher lock changed before follow-up");
+          }
           await Promise.race([
             Promise.resolve(pi.sendUserMessage(content, { deliverAs: "followUp" })),
             new Promise<never>((_resolve, reject) => {
@@ -307,6 +341,50 @@ export default function (pi: ExtensionAPI) {
       if (inFlight === epoch) inFlight = null;
       if (active && serial === epoch && batches.length > 0) void deliver(epoch);
     }
+  }
+
+  function notificationContent(batch: Batch, ids: string[], healthy: boolean, detail: string, epoch: number): string {
+    const parts: string[] = [];
+    const reports = ids.filter((id) => !scheduledIdentity.test(id));
+    if (reports.length) {
+      parts.push(`Riddim Supervisor notification from home ${batch.home}, watcher lock ${batch.lock}. ` +
+        `Pending IDs: ${reports.join(", ")}. Verify both identities in the selected home before running ` +
+        "riddim notifications scan; if changed, recover from the original home manually. " +
+        "Handle the reports, then explicitly ack each presented ID. " +
+        "Reports are Worker claims; sequence 0 is unreported idle/stop attention, not completion. " +
+        `Neither is Git readiness or Landing approval. ${detail}`);
+    }
+    for (const id of ids.filter((id) => scheduledIdentity.test(id))) {
+      const source = `${batch.home}/${batch.lock}`;
+      let offered: { kind: string; id: string; session: string; prompt: string } | null;
+      try {
+        if (!recipient || !healthy) throw new Error("scheduled recipient or watcher readiness unverified");
+        // The durable offer is NOT an ACK or proof of sendUserMessage consumption.
+        // Cancel before it withholds content; after it cannot retract a follow-up.
+        offered = JSON.parse(execFileSync("ruby", [cli, "schedule", "offer", id,
+          "--session", recipient, "--home", batch.home, "--lock", batch.lock],
+        { env: { ...process.env, RIDDIM_STATE_DIR: home }, encoding: "utf8", timeout: 5000,
+          stdio: ["ignore", "pipe", "pipe"], maxBuffer: 128 * 1024 }));
+        if (!offered) { accepted.get(source)?.delete(id); continue; }
+        if (offered.kind !== "scheduled-prompt" || offered.id !== id || offered.session !== recipient ||
+            typeof offered.prompt !== "string") throw new Error("invalid scheduled prompt offer");
+      } catch {
+        accepted.get(source)?.delete(id);
+        if (!withheld.has(source)) withheld.set(source, new Set());
+        withheld.get(source)!.add(id);
+        scheduleFailure(`offer:${source}/${id}`, `occurrence ${id} could not be offered with verified readiness`, epoch);
+        continue; // Never discard already accumulated ordinary Worker report text.
+      }
+      scheduleAlerts.delete(`offer:${source}/${id}`);
+      parts.push(`Riddim scheduled prompt ${id} for Pi session ${recipient}, from home ${batch.home}, ` +
+        `watcher lock ${batch.lock}. Scheduled prompts are not Worker reports, sequence 0, Git readiness, ` +
+        "or human landing/publication/destruction approval. Act only within the human-authorized scope. " +
+        "After handling, explicitly acknowledge this occurrence (not just receipt) with " +
+        `riddim schedule ack ${id} --session ${recipient}. Delivery may replay until ACK; ` +
+        "it does not promise exactly-once task side effects. Cancellation cannot retract an in-flight follow-up.\n\n" +
+        offered.prompt);
+    }
+    return parts.join("\n\n");
   }
 
   function waitForClose(proc: ChildProcess): Promise<void> {
@@ -343,6 +421,10 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     if (!home) return;
+    // Only Pi's actual durable session metadata can route scheduled content.
+    // A missing/ephemeral/unknown identity never binds itself implicitly.
+    const actualId = ctx.sessionManager?.getSessionId();
+    recipient = actualId && sessionIdentity.test(actualId) && ctx.sessionManager?.getSessionFile() ? actualId : null;
     active = true;
     notifyFailure = (message) => ctx.ui.notify(message, "error");
     if (!await arm() && supervisorInstructions) {
@@ -371,6 +453,7 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", async () => {
     active = false;
+    recipient = null;
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
     retryAttempts = 0;
@@ -395,6 +478,8 @@ export default function (pi: ExtensionAPI) {
     boundLock = null;
     arming = null;
     accepted.clear(); // Restart replays every unacknowledged report.
+    withheld.clear(); // Failed scheduled offers remain durable, not accepted/ACKed.
+    scheduleAlerts.clear();
     batches.length = 0;
   });
 }

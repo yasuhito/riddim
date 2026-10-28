@@ -23,6 +23,7 @@ These are reference examples, not a script to run from top to bottom.
 - [Worker launch](#start-a-background-pi-agent) and [worktrees](#start-in-a-fresh-git-worktree)
 - [Reports and readiness](#local-only-result-handoff)
 - [Notifications](#drain-and-acknowledge-local-only-reports)
+- [Scheduled supervisor prompts](#scheduled-supervisor-prompts)
 - [Review](#review-a-local-only-workers-committed-diff),
   [landing](#land-an-approved-local-only-worker-branch),
   [retirement](#retire-an-already-landed-local-only-worker) and
@@ -738,6 +739,132 @@ IDs. Pi accepting or consuming a follow-up never acknowledges it. Session
 replacements re-present unhandled reports, including IDs accepted into the
 previous Pi session's pending queue. This smaller subset of Firstmate's watcher
 never interrupts workers, approves landing, or infers task completion from activity.
+
+#### Scheduled supervisor prompts
+
+Only create a schedule for an explicitly human-authorized prompt and recipient.
+First verify the intended supervisor's **own** Pi session ID using Pi's built-in
+`/session`, or its actual session metadata (`ctx.sessionManager.getSessionId()`
+and `getSessionFile()` in extensions; `get_state` in RPC). Do not choose the latest
+session, infer an ID from a directory, or use a worker's ID. If metadata is
+unavailable, stop rather than guessing. In-memory `--no-session` Pi cannot receive
+scheduled prompts. Session names, Herdr sessions and pane IDs are not Pi session IDs.
+
+Use the original verified state home, already prepared by supervisor startup with
+its private watcher-lock marker. These commands print JSON:
+
+```sh
+bin/riddim schedule create --session <verified-Pi-ID> --at '2027-01-15T09:00:00+09:00' --prompt-file /absolute/path/prompt.txt
+bin/riddim schedule create --session <verified-Pi-ID> --every 30m --prompt-file /absolute/path/prompt.txt
+bin/riddim schedule list
+bin/riddim schedule cancel <schedule-id>
+bin/riddim schedule scan --session <verified-Pi-ID>
+bin/riddim schedule ack <presented-occurrence-id> --session <verified-Pi-ID>
+```
+
+`create` accepts each option once, in any order. `--session` and `--prompt-file`
+are mandatory. A one-shot requires `--at`. A recurring schedule requires
+`--every`; optional `--at` sets its first slot, otherwise the first slot is
+creation time plus the interval. `--at` uses exactly
+`YYYY-MM-DDTHH:MM:SS+HH:MM` or `YYYY-MM-DDTHH:MM:SS-HH:MM`, a real calendar time,
+a numeric offset within +/-14:00 (use `+00:00`, not unknown `-00:00`), and a UTC
+instant between 1970-01-01 and 2100-01-01 inclusive. Fractional seconds, `Z`,
+missing offsets, leap seconds and normalized invalid dates are rejected.
+`--every` is a positive decimal integer followed by `s`, `m`, `h` or `d`,
+from 1 second through 365 days. A day means 86400 seconds, not a local calendar
+day. No cron, daily-time, DST or fractional-interval engine is implemented.
+Pi IDs are 1-128 ASCII letters/digits/underscores/dashes, starting with a letter
+or digit. Options cannot be abbreviated or repeated.
+
+The prompt file must be regular, not a symlink, nonblank UTF-8 without NUL,
+at most 16384 bytes. Its contents are copied at creation, never executed as
+shell text or reread on dispatch. `list` includes saved prompt text, immutable
+recipient, cadence, latest occurrence and its status; treat that output as
+private. IDs are generated, not caller-selected. There is a limit of 128 saved
+schedules including completed/cancelled schedules, a 4 MiB store and one billion
+occurrences per schedule. There is no editing, rebinding or deletion API in
+this minimal version. Overflow, corrupt/unknown/duplicate fields, invalid
+lifecycle state, changed home/lock or nonprivate state fail closed; do not repair
+these by discarding state or replacing ownership markers. A cadence extending
+beyond 2100 refuses instead of wrapping; cancel it before that boundary.
+
+Ruby's existing watcher materializes due occurrences durably, atomically with
+cadence advancement. A one-shot is not removed before pending work exists;
+completed records remain inspectable. For recurring schedules, slots stay fixed
+at `first + n * interval`. Each scan advances to the first slot strictly after
+its wall clock. Missed slots coalesce into **one outstanding occurrence**, whose
+ID and original due slot stay unchanged until explicit handling ACK. No backlog
+storm is created after downtime. ACK does not trigger immediate catch-up for
+already-coalesced slots. The next future slot can create a new ID after ACK.
+Wall-clock corrections can delay a future slot; monotonic time still governs
+watcher liveness. Scheduling is not a real-time delivery guarantee.
+
+The existing Pi extension sends a non-steering follow-up **only to the persisted
+Pi session ID**, using its actual metadata, not an environment-selected recipient.
+Same-ID `/reload` and resume/restart can replay unhandled occurrences. A different-ID
+`/new`, fork, clone or unrelated session receives no scheduled content and cannot
+scan/offer/ACK it. Offline or unmatched work remains saved, visible in `list` and
+cancellable. Riddim never starts a stopped supervisor or silently rebinds it.
+Worker report replay across replacement sessions remains unchanged.
+
+`scan` presents matching pending occurrences and their text for manual handling;
+`list` alone does not authorize ACK. Automatic delivery performs a durable offer
+against the original home/watcher-lock identities before sending. An offer or
+`sendUserMessage` returning void is **not** a handling ACK or proof of receipt.
+After handling, explicitly ACK the exact presented `scheduled.<schedule-id>.<sequence>`
+ID with its recipient. ACK is idempotent, including for older handled IDs, and
+cannot consume Worker reports, sequence 0 attention, readiness or approval.
+The extension suppresses accepted IDs in memory only; restart/reload may replay
+unhandled work. Task side effects are not exactly-once.
+
+`cancel` prevents new occurrences and any future offers. If cancellation wins
+before a durable offer, no prompt content is dispatched. If an offer already
+occurred, a follow-up may be in flight, queued or delivered; cancellation cannot
+retract it. The latest occurrence becomes `cancelled` unless already handled;
+`offered` records this uncertainty, not successful delivery. A previously
+presented occurrence can still be explicitly handling-ACKed after cancellation.
+
+Schedules use a separate schema and private, locked atomic store. Initialization
+is serialized by the store lock, not by which process opened it first. An empty
+store-lock marker means initialization is unfinished: only a validated empty
+initial document can be recovered. The empty document is durably published before
+a ready marker (`1`) is fsynced; only then may any schedule be written. Thus a
+crash or disk failure before readiness is safely recoverable using the same lock
+inode. A ready marker plus missing data, or an unfinished marker with a nonempty
+document, refuses instead of silently discarding work. Never delete, truncate or
+replace a marker to recover an established source. The shared watcher-lock marker
+remains empty and retains its original lifetime-ownership contract.
+
+Invalid/unavailable scheduled state withholds scheduled content only. A bounded
+`Riddim scheduled prompts FAILED` diagnostic does not stop ordinary Worker report
+watching, suppress the native supervisor role or spend observer recovery attempts.
+It includes no prompt text or parser excerpts. Scan diagnostics clear after a
+healthy scan. This isolation applies to corrupt schedule payloads, not uncertainty
+about the original source. Both live home/watcher ownership changes and a mismatch
+with their durably recorded identities stop the observer, including on fresh
+startup or `/reload`. A copied/migrated home is an expected safety refusal, not a
+supported migration. Recover the original source; never scan a replacement as
+though it were the original or downgrade its identity mismatch to a payload error.
+
+A failed scheduled offer (including unverified successor readiness) also cannot
+discard ordinary Worker IDs from the same batch. Those retain their existing
+degraded-successor delivery contract. The unoffered occurrence stays durable and
+unhandled, not accepted/ACKed. Failed IDs are withheld for that extension runtime,
+with one diagnostic per source/ID, rather than churn observers or retry delivery
+unboundedly. After repairing prerequisites and verifying original identities,
+use `schedule scan --session <verified-Pi-ID>` for explicit handling, or ask the
+human for same-session `/reload` while idle to replay withheld occurrences. This
+is separate from bounded recovery of an actually failed observer.
+
+Schedules are not Worker claims or human authorization for landing, publication
+or destruction.
+Every schedule operation and watcher scheduling is operator-only: nonempty
+`RIDDIM_ACTOR`, including workers and unknown values, refuses. Supplying an ID is
+an operational routing assertion, not cryptographic proof of human consent.
+No live reservations are installed automatically. This feature does not permit
+periodic fleet/liveness loops, own-repository CI watchers/retries, automatic skill
+changes or expansion of permissions. Future uses require explicit human scope
+and must obey the existing repository policies.
 
 #### Review a local-only worker's committed diff
 

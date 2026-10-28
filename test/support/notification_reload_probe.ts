@@ -7,7 +7,8 @@ export default function (pi: ExtensionAPI) {
   const runtime = randomUUID();
   const record = (event: object) => appendFileSync(process.env.RIDDIM_RELOAD_TRACE!,
     JSON.stringify({ runtime, ...event }) + "\n");
-  pi.on("session_start", (event) => record({ type: "start", reason: event.reason,
+  pi.on("session_start", (event, ctx) => record({ type: "start", reason: event.reason,
+    session: ctx.sessionManager.getSessionId(), sessionFile: ctx.sessionManager.getSessionFile(),
     commands: pi.getCommands(),
     children: readFileSync(`/proc/${process.pid}/task/${process.pid}/children`, "utf8").trim().split(/\s+/),
   }));

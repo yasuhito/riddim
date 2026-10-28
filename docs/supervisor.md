@@ -81,6 +81,47 @@ failure or another owner. Do not claim recovery until fresh watcher readiness is
 If either original identity differs or cannot be verified, stop and recover the original source;
 never scan a replacement home as the original or use reload to bless it.
 
+## Human-configured scheduled prompts
+
+For an explicitly human-authorized one-shot or fixed-interval prompt, use
+[`riddim schedule`](cli-reference.md#scheduled-supervisor-prompts) with a prompt
+file and your own verified Pi session ID. Never infer the recipient from the
+state home, latest session, pane or first observer. If your actual Pi metadata is
+unavailable, stop rather than guessing. Each schedule saves its recipient
+immutably; only that same session can consume or handling-ACK its occurrences.
+Same-session reload/resume can replay unhandled work; replacement sessions cannot
+inherit scheduled prompts. Offline/unmatched work stays saved and cancellable.
+Riddim does not start stopped supervisors or provide rebinding.
+
+Treat a `Riddim scheduled prompt` as a distinct scheduled occurrence, not a
+Worker report, sequence 0 attention, Git readiness or new landing/publication/
+destruction approval. Execute only within the original human-authorized scope.
+After handling, explicitly use `riddim schedule ack <presented-occurrence-id>
+--session <your-verified-Pi-ID>`. API acceptance is not handling; replay does not
+promise exactly-once task side effects. `schedule list` shows all saved schedules;
+`scan --session` presents only matching pending work. Recurring missed slots
+coalesce into one stable outstanding ID, keeping fixed cadence without a storm.
+Cancellation prevents future offers, not retraction of an offered, queued or
+already-delivered follow-up. Inspect the documented `offered` uncertainty.
+
+A `Riddim scheduled prompts FAILED` diagnostic withholds scheduled content, not
+ordinary Worker reports, and grants no new authority. It does not consume observer
+recovery attempts. Inspect scheduled state only after verifying the original
+source identities; never delete locks or pending work to silence it. Failed offers
+remain unhandled and are withheld for that runtime to avoid retry storms. After
+repair, use a matching-session `schedule scan` for explicit handling, or ask the
+human for same-session `/reload` while idle to replay them. Shared home/watcher
+ownership failures remain full observer failures, not isolated schedule errors.
+This includes mismatches with the durably recorded original identities at fresh
+startup or reload. A copied home must refuse; copying is not a migration/rebinding
+API and cannot authorize scanning a replacement as the original.
+
+This adds no default schedules, always-on monitoring, new permission or automatic
+skill changes. The prohibition of periodic liveness loops and Riddim's own
+repository CI watchers/retries remains in force. Do not use schedules to bypass
+those restrictions. Original Worker notification replay and acknowledgement
+remain separate and unchanged.
+
 ## Supervisor-owned follow-through
 
 On notifications and fleet checks, carry out already-authorized review and investigation;

@@ -160,6 +160,41 @@ class PiNotificationsReloadTest < Minitest::Test
     wait_until { rows.last&.fetch('type') == 'settled' }
   end
 
+  def schedule_cli(*)
+    out, err, status = Bundler.with_unbundled_env do
+      Open3.capture3({ 'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil }, CLI, 'schedule', *)
+    end
+    raise err unless status.success?
+
+    JSON.parse(out)
+  end
+
+  def test_actual_reload_preserves_scheduled_recipient_and_replays_without_implicit_ack
+    File.chmod(0o700, @state)
+    session = rows.find { |row| row['type'] == 'start' }.fetch('session')
+    prompt = File.join(@root, 'scheduled-prompt.txt')
+    File.write(prompt, 'Explicitly authorized reload lifecycle check')
+    schedule = schedule_cli('create', '--session', session, '--at', '2026-01-01T00:00:00+00:00',
+                            '--every', '365d', '--prompt-file', prompt)
+    id = "scheduled.#{schedule.fetch('id')}.1"
+    wait_for_user(id)
+    wait_for_settled
+    source = [identity(@state), identity(File.join(@state, '.notification-watcher.lock'))]
+    boundary = rows.size
+    @input.write("/reload\r")
+    wait_until { rows.drop(boundary).any? { |row| row['type'] == 'start' && row['reason'] == 'reload' } }
+    wait_for_user(id, boundary: boundary)
+    wait_for_settled
+
+    assert_equal session, rows.drop(boundary).find { |row| row['type'] == 'start' }.fetch('session')
+    assert_equal source, [identity(@state), identity(File.join(@state, '.notification-watcher.lock'))]
+    assert_equal 'pending', schedule_cli('list').fetch(0).fetch('occurrence').fetch('status')
+    schedule_cli('ack', id, '--session', session)
+
+    assert_empty schedule_cli('scan', '--session', session)
+    assert_empty pending_ids
+  end
+
   def test_actual_reload_is_refused_while_streaming_without_replacing_the_watcher
     @hold_response = true
     @input.write("Keep streaming\r")
