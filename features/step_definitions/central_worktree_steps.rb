@@ -13,7 +13,8 @@ end
 def central_git!(directory, *)
   # A local submodule clone must not race detached repacking of its source.
   out, err, status = Open3.capture3('git', '-C', directory, '-c', 'user.name=Test',
-                                    '-c', 'user.email=test@example.invalid', '-c', 'maintenance.autoDetach=false', *)
+                                    '-c', 'user.email=test@example.invalid', '-c', 'maintenance.autoDetach=false',
+                                    '-c', 'gc.autoDetach=false', *)
   raise "Git fixture failed: #{out}#{err}" unless status.success?
 
   out.strip
