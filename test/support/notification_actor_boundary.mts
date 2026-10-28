@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-const extension = (await import(process.env.RIDDIM_EXTENSION)).default;
+import { extension, type LifecycleName } from "./notification_fixture.mts";
 const previous = process.env.RIDDIM_ACTOR;
 try {
   for (const actor of ["branch", "crew", "supervisor", " "]) {
@@ -13,10 +13,11 @@ try {
   for (const actor of [undefined, ""]) {
     if (actor === undefined) delete process.env.RIDDIM_ACTOR;
     else process.env.RIDDIM_ACTOR = actor;
-    const events = [];
-    const commands = [];
+    const events: LifecycleName[] = [];
+    const commands: string[] = [];
     extension({
       on(name) { events.push(name); },
+      sendUserMessage() { assert.fail("registration must not send a notification"); },
       registerCommand(name) { commands.push(name); },
     });
     assert.deepEqual(events, ["session_start", "before_agent_start", "session_shutdown"]);

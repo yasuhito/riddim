@@ -4,37 +4,37 @@ import assert from "node:assert/strict";
 import { readFileSync, appendFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
-const extension = (await import(process.env.RIDDIM_EXTENSION)).default;
-const status = process.env.RIDDIM_STATUS_PATH;
-const first = process.env.RIDDIM_FIRST_ID;
+import { extension, env, required, type LifecycleName, type LifecycleHandler, type Notice, type FixtureContext } from "./notification_fixture.mts";
+const status = env("RIDDIM_STATUS_PATH");
+const first = env("RIDDIM_FIRST_ID");
 const second = first.replace(/\.1$/, ".2");
-const notices = [];
-const messages = [];
-let rejectOld;
+const notices: Notice[] = [];
+const messages: string[] = [];
+let rejectOld: ((reason: Error) => void) | undefined;
 let oldOffered = false;
 
 function fakePi() {
-  const events = new Map();
-  const pi = {
+  const events = new Map<LifecycleName, LifecycleHandler>();
+  const pi: import("./notification_fixture.mts").FixtureAPI = {
     on(name, handler) { events.set(name, handler); },
     sendUserMessage(text, options) {
       assert.equal(options.deliverAs, "followUp");
       messages.push(text);
       if (text.includes(first) && !oldOffered) {
         oldOffered = true;
-        return new Promise((_resolve, reject) => { rejectOld = reject; });
+        return new Promise<void>((_resolve, reject) => { rejectOld = reject; });
       }
     },
   };
-  const ctx = { ui: { notify(text, kind) { notices.push({ text, kind }); } } };
+  const ctx: FixtureContext = { ui: { notify(text, kind) { notices.push({ text, kind }); } } };
   extension(pi);
   return {
-    start: () => events.get("session_start")({}, ctx),
-    shutdown: () => events.get("session_shutdown")({}, ctx),
+    start: () => required(events.get("session_start"), "session_start handler")({}, ctx),
+    shutdown: () => required(events.get("session_shutdown"), "session_shutdown handler")({}, ctx),
   };
 }
 
-async function until(predicate) {
+async function until(predicate: () => boolean) {
   for (let attempt = 0; attempt < 200; attempt++) {
     if (predicate()) return;
     await delay(50);
@@ -52,7 +52,7 @@ await old.shutdown();
 const successor = old;
 successor.start();
 await until(() => messages.filter((text) => text.includes(first)).length === 2);
-rejectOld(new Error("late old-session rejection"));
+required(rejectOld, "old follow-up rejection")(new Error("late old-session rejection"));
 await delay(100);
 assert.equal(messages.length, 2, "old callback must not notify the new session");
 assert.equal(notices.length, 0, "old callback must not claim a failure in the new session");
