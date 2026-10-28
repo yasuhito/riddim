@@ -20,7 +20,10 @@ class NotificationSessionRaceTest < Minitest::Test
   end
 
   def test_late_predecessor_rejection_cannot_claim_successor_or_lose_later_report
-    run_scenario('notification_session_race.mts', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
+    output = run_scenario('notification_session_race.mts', expected: ["worker.#{GEN}.1", "worker.#{GEN}.2"])
+
+    assert_equal %w[OfferA ShutdownA StartB OfferB1 RejectA Publish2 OfferB2 ShutdownB],
+                 JSON.parse(output).fetch('trace')
   end
 
   def test_live_idle_without_a_report_is_delivered_after_stability_and_busy_reset
@@ -126,6 +129,7 @@ class NotificationSessionRaceTest < Minitest::Test
       assert_predicate scan_status, :success?, scan_error
       assert_equal(expected, JSON.parse(pending).map { |entry| entry.fetch('id') })
       refute_path_exists File.join(root, 'unexpected-herdr')
+      output
     end
   end
 end
