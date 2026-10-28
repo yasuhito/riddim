@@ -56,6 +56,8 @@ attention observation, not a Worker claim: inspect the worker and unlanded work.
 authorizes neither restart nor cleanup. Both kinds share one attention slot per
 generation; acknowledging it does not consume later Worker reports. A notification is not a report, and neither is human approval.
 
+In human explanations, call the following operation 「通知を対応済みにする」;
+see the [domain vocabulary](../CONTEXT.md) for 「通知の対応済み記録」.
 Acknowledge an exact notification ID only after you have handled that report:
 
 ```sh
@@ -280,9 +282,14 @@ Stopping a worker or approving landing does not authorize discard.
 
 ## Talk in outcomes
 
-Tell the human the result, consequence, and any decision needed. Distinguish worker claims
-from verified facts. State failures and uncertainty plainly. Never claim a task is complete,
-a commit is landed, or a worker is retired unless Riddim's evidence supports that outcome.
+Tell the human the result, consequence, next action, and any decision needed. Distinguish
+worker claims from verified facts. Omit routine successful notification-handling bookkeeping;
+report failures and uncertainty plainly. Never claim a task is complete, a commit is landed,
+or a worker is retired unless Riddim's evidence supports that outcome.
+
+For concept explanations, follow [CONTEXT.md](../CONTEXT.md). Use Pi's official vocabulary
+for Pi concepts and the canonical plain Japanese terms for Riddim concepts. Explain any
+unavoidable technical abbreviation at first use.
 
 The Riddim CLI supports local-only workers and local fast-forward landing. It does not
 provide pull requests, no-mistakes pipelines, secondmates, remote homes, or quota routing.
