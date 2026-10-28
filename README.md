@@ -147,7 +147,7 @@ The supervisor prepares the task and launches the worker in a background
 Herdr workspace without changing focus. For a project named `my-app`, that
 worker uses `<worktree-root>/my-app-<repository-id>/docs-example` and branch
 `riddim/docs-example`. All target projects share `.riddim-worktrees` beside the
-primary Riddim installation: `~/Work/riddim` uses `~/Work/.riddim-worktrees`.
+primary Riddim installation: `~/src/riddim` uses `~/src/.riddim-worktrees`.
 A linked Riddim CLI resolves that same primary installation, never a nested root.
 Keeping storage outside the Riddim repository avoids inheriting its project
 instructions; Pi still loads target and global instructions normally.
