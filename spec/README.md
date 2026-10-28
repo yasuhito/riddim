@@ -1,10 +1,10 @@
-# 最初のPlusCalモデル
+# 有限のPlusCalモデル
 
 `ClaimOneName.tla`は、同じ名前の所有recordをAとBが同時に取ろうとする場合だけを扱う。両方が空を見ても、原子的なno-replace発行で成功できるのは片方だけ、という安全性をTLCで検査する。Pi起動、Herdr pane、lock、世代、失敗時の資産保持は**まだモデル化しない**。TLCはRuby実装が仕様通りかを保証しない。
 
 必要なものはJava 11以上と[公式リリース](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4)の`tla2tools.jar`だけ。この環境ではJava `temurin-21.0.12+8.0.LTS`を`mise`のユーザー領域に、jar v1.7.4を`~/.local/share/tlaplus/v1.7.4/tla2tools.jar`に置いた（SHA-256: `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`）。リポジトリにjarは含めない。
 
-リポジトリのルートから、**3つの正常なモデルの検査だけ**を実行する:
+リポジトリのルートから、**4つの正常なモデルの検査だけ**を実行する:
 
 ```sh
 bundle exec rake model
@@ -13,6 +13,12 @@ bundle exec rake model
 それぞれPlusCalの変換とTLCの検査を順に行う。正常時は各モデルの`名前: OK`だけを表示し、変換や検査に失敗したときは詳細とTLCの反例を表示して失敗する。TLCの警告も表示する。失敗例の作成・検査は含めない。このタスクはJavaが必要なため、通常の`rake`やCIには含めない。変換器は`.tla`内の`BEGIN TRANSLATION`以降を生成し直すので、PlusCalを編集した場合は生成差分も確認する。`spec/*.old`のバックアップはGitから除外している。
 
 PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`BEGIN TRANSLATION`以降は手で編集しない。
+
+## 通知の引き継ぎ: NotificationHandoff
+
+`NotificationHandoff.tla`は、Riddimの通知拡張を同じfactoryで停止・再開したとき、旧コールバックが後続の配送状態を変更しないことと、未処理レポートの保持を検査する。104個の到達状態で、旧配送の成功・拒否と後続処理の順を入れ替える。実際の`/reload`は拡張ランタイムを置き換えるため、この同じfactoryを使うテストとは区別する。
+
+状態と実装の対応、観測列の照合、外部コピーでの負例、仮定と検証範囲は[NotificationHandoff.md](NotificationHandoff.md)に記録した。Piへの配送受理は、人による処理やACKではない。全実行のrefinement証明や、end-to-endのexactly-onceを主張するモデルではない。
 
 ## 同時に札を取る: ClaimOneName
 

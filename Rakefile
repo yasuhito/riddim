@@ -14,14 +14,14 @@ Cucumber::Rake::Task.new(:features)
 
 RuboCop::RakeTask.new(:rubocop)
 
-desc 'Check the PlusCal ownership models (requires mise Java and tla2tools.jar)'
+desc 'Check the PlusCal models (requires mise Java and tla2tools.jar)'
 task :model do
   jar = File.join(Dir.home, '.local/share/tlaplus/v1.7.4/tla2tools.jar')
   abort "Missing #{jar}; see spec/README.md" unless File.file?(jar)
 
   java = ['mise', 'exec', 'java@temurin-21.0.12+8.0.LTS', '--', 'java', '-XX:+UseParallelGC', '-cp', jar]
   Dir.chdir('spec') do
-    %w[ClaimOneName ProtectNewGeneration RetainRecordUntilGone].each do |name|
+    %w[ClaimOneName ProtectNewGeneration RetainRecordUntilGone NotificationHandoff].each do |name|
       model = "#{name}.tla"
       [['pcal.trans', model], ['tlc2.TLC', '-workers', '1', model]].each do |args|
         output, status = Open3.capture2e(*java, *args)
