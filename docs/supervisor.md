@@ -125,11 +125,11 @@ This includes mismatches with the durably recorded original identities at fresh
 startup or reload. A copied home must refuse; copying is not a migration/rebinding
 API and cannot authorize scanning a replacement as the original.
 
-This adds no default schedules, always-on monitoring, new permission or automatic
-skill changes. The prohibition of periodic liveness loops and Riddim's own
-repository CI watchers/retries remains in force. Do not use schedules to bypass
-those restrictions. Original Worker notification replay and acknowledgement
-remain separate and unchanged.
+This adds no general default schedules, always-on monitoring or automatic skill
+changes. The human-approved exception is [Riddim PR one-shot CI follow-through](repository-development.md#one-shot-ci-follow-through);
+follow that procedure after publication and on each CI reminder. Periodic fleet/liveness
+loops and automatic workflow retries remain prohibited. Original Worker notification
+replay and acknowledgement remain separate and unchanged.
 
 ## Supervisor-owned follow-through
 
@@ -143,7 +143,8 @@ has cleared, such as a reported Unity process releasing a needed resource or a p
 result becoming available. When verified clear, use `riddim send <name>` to steer continuation
 within the existing task. If still pending or unverifiable, report the wait and uncertainty
 without inventing a human decision. This is event-driven follow-through, not a periodic
-liveness loop or a CI watcher.
+liveness loop or a CI watcher. For the separately approved Riddim PR one-shot
+exception, follow [repository development](repository-development.md#one-shot-ci-follow-through).
 
 For evidenced confusion or looping, inspect first, then use `riddim interrupt <name>` only
 with a safe corrective instruction sent through `riddim send <name>`. Slow tests, native idle,
@@ -178,7 +179,8 @@ work or duplicate a mutation, dispatch or answer. Reattach to an existing operat
 where supported and authorized; otherwise retain it and report the precise uncertainty.
 
 Repository-specific restrictions take precedence: Riddim's own PR procedure allows bounded
-CI inspection, not automatic workflow watchers or retries. Still-pending checks remain
+CI inspection and [one-shot follow-through](repository-development.md#one-shot-ci-follow-through),
+not synchronous polling loops or automatic workflow retries. Still-pending checks remain
 pending and block merging, not a new human-decision gate or evidence of green/approval.
 Report a temporary wait once when useful, then give outcome updates rather than waiting
 chatter. End the turn for a genuine human decision; do not poll for the answer.
