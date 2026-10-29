@@ -901,10 +901,12 @@ or destruction.
 Every schedule operation and watcher scheduling is operator-only: nonempty
 `RIDDIM_ACTOR`, including workers and unknown values, refuses. Supplying an ID is
 an operational routing assertion, not cryptographic proof of human consent.
-No live reservations are installed automatically. This feature does not permit
-periodic fleet/liveness loops, own-repository CI watchers/retries, automatic skill
-changes or expansion of permissions. Future uses require explicit human scope
-and must obey the existing repository policies.
+No live reservations are installed automatically. The human-approved
+[Riddim PR CI follow-through](repository-development.md#one-shot-ci-follow-through)
+uses supervisor-created one-shots only; follow that policy after publication and
+on CI reminders. This does not permit periodic fleet/liveness loops, synchronous CI
+polling, automatic workflow retries, automatic skill changes or expanded permissions.
+Other uses require explicit human scope and must obey existing repository policies.
 
 #### Review a local-only worker's committed diff
 
