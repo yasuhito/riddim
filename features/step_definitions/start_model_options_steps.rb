@@ -7,8 +7,8 @@ Given('Pi records its exact launch arguments and profile') do
   File.write(executable, <<~RUBY)
     #!/usr/bin/ruby
     require 'json'
-    record = File.read(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
-    File.write(#{@pi_observation.dump}, JSON.generate(argv: ARGV, record: record))
+    record = File.binread(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
+    File.write(#{@pi_observation.dump}, JSON.generate(argv: ARGV.map(&:bytes), record: record.bytes))
     abort 'model was interpreted as shell code' if File.exist?('PWNED')
   RUBY
   File.write(File.join(@herdr_directory, 'execute-task-launch'), '')
@@ -19,7 +19,8 @@ Then('Pi and the ownership record select model {string} and effort {string} with
   record = File.read(scenario_record_path('worker')) if File.file?(scenario_record_path('worker'))
   brief = File.read(File.join(scenario_state_dir, 'worker.brief')) if record
   profile = File.binread(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'))
-  assert_equal [true, ['--model', model, '--thinking', effort, brief], record, true, true, @configured_profile],
+  assert_equal [true, ['--model', model, '--thinking', effort, brief].map { |value| value&.bytes }, record&.bytes,
+                true, true, @configured_profile],
                [@status.success?, observation && observation['argv'], observation && observation['record'],
                 record&.include?("\nmodel=#{model}\n"), record&.include?("\neffort=#{effort}\n"), profile], @stderr
 end
@@ -31,10 +32,14 @@ Then('start refuses before creating any worker assets or invoking Herdr') do
                 herdr_invocations, status.success?, branches], @stderr
 end
 
+Given('the worker CLI locale is {string}') do |locale|
+  @environment.merge!('LANG' => locale, 'LC_ALL' => locale)
+end
+
 When('I try a model containing {string}') do |kind|
   models = { 'newline' => "provider/model\nforged=value", 'carriage return' => "provider/model\r",
              'tab' => "provider/\tmodel", 'escape' => "provider/\emodel", 'delete' => "provider/\x7fmodel",
-             'empty' => '', 'invalid UTF-8' => "provider/\xff".b }
+             'empty' => '', 'invalid UTF-8' => "provider/\xff".b, 'Unicode control' => "provider/\u0085".b }
   @stdout, @stderr, @status = run_riddim('start', 'worker', '--worktree', '--task-file', 'task.md',
                                          '--mode', 'local-only', '--model', models.fetch(kind))
 end

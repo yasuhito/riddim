@@ -84,6 +84,52 @@ Feature: Select a Pi model and effort for one worker
       | empty           |
       | invalid UTF-8   |
 
+  Scenario Outline: Reject invalid byte argv under either locale before provisioning
+    Given the worker CLI locale is "<locale>"
+    When I try a model containing "<kind>"
+    Then start refuses before creating any worker assets or invoking Herdr
+
+    Examples:
+      | locale | kind            |
+      | C      | invalid UTF-8   |
+      | C.utf8 | invalid UTF-8   |
+      | C      | Unicode control |
+      | C.utf8 | Unicode control |
+
+  Scenario Outline: Preserve non-ASCII model bytes under either locale
+    Given the worker CLI locale is "<locale>"
+    And Pi records its exact launch arguments and profile
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only <model-flag>
+      """
+    Then Pi and the ownership record select model "provider/モデル" and effort "max" without changing config
+
+    Examples:
+      | locale | model-flag             |
+      | C      | --model provider/モデル |
+      | C      | --model=provider/モデル |
+      | C.utf8 | --model provider/モデル |
+      | C.utf8 | --model=provider/モデル |
+
+  Scenario Outline: Inherit non-ASCII configured models under either locale
+    Given the worker CLI locale is "<locale>"
+    And a config directory with agent profile:
+      """
+      pi provider/モデル max
+      """
+    And Pi records its exact launch arguments and profile
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    Then Pi and the ownership record select model "provider/モデル" and effort "max" without changing config
+
+    Examples:
+      | locale |
+      | C      |
+      | C.utf8 |
+
   Scenario: Overrides do not replace required configuration
     Given no agent profile in the config directory
     When I run riddim with:

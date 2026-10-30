@@ -37,7 +37,10 @@ module Riddim
       end
 
       def valid_value?(value)
-        value && !value.empty? && !value.start_with?('--') && value.valid_encoding? && !value.match?(/[[:cntrl:]]/)
+        return false unless value
+
+        text = value.dup.force_encoding(Encoding::UTF_8)
+        text.valid_encoding? && !text.empty? && !text.start_with?('--') && !text.match?(/[[:cntrl:]]/)
       end
 
       def validate_combinations(values)
