@@ -81,6 +81,13 @@ The profile supplies `--model` and `--thinking` to new workers and to a
 supervisor launched by `riddim supervise`. Native `pi` uses Pi's own model
 selection. No Bundler install is needed to run the CLI.
 
+For one new worker, add `--model <provider/model-id>` and/or `--effort high` to
+`riddim start`. Choose an available model using `pi --list-models` in the worker's
+Pi environment. Omitted axes retain the required configured profile, not Pi's
+defaults; existing workers and config are unchanged. See the
+[CLI reference](docs/cli-reference.md#start-a-background-pi-agent) for syntax and
+Firstmate scope.
+
 ## 3. Launch Pi
 
 To supervise Riddim itself, open a shell pane in your running Herdr session:

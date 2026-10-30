@@ -526,6 +526,41 @@ profile from another directory.
 
 The agent is started with `--model <model> --thinking <effort>`.
 
+For a single new worker, either axis can be overridden independently:
+
+```sh
+bin/riddim start <name> --worktree --task-file /tmp/task.md --mode local-only \
+  --model '<provider>/<model-id>' --effort high
+```
+
+The supervisor selects an actual available Pi model ID using `pi --list-models`
+(optionally with a search term) in the worker's Pi environment. The placeholders
+above are not model IDs; use the provider and model ID Pi reports, not agent-role
+names or invented aliases. Riddim passes the requested value unchanged and does
+not select a fallback. Pi remains responsible for availability, credentials and
+model-specific effort support.
+
+`--model` and `--effort` work with every existing `start` form. Omitted axes
+inherit `config/agent-profile`; that file remains required and fully validated
+even when both axes are overridden. Neither the file nor existing workers change.
+Effort is one of `low`, `medium`, `high`, `xhigh`, `max` and becomes Pi's
+`--thinking` value. Options after the name may be reordered; both `--model value`
+and `--model=value` (likewise effort) are accepted. Empty/missing values,
+duplicates, unknown options, control characters and malformed combinations are
+refused before provisioning. Values beginning with `--` are refused rather than
+interpreted as another option. Quote shell metacharacters as usual.
+
+This is a smaller subset of Firstmate at
+`127f0f30a4b272b68ec9196bf47d4db90ad40617`: `bin/fm-spawn.sh`'s explicit model/effort
+parsing (1020-1127), `shell_quote` (2452-2455), `model_flag_for_harness`
+(3337-3350), Pi effort mapping (3420-3429), and model/effort metadata
+(6634-6635); see also its Pi harness adapter at
+`.agents/skills/harness-adapters/references/harness/pi.md`. The same effective
+profile supplies launch arguments and ownership metadata. Unlike Firstmate,
+where omission permits Pi defaults, Riddim explicitly preserves its configured
+profile. No routing, model catalog, account pins, relaunch or live switching is
+provided.
+
 #### Start in a fresh Git worktree
 
 ```sh

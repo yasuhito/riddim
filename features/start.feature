@@ -21,7 +21,7 @@ Feature: Start a background Pi agent
         """
         start
         """
-      Then standard error is "Usage: riddim start <name> [--worktree [--task-file <path> [--mode local-only]]]"
+      Then standard error is "Usage: riddim start <name> [--worktree [--task-file <path> [--mode local-only]]] [--model <model-id>] [--effort <effort>]"
 
     Scenario: Reject extra arguments
       When I run riddim with:
@@ -35,7 +35,7 @@ Feature: Start a background Pi agent
         """
         start worker extra
         """
-      Then standard error is "Usage: riddim start <name> [--worktree [--task-file <path> [--mode local-only]]]"
+      Then standard error is "Usage: riddim start <name> [--worktree [--task-file <path> [--mode local-only]]] [--model <model-id>] [--effort <effort>]"
 
     Scenario: Reject a name Herdr would not accept
       When I run riddim with:
