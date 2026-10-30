@@ -18,6 +18,16 @@ module Riddim
       @effort = effort
     end
 
+    # Resolve each axis independently without changing the configured profile.
+    def self.resolve(config_dir:, model: nil, effort: nil)
+      configured = load(config_dir: config_dir)
+      model = configured.model if model.nil?
+      effort = configured.effort if effort.nil?
+      validate_model(model)
+      validate_effort(effort)
+      new(harness: configured.harness, model: model, effort: effort)
+    end
+
     def self.load(config_dir:)
       path = File.join(config_dir, FILENAME)
       begin
@@ -54,6 +64,8 @@ module Riddim
     end
 
     def self.validate_model(model)
+      raise Error, 'unsupported model: a nonempty value is required' if model.empty?
+      raise Error, 'unsupported model: valid UTF-8 is required' unless model.valid_encoding?
       return unless model.match?(/[[:cntrl:]]/)
 
       raise Error, 'unsupported model: control characters are not allowed'

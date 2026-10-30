@@ -489,12 +489,12 @@ if ARGV.first == 'teardown'
 end
 
 if ARGV.first == 'start'
-  worktree_only = ARGV.length == 3 && ARGV[2] == '--worktree'
-  tasked = ARGV.length == 5 && ARGV[2..3] == %w[--worktree --task-file]
-  local_only = ARGV.length == 7 && ARGV[2..3] == %w[--worktree --task-file] &&
-               ARGV[5..6] == %w[--mode local-only]
-  unless ARGV.length == 2 || worktree_only || tasked || local_only
-    warn 'Usage: riddim start <name> [--worktree [--task-file <path> [--mode local-only]]]'
+  begin
+    raise Riddim::Start::Arguments::Error, Riddim::Start::Arguments::USAGE unless ARGV[1]
+
+    flags = Riddim::Start::Arguments.parse(ARGV.drop(2))
+  rescue Riddim::Start::Arguments::Error => e
+    warn e.message
     exit 2
   end
 
@@ -508,7 +508,7 @@ if ARGV.first == 'start'
   config_dir = File.expand_path('../config', __dir__) if config_dir.nil? || config_dir.empty?
 
   begin
-    profile = Riddim::AgentProfile.load(config_dir: config_dir)
+    profile = Riddim::AgentProfile.resolve(config_dir: config_dir, model: flags['--model'], effort: flags['--effort'])
   rescue Riddim::AgentProfile::Error => e
     warn "riddim: #{e.message}"
     exit 1
@@ -519,8 +519,8 @@ if ARGV.first == 'start'
   # refusal before Herdr is touched at all, then create the exact endpoint,
   # publish the authoritative record, and start the agent.
   options = Riddim::Start::Options.new(
-    create_worktree: worktree_only || tasked || local_only, config_dir: config_dir,
-    task_file: tasked || local_only ? ARGV[4] : nil, mode: local_only ? 'local-only' : nil
+    create_worktree: flags.fetch('--worktree', false), config_dir: config_dir,
+    task_file: flags['--task-file'], mode: flags['--mode']
   )
   Riddim::Start.run(name, profile, options)
   exit
@@ -544,7 +544,7 @@ puts <<~HELP
     interrupt <name>            Interrupt a started Pi agent with one Escape
     send <name> [--resolve-key <key>] <message...>
                             Store an answer and close its open local-only decision key
-    start <name> [--worktree [--task-file <path> [--mode local-only]]]
+    start <name> [--worktree [--task-file <path> [--mode local-only]]] [--model <model-id>] [--effort <effort>]
                             Start Pi in the cwd or a fresh isolated Git worktree with a task brief
     supervise                   Start the Riddim supervisor Pi in the current pane
     report <name> --generation <spawn-gen> <status-event>

@@ -135,6 +135,7 @@ module Riddim
   end
 end
 
+require_relative 'start/arguments'
 require_relative 'start/workspace'
 require_relative 'start/task'
 require_relative 'start/launch'
