@@ -22,7 +22,7 @@ module Riddim
     end
 
     def create_workspace(name, cwd)
-      Riddim::Herdr.create_workspace(cwd: cwd, label: "riddim-#{name}")
+      Riddim::Herdr.create_workspace(cwd: cwd, label: "〰️ #{name}")
     rescue Riddim::Herdr::CommandFailed => e
       [[$stdout, e.stdout], [$stderr, e.stderr]].each { |stream, text| stream.write(text) }
       Riddim::Herdr.terminate_like(e)

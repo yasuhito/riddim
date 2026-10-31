@@ -116,7 +116,7 @@ module Riddim
     end
 
     def parse_workspace(json)
-      document = JSON.parse(json)
+      document = JSON.parse(json.dup.force_encoding(Encoding::UTF_8))
       result = document['result'] if document.is_a?(Hash)
       raise InvalidResponse, 'expected result.type to be workspace_created' unless created_result?(result)
 

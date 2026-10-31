@@ -297,12 +297,12 @@ Feature: Start a background Pi agent
         """
       Then standard error is empty
 
-    Scenario: Create the workspace without focusing it
+    Scenario: Pass the wavy display label as one argument without focusing the workspace
       When I run riddim with:
         """
         start worker
         """
-      Then Herdr creates a workspace labeled "riddim-worker" in the current directory without focus
+      Then Herdr creates a workspace labeled "〰️ worker" in the current directory without focus
 
     Scenario: Start the agent in the root pane with the profile's model and effort
       When I run riddim with:

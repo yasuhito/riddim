@@ -49,6 +49,14 @@ class HerdrWorkspaceParsingTest < Minitest::Test
     assert_raises(Riddim::Herdr::InvalidResponse) { Riddim::Herdr.parse_workspace('not JSON') }
   end
 
+  def test_parses_utf8_display_labels_when_the_capture_locale_is_ascii
+    json = WORKSPACE_JSON.sub('"workspace_id":"w9"', '"workspace_id":"w9","label":"〰️ worker"')
+                         .force_encoding(Encoding::US_ASCII)
+    workspace = Riddim::Herdr.parse_workspace(json)
+
+    assert_equal %w[w9 w9:t1 w9:p1], [workspace.workspace_id, workspace.tab_id, workspace.root_pane_id]
+  end
+
   def test_rejects_an_unexpected_result_type
     json = '{"result":{"type":"pane_list"}}'
 

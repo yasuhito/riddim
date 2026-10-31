@@ -272,7 +272,7 @@ end
 
 Then('Herdr creates a workspace in the new worktree without focus') do
   assert_includes herdr_invocations,
-                  "--session default workspace create --cwd #{@worktree} --label riddim-worker --no-focus", @stderr
+                  "--session default workspace create --cwd #{@worktree} --label 〰️ worker --no-focus", @stderr
 end
 
 Then('the worker record binds the new worktree and its exact Herdr pane') do
