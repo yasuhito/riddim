@@ -26,7 +26,7 @@ CANNED_CREATE_RESPONSE = JSON.generate(
   id: 'cli:workspace:create',
   result: {
     type: 'workspace_created',
-    workspace: { workspace_id: 'w9', label: 'riddim-worker' },
+    workspace: { workspace_id: 'w9', label: '〰️ worker' },
     tab: { tab_id: 'w9:t1', workspace_id: 'w9', label: '1' },
     root_pane: { pane_id: 'w9:p1', workspace_id: 'w9', tab_id: 'w9:t1', cwd: Dir.pwd }
   }
@@ -75,8 +75,11 @@ end
 
 Given('Herdr creates workspace {string} and starts the agent') do |_workspace_id|
   install_fake_herdr(<<~RUBY)
+    require 'json'
     case ARGV[0, 2]
-    when ['workspace', 'create'] then puts #{CANNED_CREATE_RESPONSE.dump}
+    when ['workspace', 'create']
+      File.write(File.expand_path('workspace-argv.json', __dir__), JSON.generate([*session_argv, *ARGV]))
+      puts #{CANNED_CREATE_RESPONSE.dump}
     when ['agent', 'start'] then nil
     else abort "unexpected command: \#{ARGV.join(' ')}"
     end
@@ -201,7 +204,7 @@ end
 # explicit --session flag ahead of its subcommand. The agent-start passthrough
 # tail ends at --thinking, so nothing leaks into the Pi agent's own arguments.
 def workspace_create_invocation(session)
-  "--session #{session} workspace create --cwd #{Dir.pwd} --label riddim-worker --no-focus"
+  "--session #{session} workspace create --cwd #{Dir.pwd} --label 〰️ worker --no-focus"
 end
 
 def agent_start_invocation(session)
@@ -236,8 +239,10 @@ Then('Herdr never starts an agent') do
 end
 
 Then('Herdr creates a workspace labeled {string} in the current directory without focus') do |label|
-  assert_includes herdr_invocations,
-                  "--session #{scenario_session} workspace create --cwd #{Dir.pwd} --label #{label} --no-focus"
+  argv = JSON.parse(File.read(File.join(@herdr_directory, 'workspace-argv.json')))
+  assert_equal ['--session', scenario_session, 'workspace', 'create', '--cwd', Dir.pwd,
+                '--label', label, '--no-focus'], argv
+  assert_equal [0x3030, 0xFE0F, 0x20], argv.fetch(7).codepoints.first(3)
 end
 
 Then('Herdr starts agent {string} in pane {string} with model {string} ' \
