@@ -115,6 +115,17 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       | claude-bridge/claude-opus-5-5 |
       | openrouter/z-ai/glm-5.3      |
 
+  Scenario: Refuse a profile model Pi does not list before checking Herdr or launching Pi
+    Given Pi lists models:
+      """
+      openrouter/z-ai/glm-5.3-flash-pro
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then the supervisor reports model "openrouter/z-ai/glm-5.3-flash" unlisted by Pi before invoking Herdr or Pi
+
   Scenario: Refuse a missing allowlist before checking Herdr or launching Pi
     Given the allowlist is missing
     When I run riddim with:

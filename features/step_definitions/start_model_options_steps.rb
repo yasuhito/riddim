@@ -6,6 +6,7 @@ Given('Pi records its exact launch arguments and profile') do
   @pi_observation = File.join(@herdr_directory, 'pi-arguments.json')
   File.write(executable, <<~RUBY)
     #!/usr/bin/ruby
+    #{FAKE_PI_CATALOG}
     require 'json'
     record = File.binread(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
     File.write(#{@pi_observation.dump}, JSON.generate(argv: ARGV.map(&:bytes), record: record.bytes))

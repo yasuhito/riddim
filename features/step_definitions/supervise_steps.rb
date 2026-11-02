@@ -95,6 +95,13 @@ Then('the supervisor refuses model {string} before invoking Herdr or Pi') do |mo
                 herdr_invocations, pi_started?], @stderr
 end
 
+Then('the supervisor reports model {string} unlisted by Pi before invoking Herdr or Pi') do |model|
+  assert_equal [1, true, [], false],
+               [@status.exitstatus,
+                @stderr.start_with?("riddim: model #{model.dump} is not listed by `pi --list-models`"),
+                herdr_invocations, pi_started?], @stderr
+end
+
 Then('the supervisor reports the missing allowlist before invoking Herdr or Pi') do
   assert_equal [1, true, [], false],
                [@status.exitstatus, @stderr.start_with?("riddim: missing model allowlist #{configured_allowlist}: "),
@@ -157,6 +164,7 @@ end
 def fake_pi_script
   <<~RUBY
     #!/usr/bin/ruby
+    #{FAKE_PI_CATALOG}
     require 'json'
     state_dir = ENV.fetch('RIDDIM_STATE_DIR')
     riddim = ENV.fetch('PATH').split(':').map { |dir| File.join(dir, 'riddim') }

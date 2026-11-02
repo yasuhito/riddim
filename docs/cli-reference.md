@@ -57,8 +57,8 @@ For a different target project, retain the explicit entrypoint:
 Run from the target project's checkout in a running Herdr session, after setting
 up Pi and the launch profile as described in the README.
 
-The command checks the profile, its [allowlisted model](#model-allowlist) and the current
-Herdr session before it starts Pi.
+The command checks the profile, its [allowlisted model](#model-allowlist) and Pi's
+exact listing of it, and the current Herdr session before it starts Pi.
 It replaces itself with Pi in the same pane, so it creates no Herdr workspace and does not
 change focus. It prepares the selected state directory with owner-only permissions, passes
 its absolute path as `RIDDIM_STATE_DIR`, prepends this checkout's `bin` directory to Pi's
@@ -560,10 +560,20 @@ There is no bypass flag; an explicit `RIDDIM_CONFIG_DIR` must carry its own list
 Because the provider is pinned, an allowlisted provider without credentials or
 missing from Pi's catalog makes Pi fail rather than reach another provider.
 
-Within the pinned provider, Pi still applies its own lookup: IDs match
-case-insensitively, a `:<thinking>` suffix is parsed, and an ID absent from that
-provider's catalog is fuzzy-matched to another of its models (or sent as a custom
-ID). List IDs exactly as `pi --list-models` reports them.
+Even with the provider pinned, Pi has no exact-selection flag: it matches IDs
+case-insensitively and fuzzy-matches an ID that provider lacks to another of its
+models, such as a costlier `-pro` variant, or sends it as a custom ID. So after the
+allowlist check, and still before any allocation, Riddim runs `pi --list-models`
+once from an empty temporary directory, bounded to 30 seconds and without any
+model request. The model must appear there exactly once, with its exact case,
+and with no case variant or provider-prefix reading Pi could select instead;
+otherwise nothing starts. A Pi that fails, hangs, prints an unexpected table or
+does not list the provider (for example without credentials) refuses the start.
+List IDs exactly as `pi --list-models` reports them.
+
+The preflight reads the catalog of the `pi` on Riddim's own `PATH` and
+environment; a Herdr pane running a different Pi installation or agent
+directory is not checked separately.
 
 The list controls which models Riddim itself starts. It is not a security
 sandbox or a billing cap: it does not restrict Pi started directly, model

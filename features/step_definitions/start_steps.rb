@@ -393,6 +393,17 @@ Then('Herdr starts exactly one agent') do
   assert_equal 1, herdr_invocations.grep(/\bagent start\b/).length
 end
 
+# Unless a scenario says otherwise, Pi's fake catalog lists exactly the
+# well-formed allowlisted models.
 Given('the config directory allows models:') do |content|
   File.write(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'allowed-models'), content)
+  write_pi_catalog(content.lines.map(&:strip).grep(%r{\A[^#\s/][^\s]*/\S+\z}).uniq)
+end
+
+Given("Pi's model list fails") do
+  FileUtils.rm_f(@environment.fetch('RIDDIM_TEST_PI_CATALOG'))
+end
+
+Given('Pi lists models:') do |content|
+  write_pi_catalog(content.lines.map(&:strip).reject(&:empty?))
 end

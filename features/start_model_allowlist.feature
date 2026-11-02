@@ -149,3 +149,41 @@ Feature: Start only models the local allowlist names exactly
       | empty                 | empty model allowlist: list one approved provider/model ID per line              |
       | a pasted profile line | malformed model allowlist line 2: expected one provider/model ID without spaces  |
       | invalid UTF-8         | malformed model allowlist: valid UTF-8 is required                               |
+
+  Scenario Outline: Refuse an allowlisted model Pi does not list exactly before provisioning
+    Given Pi lists models:
+      """
+      <listed>
+      """
+    When I run riddim with:
+      """
+      start worker <flags> --model claude-bridge/claude-opus-5-5
+      """
+    Then start refuses before creating any worker assets or invoking Herdr
+
+    Examples:
+      | listed                                | flags                                            |
+      | claude-bridge/claude-opus-5-5-pro     | --worktree --task-file task.md --mode local-only |
+      | claude-bridge/claude-opus-5-5-pro     |                                                  |
+      | claude-bridge/Claude-Opus-5-5         | --worktree --task-file task.md --mode local-only |
+      | openrouter/claude-bridge/claude-opus-5-5 | --worktree --task-file task.md --mode local-only |
+      |                                       | --worktree --task-file task.md --mode local-only |
+
+  Scenario: Refuse when Pi cannot list its models
+    Given Pi's model list fails
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only
+      """
+    Then start refuses before creating any worker assets or invoking Herdr
+
+  Scenario: Explain that Pi would substitute an unlisted model
+    Given Pi lists models:
+      """
+      claude-bridge/claude-opus-5-5-pro
+      """
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only --model claude-bridge/claude-opus-5-5
+      """
+    Then standard error is "riddim: model \"claude-bridge/claude-opus-5-5\" is not listed by `pi --list-models`; Pi would substitute or guess another \"claude-bridge\" model, so nothing was started"

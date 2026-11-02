@@ -96,8 +96,9 @@ launches, one exact `<provider/model>` per line, including the profile's model.
 The copied example lists none, so Riddim refuses to start any Pi until you edit
 it. Riddim compares IDs exactly, with no aliases or provider fallback: listing
 `claude-bridge/claude-opus-5-5` does not permit `openrouter/anthropic/claude-opus-5.5`,
-and Pi is pinned to the listed provider. Copy IDs exactly as `pi --list-models`
-reports them.
+and Pi is pinned to the listed provider. Riddim also refuses a model that
+`pi --list-models` does not list exactly, since Pi would otherwise substitute a
+similar model, so copy IDs exactly as it reports them.
 This gates only Riddim's own launches; it is not a billing cap. See the
 [CLI reference](docs/cli-reference.md#model-allowlist) for details and limits.
 

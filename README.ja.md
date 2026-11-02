@@ -102,7 +102,8 @@ fi
 ID は完全一致で比較し、別名やプロバイダーの代替はありません。
 `claude-bridge/claude-opus-5-5` を書いても `openrouter/anthropic/claude-opus-5.5` は
 許可されません。Pi には許可リストに書いたプロバイダーを `--provider` で固定して渡します。
-ID は `pi --list-models` の表示どおりに書いてください。制限するのは Riddim 自身の起動だけで、課金の上限ではありません。
+さらに、`pi --list-models` に完全一致で載っていないモデルは起動しません。Pi が似たモデルに
+置き換えてしまうためです。ID は `pi --list-models` の表示どおりに書いてください。制限するのは Riddim 自身の起動だけで、課金の上限ではありません。
 詳細と制約は [CLI リファレンス](docs/cli-reference.md#model-allowlist) を参照してください。
 
 ## 3. Pi を起動する
