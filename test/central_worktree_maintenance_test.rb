@@ -8,6 +8,14 @@ require 'tmpdir'
 
 # Local-clone fixtures must not race their source's detached automatic repack.
 class CentralWorktreeMaintenanceTest < Minitest::Test
+  FEATURE = 'features/start_worktree.feature'
+
+  # The central-runtime outline's submodule example, wherever edits move it.
+  def submodule_example
+    lines = File.readlines(File.expand_path("../#{FEATURE}", __dir__))
+    "#{FEATURE}:#{lines.index { |line| line.match?(/\A\s*\| submodule\s+\|$/) } + 1}"
+  end
+
   # rubocop:disable-next Metrics/MethodLength
   def run_submodule_fixture(trace)
     environment = {
@@ -21,7 +29,7 @@ class CentralWorktreeMaintenanceTest < Minitest::Test
     }
     Bundler.with_unbundled_env do
       Open3.capture2e(environment, RbConfig.ruby, '-rbundler/setup', Gem.bin_path('cucumber', 'cucumber'),
-                      'features/start_worktree.feature:44', '--format', 'progress',
+                      submodule_example, '--format', 'progress',
                       chdir: File.expand_path('..', __dir__))
     end
   end

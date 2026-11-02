@@ -89,6 +89,18 @@ Then('the supervisor reports the missing profile before invoking Herdr or Pi') d
   refute pi_started?
 end
 
+Then('the supervisor refuses model {string} before invoking Herdr or Pi') do |model|
+  assert_equal [1, true, [], false],
+               [@status.exitstatus, @stderr.start_with?("riddim: model #{model.dump} is not allowed: "),
+                herdr_invocations, pi_started?], @stderr
+end
+
+Then('the supervisor reports the missing allowlist before invoking Herdr or Pi') do
+  assert_equal [1, true, [], false],
+               [@status.exitstatus, @stderr.start_with?("riddim: missing model allowlist #{configured_allowlist}: "),
+                herdr_invocations, pi_started?], @stderr
+end
+
 Then('the supervisor reports that Herdr is unreachable and does not launch Pi') do
   assert_equal 1, @status.exitstatus
   assert_equal "riddim: Herdr is not reachable in session default: status failed\n", @stderr

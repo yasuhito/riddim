@@ -57,7 +57,8 @@ For a different target project, retain the explicit entrypoint:
 Run from the target project's checkout in a running Herdr session, after setting
 up Pi and the launch profile as described in the README.
 
-The command checks the current Herdr session and the profile before it starts Pi.
+The command checks the profile, its [allowlisted model](#model-allowlist) and the current
+Herdr session before it starts Pi.
 It replaces itself with Pi in the same pane, so it creates no Herdr workspace and does not
 change focus. It prepares the selected state directory with owner-only permissions, passes
 its absolute path as `RIDDIM_STATE_DIR`, prepends this checkout's `bin` directory to Pi's
@@ -526,6 +527,37 @@ profile from another directory.
 
 The agent is started with `--model <model> --thinking <effort>`.
 
+#### Model allowlist
+
+Before any launch, Riddim checks the effective model (the profile default or
+`--model`, whatever the effort) against `config/allowed-models`, read from the
+same `RIDDIM_CONFIG_DIR` as the profile. Create it from
+[`config/allowed-models.example`](../config/allowed-models.example) by following
+the [README setup steps](../README.md#2-configure-the-launch-profile); the real
+file is gitignored and is never filled in automatically. It is UTF-8 text with
+one fully qualified `<provider>/<model-id>` per line; blank lines, `#` comment
+lines, surrounding whitespace and duplicates are allowed:
+
+```text
+# Human-approved models
+openai-codex/gpt-6.1-sol
+claude-bridge/claude-opus-5-5
+```
+
+Membership is exact and literal: no globs, aliases, case folding or provider
+fallback, so `openrouter/anthropic/claude-opus-5.5` is refused even when
+`claude-bridge/claude-opus-5-5` is listed. An unlisted model, or a missing,
+unreadable, malformed or empty list, is refused with the file path and the
+refused provider and model, before any record, worktree, Herdr workspace or Pi
+request exists. `riddim supervise` applies the same check to its profile model.
+There is no bypass flag; an explicit `RIDDIM_CONFIG_DIR` must carry its own list.
+
+The list controls which models Riddim itself starts. It is not a security
+sandbox or a billing cap: it does not restrict Pi started directly, model
+changes inside a running Pi, or workers already running, and anyone who can edit
+the file can change the policy. This cost-safety gate is a Riddim-specific
+exception to the Firstmate feature scope, approved by the human.
+
 For a single new worker, either axis can be overridden independently:
 
 ```sh
@@ -537,12 +569,13 @@ The supervisor selects an actual available Pi model ID using `pi --list-models`
 (optionally with a search term) in the worker's Pi environment. The placeholders
 above are not model IDs; use the provider and model ID Pi reports, not agent-role
 names or invented aliases. Riddim passes the requested value unchanged and does
-not select a fallback. Pi remains responsible for availability, credentials and
+not select a fallback; the value must also be listed in the
+[model allowlist](#model-allowlist). Pi remains responsible for availability, credentials and
 model-specific effort support.
 
 `--model` and `--effort` work with every existing `start` form. Omitted axes
 inherit `config/agent-profile`; that file remains required and fully validated
-even when both axes are overridden. Neither the file nor existing workers change.
+even when both axes are overridden, and the effective model must be allowlisted. Neither the file nor existing workers change.
 Effort is one of `low`, `medium`, `high`, `xhigh`, `max` and becomes Pi's
 `--thinking` value. Options after the name may be reordered; both `--model value`
 and `--model=value` (likewise effort) are accepted. Empty/missing values,
@@ -1188,11 +1221,11 @@ the reported path and branch; Riddim never deletes or resets the worktree or
 branch automatically. This is a smaller subset of Firstmate's Treehouse spawn:
 there is no pool, lease, fresh remote fetch, reply tracking, or Firstmate's full teardown. The original `start <name>` still starts in the current directory.
 
-The ignored `config/agent-profile` and `state/` are **not copied into a Git
-worktree**. Before launching Pi, Riddim atomically writes the original config
+The ignored `config/agent-profile`, `config/allowed-models` and `state/` are
+**not copied into a Git worktree**. Before launching Pi, Riddim atomically writes the original config
 and state directory paths into that worktree's private Git admin directory
 (`riddim-home`), outside the checkout. A Riddim CLI invoked from the linked
-worktree reads that marker and defaults to the original profile and records;
+worktree reads that marker and defaults to the original profile, allowlist and records;
 there is no environment setup for the worker. Explicit `RIDDIM_CONFIG_DIR` and
 `RIDDIM_STATE_DIR` overrides still win. A malformed or symlinked marker refuses
 rather than silently using a different state directory. The marker is not

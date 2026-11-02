@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'model_allowlist'
+
 module Riddim
   # The local one-line agent launch profile: "<harness> <model> <effort>".
   class AgentProfile
@@ -18,13 +20,15 @@ module Riddim
       @effort = effort
     end
 
-    # Resolve each axis independently without changing the configured profile.
+    # Resolve each axis independently without changing the configured profile,
+    # then admit only an effective model the local allowlist names exactly.
     def self.resolve(config_dir:, model: nil, effort: nil)
       configured = load(config_dir: config_dir)
       model = configured.model if model.nil?
       effort = configured.effort if effort.nil?
       validate_model(model)
       validate_effort(effort)
+      ModelAllowlist.verify!(model, config_dir: config_dir)
       new(harness: configured.harness, model: model, effort: effort)
     end
 

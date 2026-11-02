@@ -30,6 +30,7 @@ class PiNativeStartupTest < Minitest::Test
     @config = File.join(@root, 'config')
     Dir.mkdir(@config)
     File.write(File.join(@config, 'agent-profile'), "pi stall-lab/test low\n")
+    File.write(File.join(@config, 'allowed-models'), "stall-lab/test\n")
     @processes = []
     @streams = {}
     @events = []

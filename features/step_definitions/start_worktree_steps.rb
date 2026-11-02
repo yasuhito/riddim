@@ -237,6 +237,25 @@ Then('Riddim inside the worktree can start another agent using the original prof
                                            File.exist?(File.join(@worktree, 'state', 'another.meta'))], stderr
 end
 
+Then('Riddim inside the worktree refuses a model the original allowlist omits') do
+  environment = @environment.merge('RIDDIM_CONFIG_DIR' => nil, 'RIDDIM_STATE_DIR' => nil)
+  _stdout, stderr, status = run_worker_cli('start', 'another', '--model', 'openrouter/anthropic/claude-opus-5.5',
+                                           environment: environment)
+  assert_equal [1, true, false, 1],
+               [status.exitstatus, stderr.include?("is not listed in #{configured_allowlist};"),
+                File.exist?(scenario_record_path('another')), herdr_invocations.grep(/workspace create/).size], stderr
+end
+
+Then('Riddim inside the worktree refuses a config override without an allowlist') do
+  override = new_temporary_directory
+  FileUtils.cp(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'), override)
+  environment = @environment.merge('RIDDIM_CONFIG_DIR' => override, 'RIDDIM_STATE_DIR' => nil)
+  _stdout, stderr, status = run_worker_cli('start', 'another', environment: environment)
+  assert_equal [1, "riddim: missing model allowlist #{File.join(override, 'allowed-models')}: ", false, 1],
+               [status.exitstatus, stderr[/\Ariddim: [^:]*: /], File.exist?(scenario_record_path('another')),
+                herdr_invocations.grep(/workspace create/).size], stderr
+end
+
 When("I replace the worker's runtime marker with a symlink") do
   git_dir, status = Open3.capture2('git', '-C', @worktree, 'rev-parse', '--absolute-git-dir')
   raise 'missing linked Git admin directory' unless status.success?

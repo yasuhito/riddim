@@ -81,8 +81,26 @@ The profile supplies `--model` and `--thinking` to new workers and to a
 supervisor launched by `riddim supervise`. Native `pi` uses Pi's own model
 selection. No Bundler install is needed to run the CLI.
 
-For one new worker, add `--model <provider/model-id>` and/or `--effort high` to
-`riddim start`. Choose an available model using `pi --list-models` in the worker's
+Riddim also requires an ignored model allowlist, including on existing
+installations that predate it; nothing is filled in for you. Create it only if
+it does not already exist:
+
+```sh
+if [ ! -e config/allowed-models ] && [ ! -L config/allowed-models ]; then
+  cp config/allowed-models.example config/allowed-models
+fi
+```
+
+Open `config/allowed-models` and list each model you approve for Riddim
+launches, one exact `<provider/model>` per line, including the profile's model.
+The copied example lists none, so Riddim refuses to start any Pi until you edit
+it. Riddim compares IDs exactly, with no aliases or provider fallback: listing
+`claude-bridge/claude-opus-5-5` does not permit `openrouter/anthropic/claude-opus-5.5`.
+This gates only Riddim's own launches; it is not a billing cap. See the
+[CLI reference](docs/cli-reference.md#model-allowlist) for details and limits.
+
+For one new worker, add `--model <provider/model-id>` (an allowlisted ID)
+and/or `--effort high` to `riddim start`. Choose an available model using `pi --list-models` in the worker's
 Pi environment. Omitted axes retain the required configured profile, not Pi's
 defaults; existing workers and config are unchanged. See the
 [CLI reference](docs/cli-reference.md#start-a-background-pi-agent) for syntax and
@@ -104,7 +122,7 @@ No `supervise` command or manual watcher arm is needed. A nonempty
 `RIDDIM_STATE_DIR` override is preserved. This native entrypoint requires the
 plain Riddim checkout root; linked worker worktrees and sessions with any
 nonempty `RIDDIM_ACTOR` do not become supervisors. Ruby, Git, configured Pi
-model access, Herdr and the worker launch profile are still required as above.
+model access, Herdr, the worker launch profile and model allowlist are still required as above.
 A competing watcher owner is refused, not replaced.
 
 ### Supervise another project

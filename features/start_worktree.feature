@@ -6,6 +6,10 @@ Feature: Start a Pi worker in an isolated Git worktree
       """
       pi openrouter/z-ai/glm-5.3-flash max
       """
+    And the config directory allows models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      """
     And Herdr starts the agent only in the linked worktree
 
   Scenario: Create a linked worktree from the local HEAD and start in it
@@ -126,6 +130,22 @@ Feature: Start a Pi worker in an isolated Git worktree
       start worker --worktree
       """
     Then Riddim inside the worktree can start another agent using the original profile and state
+
+  Scenario: The worker's copied Riddim CLI enforces the original allowlist
+    Given the project contains the Riddim CLI
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then Riddim inside the worktree refuses a model the original allowlist omits
+
+  Scenario: An explicit config override inside the worktree must carry its own allowlist
+    Given the project contains the Riddim CLI
+    When I run riddim with:
+      """
+      start worker --worktree
+      """
+    Then Riddim inside the worktree refuses a config override without an allowlist
 
   Scenario: A symlinked Git-admin runtime marker refuses rather than routing to a new state directory
     Given the project contains the Riddim CLI

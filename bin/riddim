@@ -41,9 +41,9 @@ if ARGV.first == 'supervise'
   config_dir = File.expand_path('../config', __dir__) if config_dir.nil? || config_dir.empty?
 
   begin
-    profile = Riddim::AgentProfile.load(config_dir: config_dir)
+    profile = Riddim::AgentProfile.resolve(config_dir: config_dir)
     Riddim::Supervise.run(profile)
-  rescue Riddim::AgentProfile::Error, Riddim::Supervise::Error => e
+  rescue Riddim::AgentProfile::Error, Riddim::ModelAllowlist::Error, Riddim::Supervise::Error => e
     warn "riddim: #{e.message}"
     exit 1
   end
@@ -509,7 +509,7 @@ if ARGV.first == 'start'
 
   begin
     profile = Riddim::AgentProfile.resolve(config_dir: config_dir, model: flags['--model'], effort: flags['--effort'])
-  rescue Riddim::AgentProfile::Error => e
+  rescue Riddim::AgentProfile::Error, Riddim::ModelAllowlist::Error => e
     warn "riddim: #{e.message}"
     exit 1
   end

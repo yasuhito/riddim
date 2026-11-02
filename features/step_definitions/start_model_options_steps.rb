@@ -94,3 +94,35 @@ Then('all three native launches match their independent recorded profiles') do
                   File.read(scenario_record_path(name))[/^herdr_pane_id=(.+)$/, 1]
                 end.uniq.length], @model_starts.inspect
 end
+
+ALLOWLIST_STATES = {
+  'empty' => '', 'comments only' => "# nothing approved yet\n\n",
+  'a pasted profile line' => "# approved\nopenai-codex/gpt-6.1-sol high\n",
+  'an unqualified entry' => "gpt-6.1-sol\n", 'invalid UTF-8' => "openai-codex/gpt-6.1-sol\n\xff\n".b
+}.freeze
+
+def configured_allowlist
+  File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'allowed-models')
+end
+
+Given('the allowlist is {}') do |state|
+  path = configured_allowlist
+  FileUtils.rm_f(path)
+  case state
+  when 'missing' then nil
+  when 'a directory' then Dir.mkdir(path)
+  else File.binwrite(path, ALLOWLIST_STATES.fetch(state))
+  end
+end
+
+Then('the refusal names provider {string} and model {string} as unlisted') do |provider, model|
+  assert_equal [1, "riddim: model \"#{provider}/#{model}\" is not allowed: provider \"#{provider}\" " \
+                   "model \"#{model}\" is not listed in #{configured_allowlist}; " \
+                   "add its exact provider/model ID only if a human approved it\n", []],
+               [@status.exitstatus, @stderr, herdr_invocations]
+end
+
+Then('the refusal reports {string} for the configured allowlist') do |problem|
+  expected = "riddim: #{problem.sub('model allowlist', "model allowlist #{configured_allowlist}")}"
+  assert_equal [1, true, []], [@status.exitstatus, @stderr.start_with?(expected), herdr_invocations], @stderr
+end

@@ -390,3 +390,7 @@ end
 Then('Herdr starts exactly one agent') do
   assert_equal 1, herdr_invocations.grep(/\bagent start\b/).length
 end
+
+Given('the config directory allows models:') do |content|
+  File.write(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'allowed-models'), content)
+end

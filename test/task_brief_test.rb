@@ -8,23 +8,8 @@ require 'fileutils'
 require_relative '../lib/riddim/task_brief'
 require_relative '../lib/riddim/profile'
 
-class TaskBriefLaunchTest < Minitest::Test
-  def setup
-    @root = Dir.mktmpdir
-    @private_dir = File.join(@root, "brief's $(touch PWNED)")
-    @bin = File.join(@root, 'bin')
-    FileUtils.mkdir_p([@private_dir, @bin])
-    @brief_path = File.join(@private_dir, 'worker.brief')
-    @launch_path = File.join(@private_dir, 'launch.sh')
-    @output = File.join(@root, 'arguments')
-    File.write(@brief_path, "Worker role\nTask with ' and $(not-run)\n")
-    prepare_fake_pi
-  end
-
-  def teardown
-    FileUtils.remove_entry(@root)
-  end
-
+# A fake Pi that records its argv, and a staged launch script run by sh.
+module TaskBriefLaunchFixture
   def prepare_fake_pi
     pi = File.join(@bin, 'pi')
     File.write(pi, "#!/bin/sh\nprintf '%s\\0' \"$@\" > #{Shellwords.escape(@output)}\n")
@@ -39,6 +24,26 @@ class TaskBriefLaunchTest < Minitest::Test
     Open3.capture3('/bin/sh', '-c', ". #{Shellwords.escape(@launch_path)}", chdir: @root).last
   ensure
     ENV['PATH'] = old_path
+  end
+end
+
+class TaskBriefLaunchTest < Minitest::Test
+  include TaskBriefLaunchFixture
+
+  def setup
+    @root = Dir.mktmpdir
+    @private_dir = File.join(@root, "brief's $(touch PWNED)")
+    @bin = File.join(@root, 'bin')
+    FileUtils.mkdir_p([@private_dir, @bin])
+    @brief_path = File.join(@private_dir, 'worker.brief')
+    @launch_path = File.join(@private_dir, 'launch.sh')
+    @output = File.join(@root, 'arguments')
+    File.write(@brief_path, "Worker role\nTask with ' and $(not-run)\n")
+    prepare_fake_pi
+  end
+
+  def teardown
+    FileUtils.remove_entry(@root)
   end
 
   # Publishes a launch through TaskBrief.publish_launch with the fake Pi on
@@ -75,6 +80,15 @@ class TaskBriefLaunchTest < Minitest::Test
     assert_equal [true, ['--model', 'model$(touchPWNED)', '--thinking', 'max',
                          "Worker role\nTask with ' and $(not-run)"], false],
                  [status.success?, File.binread(@output).split("\0"), File.exist?(File.join(@root, 'PWNED'))]
+  end
+
+  # The allowlist refuses whitespace IDs before launch; quoting still holds here.
+  def test_spaced_and_quoted_model_is_one_shell_safe_pi_argument
+    profile = Riddim::AgentProfile.new(harness: 'pi', model: "provider/a'b = c", effort: 'low')
+    status = run_staged_script(profile)
+
+    assert_equal [true, ['--model', "provider/a'b = c", '--thinking', 'low']],
+                 [status.success?, File.binread(@output).split("\0").first(4)]
   end
 
   def test_publish_launch_rejects_a_path_traversal_spawn_gen_before_publishing_anything
