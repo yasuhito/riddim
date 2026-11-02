@@ -66,7 +66,7 @@ class TaskBriefLaunchTest < Minitest::Test
   end
 
   def test_missing_brief_does_not_start_pi
-    profile = Riddim::AgentProfile.parse('pi safe max')
+    profile = Riddim::AgentProfile.parse('pi provider/safe max')
     File.delete(@brief_path)
     status = run_staged_script(profile)
 
@@ -74,10 +74,10 @@ class TaskBriefLaunchTest < Minitest::Test
   end
 
   def test_full_multiline_brief_is_one_shell_safe_pi_argument
-    profile = Riddim::AgentProfile.parse('pi model$(touchPWNED) max')
+    profile = Riddim::AgentProfile.parse('pi provider/model$(touchPWNED) max')
     status = run_staged_script(profile)
 
-    assert_equal [true, ['--model', 'model$(touchPWNED)', '--thinking', 'max',
+    assert_equal [true, ['--provider', 'provider', '--model', 'model$(touchPWNED)', '--thinking', 'max',
                          "Worker role\nTask with ' and $(not-run)"], false],
                  [status.success?, File.binread(@output).split("\0"), File.exist?(File.join(@root, 'PWNED'))]
   end
@@ -87,12 +87,20 @@ class TaskBriefLaunchTest < Minitest::Test
     profile = Riddim::AgentProfile.new(harness: 'pi', model: "provider/a'b = c", effort: 'low')
     status = run_staged_script(profile)
 
-    assert_equal [true, ['--model', "provider/a'b = c", '--thinking', 'low']],
-                 [status.success?, File.binread(@output).split("\0").first(4)]
+    assert_equal [true, ['--provider', 'provider', '--model', "a'b = c", '--thinking', 'low']],
+                 [status.success?, File.binread(@output).split("\0").first(6)]
+  end
+
+  # Pi resolves a bare "openrouter/openai/gpt-5.5" only inside the named provider.
+  def test_pins_the_provider_and_keeps_later_slashes_in_the_model_id
+    status = run_staged_script(Riddim::AgentProfile.parse('pi openrouter/openai/gpt-5.5;$(touch${IFS}PWNED) high'))
+
+    assert_equal [true, ['--provider', 'openrouter', '--model', 'openai/gpt-5.5;$(touch${IFS}PWNED)'], false],
+                 [status.success?, File.binread(@output).split("\0").first(4), File.exist?(File.join(@root, 'PWNED'))]
   end
 
   def test_publish_launch_rejects_a_path_traversal_spawn_gen_before_publishing_anything
-    rejection_error = launch_rejection(Riddim::AgentProfile.parse('pi safe max'), '../../escape')
+    rejection_error = launch_rejection(Riddim::AgentProfile.parse('pi provider/safe max'), '../../escape')
 
     assert_equal [Riddim::TaskBrief::Error, 'task launch requires a valid spawn generation',
                   false, %w[worker.brief]],
@@ -101,7 +109,7 @@ class TaskBriefLaunchTest < Minitest::Test
   end
 
   def test_publish_launch_rejects_every_invalid_spawn_gen_shape_before_publishing
-    profile = Riddim::AgentProfile.parse('pi safe max')
+    profile = Riddim::AgentProfile.parse('pi provider/safe max')
     invalid = [nil, 17, '', 's1.2', '1.2.3', 's1.2.3.4', "s1.2.3\n", '/s1.2.3']
     messages = invalid.map { |spawn_gen| launch_rejection(profile, spawn_gen)&.message }
 
@@ -111,9 +119,9 @@ class TaskBriefLaunchTest < Minitest::Test
 
   def test_publish_launch_refuses_to_replace_a_launch_file_for_the_same_generation
     gen = 's1767200000.4242.7'
-    published = publish_launch(Riddim::AgentProfile.parse('pi safe max'), gen)
+    published = publish_launch(Riddim::AgentProfile.parse('pi provider/safe max'), gen)
     original_bytes = File.binread(published)
-    replacement_error = launch_rejection(Riddim::AgentProfile.parse('pi model$(touchPWNED) low'), gen)
+    replacement_error = launch_rejection(Riddim::AgentProfile.parse('pi provider/model$(touchPWNED) low'), gen)
 
     assert_equal [Riddim::TaskBrief::Error, true, original_bytes],
                  [replacement_error&.class, replacement_error&.message&.include?('already exists'),
@@ -122,7 +130,7 @@ class TaskBriefLaunchTest < Minitest::Test
 
   def test_published_launch_filename_carries_the_spawn_generation
     gen = 's1767200000.4242.7'
-    path = publish_launch(Riddim::AgentProfile.parse('pi safe max'), gen)
+    path = publish_launch(Riddim::AgentProfile.parse('pi provider/safe max'), gen)
 
     assert_equal [File.join(@private_dir, "worker.brief.launch.#{gen}.sh"), true],
                  [path, File.exist?(path)]
@@ -131,7 +139,7 @@ class TaskBriefLaunchTest < Minitest::Test
   def test_launch_source_marks_the_task_pi_as_a_branch_actor
     source = with_fake_pi_path do
       Riddim::TaskBrief.launch_source(Riddim::TaskBrief::Brief.new(@brief_path, ''),
-                                      Riddim::AgentProfile.parse('pi safe max'))
+                                      Riddim::AgentProfile.parse('pi provider/safe max'))
     end
 
     assert source.start_with?("export RIDDIM_ACTOR=branch\n")

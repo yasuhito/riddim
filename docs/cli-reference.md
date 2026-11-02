@@ -525,7 +525,13 @@ Create the profile without overwriting an existing one using the
 `config/agent-profile` is gitignored. Set `RIDDIM_CONFIG_DIR` to read the
 profile from another directory.
 
-The agent is started with `--model <model> --thinking <effort>`.
+The agent is started with `--provider <provider> --model <id> --thinking <effort>`,
+splitting the model at its first `/`: `openrouter/openai/gpt-5.5` becomes
+`--provider openrouter --model openai/gpt-5.5`. Pi treats a bare `--model
+<provider>/<id>` only as a hint and can resolve it to another provider whose own
+catalog ID is that whole text, such as OpenRouter's `openai/gpt-5.5`; pinning the
+provider confines Pi's lookup to the named provider. Every launch path (native,
+task and `supervise`) uses these arguments.
 
 #### Model allowlist
 
@@ -551,6 +557,13 @@ unreadable, malformed or empty list, is refused with the file path and the
 refused provider and model, before any record, worktree, Herdr workspace or Pi
 request exists. `riddim supervise` applies the same check to its profile model.
 There is no bypass flag; an explicit `RIDDIM_CONFIG_DIR` must carry its own list.
+Because the provider is pinned, an allowlisted provider without credentials or
+missing from Pi's catalog makes Pi fail rather than reach another provider.
+
+Within the pinned provider, Pi still applies its own lookup: IDs match
+case-insensitively, a `:<thinking>` suffix is parsed, and an ID absent from that
+provider's catalog is fuzzy-matched to another of its models (or sent as a custom
+ID). List IDs exactly as `pi --list-models` reports them.
 
 The list controls which models Riddim itself starts. It is not a security
 sandbox or a billing cap: it does not restrict Pi started directly, model

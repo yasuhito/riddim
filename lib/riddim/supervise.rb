@@ -99,8 +99,7 @@ module Riddim
 
     def launch_arguments(profile)
       [
-        '--model', profile.model,
-        '--thinking', profile.effort,
+        *profile.pi_arguments,
         '-e', NOTIFICATIONS_EXTENSION,
         '--append-system-prompt', ROLE_CONTRACT
       ]

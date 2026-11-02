@@ -77,7 +77,7 @@ one of `low`, `medium`, `high`, `xhigh`, `max`. For example, the supplied sample
 uses `pi openrouter/z-ai/glm-5.3-flash max`; it requires access to that model,
 not just a Pi installation. Choose an effort your model supports.
 
-The profile supplies `--model` and `--thinking` to new workers and to a
+The profile supplies `--provider`, `--model` and `--thinking` to new workers and to a
 supervisor launched by `riddim supervise`. Native `pi` uses Pi's own model
 selection. No Bundler install is needed to run the CLI.
 
@@ -95,7 +95,9 @@ Open `config/allowed-models` and list each model you approve for Riddim
 launches, one exact `<provider/model>` per line, including the profile's model.
 The copied example lists none, so Riddim refuses to start any Pi until you edit
 it. Riddim compares IDs exactly, with no aliases or provider fallback: listing
-`claude-bridge/claude-opus-5-5` does not permit `openrouter/anthropic/claude-opus-5.5`.
+`claude-bridge/claude-opus-5-5` does not permit `openrouter/anthropic/claude-opus-5.5`,
+and Pi is pinned to the listed provider. Copy IDs exactly as `pi --list-models`
+reports them.
 This gates only Riddim's own launches; it is not a billing cap. See the
 [CLI reference](docs/cli-reference.md#model-allowlist) for details and limits.
 

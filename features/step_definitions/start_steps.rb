@@ -202,14 +202,15 @@ end
 
 # The exact session-targeted invocations of one start, each carrying the
 # explicit --session flag ahead of its subcommand. The agent-start passthrough
-# tail ends at --thinking, so nothing leaks into the Pi agent's own arguments.
+# tail pins the provider and ends at --thinking, so nothing leaks into the Pi
+# agent's own arguments.
 def workspace_create_invocation(session)
   "--session #{session} workspace create --cwd #{Dir.pwd} --label 〰️ worker --no-focus"
 end
 
 def agent_start_invocation(session)
   "--session #{session} agent start worker --kind pi --pane w9:p1 -- " \
-    '--model openrouter/z-ai/glm-5.3-flash --thinking max'
+    '--provider openrouter --model z-ai/glm-5.3-flash --thinking max'
 end
 
 def pane_close_invocation(session, pane)
@@ -247,10 +248,11 @@ end
 
 Then('Herdr starts agent {string} in pane {string} with model {string} ' \
      'and effort {string}') do |name, pane, model, effort|
+  provider, id = model.split('/', 2)
   assert_includes(
     herdr_invocations,
     "--session #{scenario_session} agent start #{name} --kind pi --pane #{pane} -- " \
-    "--model #{model} --thinking #{effort}"
+    "--provider #{provider} --model #{id} --thinking #{effort}"
   )
 end
 

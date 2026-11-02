@@ -5,5 +5,7 @@
 # globs, aliases or provider fallback, so openrouter/... never stands in for
 # another provider's model. Blank lines and lines starting with # are ignored.
 # While this list is missing, unreadable, malformed or empty, Riddim starts no
-# Pi at all. It gates Riddim launches only; it is not a billing cap.
+# Pi at all. Pi is started with --provider pinned to the listed provider; copy
+# IDs exactly as `pi --list-models` shows them, since Pi fuzzy-matches an ID
+# that provider lacks. It gates Riddim launches only; it is not a billing cap.
 # openrouter/z-ai/glm-5.3-flash

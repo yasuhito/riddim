@@ -29,7 +29,7 @@ class WorkerWaitingPromptTest < Minitest::Test
       brief = Riddim::TaskBrief::Brief.new(File.join(dir, 'worker.brief'), prompt)
       File.write(brief.path, prompt)
       pi = File.join(dir, 'pi')
-      File.write(pi, "#!/bin/sh\nprintf '%s' \"$5\"\n")
+      File.write(pi, "#!/bin/sh\nprintf '%s' \"$7\"\n")
       File.chmod(0o700, pi)
       run_launch(brief, pi)
     end
@@ -38,7 +38,7 @@ class WorkerWaitingPromptTest < Minitest::Test
   def run_launch(brief, executable)
     old_path = ENV.fetch('PATH')
     ENV['PATH'] = "#{File.dirname(executable)}:#{old_path}"
-    source = Riddim::TaskBrief.launch_source(brief, Riddim::AgentProfile.parse('pi safe max'))
+    source = Riddim::TaskBrief.launch_source(brief, Riddim::AgentProfile.parse('pi provider/safe max'))
     output, error, status = Open3.capture3('/bin/sh', '-c', source)
     raise error unless status.success?
 

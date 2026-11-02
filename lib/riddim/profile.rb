@@ -32,6 +32,17 @@ module Riddim
       new(harness: configured.harness, model: model, effort: effort)
     end
 
+    # Pi's launch arguments. Pi treats a bare "<provider>/<id>" --model as a
+    # hint and can resolve it to another provider whose own catalog ID is that
+    # whole text (OpenRouter's "openai/gpt-5.5"). --provider pins the lookup to
+    # the allowlisted provider; the ID keeps any further slashes.
+    def pi_arguments
+      provider, separator, id = model.partition('/')
+      raise Error, "model #{model.dump} names no provider" if separator.empty? || provider.empty? || id.empty?
+
+      ['--provider', provider, '--model', id, '--thinking', effort]
+    end
+
     def self.load(config_dir:)
       path = File.join(config_dir, FILENAME)
       begin

@@ -180,7 +180,7 @@ end
 def expected_supervisor_arguments
   root = File.expand_path('..', File.dirname(RiddimWorld::RIDDIM))
   [
-    '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max',
+    '--provider', 'openrouter', '--model', 'z-ai/glm-5.3-flash', '--thinking', 'max',
     '-e', File.join(root, '.pi/extensions/riddim-notifications.ts'),
     '--append-system-prompt', File.join(root, 'docs/supervisor.md')
   ]

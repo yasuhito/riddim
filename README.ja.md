@@ -83,7 +83,7 @@ pi <provider/model> <effort>
 Pi のインストールだけでは使えません。モデルが対応する思考の強度を選んでください。
 
 このプロファイルから、新しいワーカーと `riddim supervise` で起動するスーパーバイザーに
-`--model` と `--thinking` を渡します。`pi` を直接起動する場合は、Pi 自身のモデル設定を
+`--provider`、`--model`、`--thinking` を渡します。`pi` を直接起動する場合は、Pi 自身のモデル設定を
 使います。CLI を使うだけなら Bundler によるインストールは不要です。
 
 Riddim はさらに、Git の管理対象外のモデル許可リストも必要とします。
@@ -101,7 +101,8 @@ fi
 コピーした直後の例には有効な行がないため、編集するまで Riddim は Pi を起動しません。
 ID は完全一致で比較し、別名やプロバイダーの代替はありません。
 `claude-bridge/claude-opus-5-5` を書いても `openrouter/anthropic/claude-opus-5.5` は
-許可されません。制限するのは Riddim 自身の起動だけで、課金の上限ではありません。
+許可されません。Pi には許可リストに書いたプロバイダーを `--provider` で固定して渡します。
+ID は `pi --list-models` の表示どおりに書いてください。制限するのは Riddim 自身の起動だけで、課金の上限ではありません。
 詳細と制約は [CLI リファレンス](docs/cli-reference.md#model-allowlist) を参照してください。
 
 ## 3. Pi を起動する

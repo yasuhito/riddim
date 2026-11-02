@@ -19,7 +19,9 @@ Then('Pi and the ownership record select model {string} and effort {string} with
   record = File.read(scenario_record_path('worker')) if File.file?(scenario_record_path('worker'))
   brief = File.read(File.join(scenario_state_dir, 'worker.brief')) if record
   profile = File.binread(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'))
-  assert_equal [true, ['--model', model, '--thinking', effort, brief].map { |value| value&.bytes }, record&.bytes,
+  provider, id = model.b.split('/', 2)
+  pi_argv = ['--provider', provider, '--model', id, '--thinking', effort, brief]
+  assert_equal [true, pi_argv.map { |value| value&.bytes }, record&.bytes,
                 true, true, @configured_profile],
                [@status.success?, observation && observation['argv'], observation && observation['record'],
                 record&.include?("\nmodel=#{model}\n"), record&.include?("\neffort=#{effort}\n"), profile], @stderr
@@ -85,7 +87,8 @@ Then('all three native launches match their independent recorded profiles') do
     argv = JSON.parse(File.read(File.join(@herdr_directory, "#{name}.argv.json")))
     [name, record.fetch('model'), record.fetch('effort'),
      argv == ['agent', 'start', name, '--kind', 'pi', '--pane', record.fetch('herdr_pane_id'), '--',
-              '--model', record.fetch('model'), '--thinking', record.fetch('effort')]]
+              '--provider', *record.fetch('model').split('/', 2).insert(1, '--model'),
+              '--thinking', record.fetch('effort')]]
   end
   profile = File.binread(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'))
   assert_equal [expected.map { |row| [*row, true] }, [true, true, true], @configured_profile, 3],

@@ -35,6 +35,26 @@ Feature: Start only models the local allowlist names exactly
       | --model claude-bridge/claude-opus-5-5                | claude-bridge/claude-opus-5-5 | high   |
       | --model=claude-bridge/claude-opus-5-5 --effort xhigh | claude-bridge/claude-opus-5-5 | xhigh  |
 
+  Scenario: Pin the provider of a slashed model ID for the task launch
+    Given the config directory allows models:
+      """
+      openrouter/openai/gpt-5.5
+      """
+    And Pi records its exact launch arguments and profile
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only --model openrouter/openai/gpt-5.5
+      """
+    Then Pi and the ownership record select model "openrouter/openai/gpt-5.5" and effort "high" without changing config
+
+  Scenario: Pin the provider for a native start
+    Given Herdr creates workspace "w9" and starts the agent
+    When I run riddim with:
+      """
+      start worker --model claude-bridge/claude-opus-5-5
+      """
+    Then Herdr starts agent "worker" in pane "w9:p1" with model "claude-bridge/claude-opus-5-5" and effort "high"
+
   Scenario: Read a commented allowlist with duplicates and surrounding whitespace
     Given the config directory allows models:
       """
