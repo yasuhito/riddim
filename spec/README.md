@@ -33,8 +33,8 @@ PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`B
 2026-11-03に、[tla-ts](https://github.com/aidenybai/tla-ts) 0.0.6（npmの公開版、upstreamのrelease commit `fd7689c`）を、公式`pcal.trans`で生成した同じ6つの`.tla`と`.cfg`に1 workerで適用し、TLC 2.19（`tla2tools.jar` v1.7.4）と比べた。tla-tsはリポジトリにもCIにも入れていない。正式な判定は引き続きTLCとする。
 
 - 正常な6モデル: 両方ともエラーなし。生成状態数、到達状態数、探索の深さも一致した。
-- `WatcherModels.md`の負例と到達性の確認8件: 違反する性質と反例のtraceが一致した。例外は`Detected`違反の1件で、どちらも探索途中の定期liveness検査で反例を見つけたため、そこまでの状態数が異なる（TLC 202,324、tla-ts 196,413）。反例の意味（死んだwatcherが検出されないまま時間の上限で止まる）は同じだった。
-- tla-tsは内容のない`Warnings (1) during syntax parsing`を5モデルで出し、TLCは出さない。内容が分からないため、合否の根拠にはしない。
+- `WatcherModels.md`の負例と到達性の確認8件: 7件は違反する性質、状態数、反例のtraceが一致した。`Detected`違反の1件は、どちらも探索途中の定期liveness検査で反例を見つけたため、そこまでの状態数が異なる（TLC 202,324、tla-ts 196,413）。反例はどちらも43状態とstutteringだが、内容は異なる（TLCはwatcherの死亡が先、tla-tsはPiの停止が先）。どちらも死んだwatcherが検出されないまま時間の上限で止まる、という意味が同じことは、ログを人が読んで確かめた。
+- tla-tsは5つの正常なモデルとすべての負例で`The PlusCal algorithm in module <名前> has changed since its last translation.`と警告する。同じファイルを公式`pcal.trans`で生成し直してTLCで検査しても、この警告は出ない。checksumの計算の違いかもしれないが、原因は確かめていない。合格の根拠には使わず、生成されたchecksumも変更しない。
 
 ## 同時に札を取る: ClaimOneName
 
