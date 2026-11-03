@@ -227,9 +227,15 @@ export default function (pi: ExtensionAPI) {
     // keeps beating into the pipe, and Node runs a late timer before reading
     // those beats. Silence counts only time Pi could observe: the delay of
     // this watchdog's own ticks since the last frame is not watcher silence.
+    // A fresh frame also restarts that delay measurement: a stall before the
+    // frame was handled must not be credited against silence after it.
     let lastTick = performance.now();
     let piStalled = 0;
     let largestStall = 0;
+    const fresh = () => {
+      verifiedAt = lastTick = performance.now();
+      piStalled = 0;
+    };
     const watchdog = setInterval(() => {
       const now = performance.now();
       const stall = Math.max(0, now - lastTick - WATCHDOG_INTERVAL);
@@ -266,12 +272,10 @@ export default function (pi: ExtensionAPI) {
           ready = true;
           boundLock = frame.lock;
           verifiedLock = frame.lock;
-          verifiedAt = performance.now();
-          piStalled = 0;
+          fresh();
           finishReady(true);
         } else if (frame.type === "beat" && ready) {
-          verifiedAt = performance.now();
-          piStalled = 0;
+          fresh();
         } else if ((frame.type === "schedule-error" || frame.type === "schedule-ok") && ready &&
           frame.home === binding && frame.lock === boundLock) {
           const key = `scan:${binding}/${frame.lock}`;

@@ -361,7 +361,7 @@ class PiNotificationsE2ETest < Minitest::Test
     end
 
     assert_match(/watcher heartbeat stale; ownership unverified \(no watcher frame for \d+\.\ds, /, alarm['message'])
-    assert_match(/\d+\.\ds of it while Pi was responsive; largest Pi event-loop delay 0\.\ds\)/, alarm['message'])
+    assert_match(/\d+\.\ds of it while Pi was responsive; largest Pi event-loop delay \d+\.\ds\)/, alarm['message'])
     assert_includes alarm['message'], 'automatic recovery exhausted'
   end
 

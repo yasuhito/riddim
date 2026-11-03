@@ -259,6 +259,12 @@ requests. No discarded audit commit needs to be restored.
   frame from the silence it judges. The four-second grace and one-second tick
   are unchanged; a watcher silent while Pi is responsive is still killed.
   Regression: `test_stalled_pi_host_does_not_kill_a_beating_watcher`.
+- Review follow-up: a stall inside an I/O callback can end with a frame handled
+  before the late tick. The first fix then credited that earlier stall against
+  silence after the frame, delaying detection of a watcher that stopped right
+  after it (12.0 s measured for an 8 s stall). A fresh frame now also restarts
+  the tick-delay measurement. Regression:
+  `test_pi_stall_before_a_frame_neither_kills_nor_shields_the_watcher`.
 - The stale reason now records the silence, the part while Pi was responsive and
   the largest Pi event-loop delay, so a future alarm separates a Pi stall from
   watcher silence.
