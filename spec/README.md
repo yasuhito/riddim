@@ -28,6 +28,14 @@ PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`B
 
 どちらも修正前の実装と最初の停止対策を外部コピーで再現すると、TLCが反例を出す。対応する実装、境界、仮定、負例、実プロセスでの再現テストは[WatcherModels.md](WatcherModels.md)に記録した。2026-11-02の障害の原因や、Ruby・JavaScript・OSのrefinementを示すモデルではない。
 
+## 2つ目の検査器との比較: tla-ts 0.0.6
+
+2026-11-03に、[tla-ts](https://github.com/aidenybai/tla-ts) 0.0.6（npmの公開版、upstreamのrelease commit `fd7689c`）を、公式`pcal.trans`で生成した同じ6つの`.tla`と`.cfg`に1 workerで適用し、TLC 2.19（`tla2tools.jar` v1.7.4）と比べた。tla-tsはリポジトリにもCIにも入れていない。正式な判定は引き続きTLCとする。
+
+- 正常な6モデル: 両方ともエラーなし。生成状態数、到達状態数、探索の深さも一致した。
+- `WatcherModels.md`の負例と到達性の確認8件: 違反する性質と反例のtraceが一致した。例外は`Detected`違反の1件で、どちらも探索途中の定期liveness検査で反例を見つけたため、そこまでの状態数が異なる（TLC 202,324、tla-ts 196,413）。反例の意味（死んだwatcherが検出されないまま時間の上限で止まる）は同じだった。
+- tla-tsは内容のない`Warnings (1) during syntax parsing`を5モデルで出し、TLCは出さない。内容が分からないため、合否の根拠にはしない。
+
 ## 同時に札を取る: ClaimOneName
 
 TLCは`ClaimOneName.cfg`の3つの不変条件を調べる。正常なモデルは14個の到達状態でエラーなし。検査が形だけでないことを確かめるため、一時コピーで`Publish`時の`recordOwner = "none"`条件を除いたところ、TLCが`NeverTwoPublished`違反を報告した。この変更は本体には残していない。
