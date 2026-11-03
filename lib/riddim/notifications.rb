@@ -18,6 +18,10 @@ module Riddim
     class Error < Ownership::Error; end
 
     ACTIONABLE = %w[done blocked failed needs-decision].freeze
+    MARKER_KINDS = %w[handled presented ack-pending].freeze
+    MARKER_PREFIX = /\A\.(?:#{MARKER_KINDS.join('|')})-/
+    MARKER = /#{MARKER_PREFIX}.*\.json\z/
+    QUEUE = /\A[^.].*\.json\z/
     Entry = Data.define(:id, :task, :generation, :sequence, :event)
     Observation = Data.define(:alive, :idle, :event)
 
@@ -41,7 +45,7 @@ module Riddim
           classify(name, budget: budget) if File.exist?(path) || File.symlink?(path)
         end
       end
-      present(pending, wait: wait)
+      present(pending(wait: wait), wait: wait)
     end
 
     def present(entries, wait: true)
@@ -53,18 +57,41 @@ module Riddim
       end
     end
 
-    def pending
+    # Acknowledgement withdraws its intent marker under the task's name lock.
+    # Each task's rows and markers are listed and read under that same lock,
+    # so a listed marker cannot vanish before it is verified. A background
+    # observer skips a busy task until its next poll.
+    def pending(wait: true)
       return [] unless notification_directory_present?
 
       verify_directory
-      files = Dir.children(directory)
-      files.grep(/\A\.(?:handled|presented|ack-pending)-.*\.json\z/).each do |filename|
-        verify_marker_queue(filename, files)
-      end
-      files.grep(/\A[^.].*\.json\z/).sort.filter_map do |filename|
+      tasks = Dir.children(directory).filter_map { |filename| queue_task(filename) }.uniq.sort
+      tasks.flat_map { |task| Ownership.with_lock(task, wait: wait) { pending_for(task) } || [] }.sort_by(&:id)
+    end
+
+    def pending_for(task)
+      files = task_files(task)
+      files.grep(MARKER).each { |filename| verify_marker_queue(filename, files) }
+      files.grep(QUEUE).sort.filter_map do |filename|
         entry = read_entry(File.join(directory, filename), filename)
         entry unless handled?(entry)
       end
+    end
+
+    def task_files(task)
+      prefixes = ["#{task}.", *MARKER_KINDS.map { |kind| ".#{kind}-#{task}." }]
+      Dir.children(directory).select { |filename| filename.start_with?(*prefixes) }
+    end
+
+    # The task named by a queue row or marker filename. A name that cannot
+    # select a lock is refused, as its row could never be verified.
+    def queue_task(filename)
+      return unless filename.match?(MARKER) || filename.match?(QUEUE)
+
+      task = filename.sub(MARKER_PREFIX, '').split('.', 2).first
+      return task if task.match?(Ownership::NAME_PATTERN)
+
+      raise Error, "invalid notification at #{File.join(directory, filename)}"
     end
 
     def handled?(entry)
@@ -73,7 +100,7 @@ module Riddim
     end
 
     def verify_marker_queue(filename, files)
-      entry = read_entry(File.join(directory, filename), filename.sub(/\A\.(?:handled|presented|ack-pending)-/, ''))
+      entry = read_entry(File.join(directory, filename), filename.sub(MARKER_PREFIX, ''))
       queue_path = File.join(directory, "#{entry.id}.json")
       raise Error, "missing notification at #{queue_path}" unless files.include?("#{entry.id}.json")
       raise Error, "notification marker mismatch at #{queue_path}" unless

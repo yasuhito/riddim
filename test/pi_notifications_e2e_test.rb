@@ -86,6 +86,7 @@ class PiNotificationsE2ETest < Minitest::Test
   # rubocop:disable-next Metrics/MethodLength, Metrics/PerceivedComplexity
   def teardown
     begin
+      Process.kill('CONT', @stopped_pi) if @stopped_pi
       Process.kill('CONT', @paused_watcher) if @paused_watcher
     rescue Errno::ESRCH
       # The watchdog already reaped the stopped watcher.
@@ -307,6 +308,25 @@ class PiNotificationsE2ETest < Minitest::Test
     socket.close
   end
 
+  # Swap-in, GC or synchronous extension work can stall Pi's event loop while
+  # the watcher keeps beating into the pipe. Silence Pi could not observe is
+  # not watcher silence, so a healthy watcher survives the stall.
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
+  def test_stalled_pi_host_does_not_kill_a_beating_watcher
+    arm_watcher
+    children = "/proc/#{@wait.pid}/task/#{@wait.pid}/children"
+    watcher = File.read(children).split
+    @stopped_pi = @wait.pid
+    Process.kill('STOP', @stopped_pi)
+    sleep 6
+    Process.kill('CONT', @stopped_pi)
+    @stopped_pi = nil
+    sleep 3
+
+    assert_equal watcher, File.read(children).split
+    assert_equal 1, File.readlines(File.join(@root, 'watcher-spawns')).size
+  end
+
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Minitest/MultipleAssertions
   def test_unexpected_close_retries_are_bounded_and_alarm_only_once
     arm_watcher
@@ -317,13 +337,32 @@ class PiNotificationsE2ETest < Minitest::Test
       item['type'] == 'extension_ui_request' && item['method'] == 'notify'
     end
 
-    assert_includes alarm['message'], 'automatic recovery exhausted'
+    assert_includes alarm['message'], 'observer stopped without a report (SIGTERM)'
+    assert_includes alarm['message'], 'automatic recovery exhausted: all 3 restarts of this Pi runtime are used'
+    assert_includes alarm['message'], 'last restart failed: injected watcher rearm failure'
     assert_equal 'error', alarm['notifyType']
     # Every refusal is counted separately from a successful initial spawn.
     assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
     sleep 1
 
     assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
+  end
+
+  # A watcher silent while Pi is responsive is still stale, and the alarm
+  # separates that silence from any Pi event-loop delay.
+  # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
+  def test_stale_heartbeat_alarm_records_watcher_silence_and_pi_delay
+    arm_watcher
+    File.write(File.join(@root, 'deny-watcher-rearm'), '')
+    @paused_watcher = Integer(File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first)
+    Process.kill('STOP', @paused_watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
+    end
+
+    assert_match(/watcher heartbeat stale; ownership unverified \(no watcher frame for \d+\.\ds, /, alarm['message'])
+    assert_match(/\d+\.\ds of it while Pi was responsive; largest Pi event-loop delay \d+\.\ds\)/, alarm['message'])
+    assert_includes alarm['message'], 'automatic recovery exhausted'
   end
 
   # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
@@ -353,6 +392,7 @@ class PiNotificationsE2ETest < Minitest::Test
     end
 
     assert_includes alarm['message'], 'ownership ambiguous'
+    assert_match(/watcher lock \d+:\d+ is now \d+:\d+/, alarm['message'])
     assert_equal 1, File.readlines(File.join(@root, 'watcher-spawns')).size
   end
 

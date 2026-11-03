@@ -10,6 +10,7 @@ require_relative 'support/notification_worker_fixture'
 
 # A fake Pi lifecycle drives the real extension and real watcher subprocesses.
 # The separately tested real Pi RPC path verifies the provider-facing queue.
+# rubocop:disable-next Metrics/ClassLength
 class NotificationSessionRaceTest < Minitest::Test
   include NotificationWorkerFixture
 
@@ -33,6 +34,10 @@ class NotificationSessionRaceTest < Minitest::Test
 
   def test_unreported_stop_is_delivered_once_without_a_worker_report
     run_scenario('notification_stop.mts', expected: ["worker.#{GEN}.0"], backend: 'notification_stop_backend')
+  end
+
+  def test_pi_stall_before_a_frame_neither_kills_nor_shields_the_watcher
+    run_scenario('notification_frame_before_late_tick.mts', expected: [])
   end
 
   def test_unsettled_follow_up_times_out_and_can_be_rearmed

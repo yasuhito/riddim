@@ -19,8 +19,8 @@ Reload: pre-reload extension runtime -> shutdown -> replacement runtime -> start
 ## What TLC checks
 
 Run `bundle exec rake model` with the existing pinned Java/jar described in
-[`README.md`](README.md). The explicit task translates PlusCal and runs all four
-models, outside default rake/CI. Do not edit the generated translation.
+[`README.md`](README.md). The explicit task translates PlusCal and runs every
+model, outside default rake/CI. Do not edit the generated translation.
 
 The bound is one reused factory, one shutdown/start handoff, two ordinary reports
 from one Worker generation, one fixed source home/lock pair, and one outstanding

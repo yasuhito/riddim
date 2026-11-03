@@ -218,6 +218,66 @@ requests. No discarded audit commit needs to be restored.
   report handling still alerts immediately rather than withholding the report;
   extending bounded recovery to that path remains a scoped follow-up.
 
+## Watcher failed while a report was acknowledged - reproduced and fixed
+
+- Supervisor evidence (2026-11-02 11:30 JST): `riddim: watcher FAILED: No such
+  file or directory @ rb_sysopen - ./.notifications/.ack-pending-<id>.json`
+  right after that ID was acknowledged. Original home and lock identities were
+  unchanged; a later original scan was empty and the row was durably handled.
+- Cause: `ack` publishes `.ack-pending`, then `.handled`, then unlinks the
+  intent under the task's name lock, but `Notifications.pending` listed and read
+  markers without that lock. A marker listed before the unlink was read after it.
+- E2E reproduction: the real `watch-notifications` observer excluded 150
+  presented IDs while the real `notifications ack` CLI acknowledged them one by
+  one. On the `/home` filesystem two of three runs failed with the same message.
+  On tmpfs, where fsync barely widens the window, none of three failed.
+- Fix: `pending` lists and reads each task's rows and markers under its name
+  lock. The watcher passes `wait: false` and skips a busy task until its next
+  poll, as `classify` already does. Malformed names and markers still refuse.
+  Regression: `test/notification_ack_race_test.rb` pauses real CLI processes at
+  that interleaving. After the fix the 150-ID reproduction passed five of five.
+- Cost measured on a copy of the original 919-file notification directory: one
+  warm `pending` grew from about 13 ms to 25 ms per watcher poll.
+
+## Stale heartbeat while Pi itself was stalled - reproduced and fixed; incidents unproven
+
+- Supervisor evidence: `watcher heartbeat stale; ownership unverified; automatic
+  recovery exhausted or ownership ambiguous` on 2026-10-25 (three times) and
+  2026-11-02 13:54 and 14:45 JST, with unchanged original identities, empty
+  original scans and no surviving watcher process or lock owner. The alarm had
+  no timing detail, and successful earlier recoveries leave no trace.
+- E2E reproduction: `SIGSTOP` of only the real Pi process for six seconds,
+  while its real watcher kept beating into the pipe, killed and replaced that
+  healthy watcher after `SIGCONT`. Node runs the late watchdog timer before
+  reading the queued beats. Each replacement silently uses one of the three
+  automatic restarts per Pi runtime, so a fourth stall alarms as exhausted.
+- Plausible but unproven for the incidents: on 2026-11-03 the supervisor Pi had
+  389 MB resident and 284 MB swapped, with zram (62 GB) full and 17 GB on the
+  swap file. Page-in or GC under that pressure can stall Pi for seconds. No
+  event-loop timing was recorded then, so the incidents' cause remains unknown.
+- Fix: the watchdog subtracts its own tick delay (Pi not running) since the last
+  frame from the silence it judges. The four-second grace and one-second tick
+  are unchanged; a watcher silent while Pi is responsive is still killed.
+  Regression: `test_stalled_pi_host_does_not_kill_a_beating_watcher`.
+- Review follow-up: a stall inside an I/O callback can end with a frame handled
+  before the late tick. The first fix then credited that earlier stall against
+  silence after the frame, delaying detection of a watcher that stopped right
+  after it (12.0 s measured for an 8 s stall). A fresh frame now also restarts
+  the tick-delay measurement. Regression:
+  `test_pi_stall_before_a_frame_neither_kills_nor_shields_the_watcher`.
+- The stale reason now records the silence, the part while Pi was responsive and
+  the largest Pi event-loop delay, so a future alarm separates a Pi stall from
+  watcher silence.
+- The old alarm `automatic recovery exhausted or ownership ambiguous` could not
+  say which applied, and a failed restart's stderr was only logged. The alarm now
+  says either that all three restarts of the Pi runtime are used, with the last
+  restart failure or that earlier restarts recovered, or that ownership is
+  ambiguous, with original and current home/lock identities. An observer that
+  stops without stderr is reported with its exit code or signal.
+- The 2026-11-02 11:30 ACK-race alarm already said exhausted or ambiguous on its
+  first failure while identities were unchanged. Earlier restarts in that runtime
+  had most likely used the budget without notice; this is not proven.
+
 ## Validation follow-up - linked-worktree default-path assertion
 
 - First full validation: unit tests passed; feature validation exceeded the initial

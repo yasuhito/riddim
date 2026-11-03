@@ -4,7 +4,7 @@
 
 必要なものはJava 11以上と[公式リリース](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4)の`tla2tools.jar`だけ。この環境ではJava `temurin-21.0.12+8.0.LTS`を`mise`のユーザー領域に、jar v1.7.4を`~/.local/share/tlaplus/v1.7.4/tla2tools.jar`に置いた（SHA-256: `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`）。リポジトリにjarは含めない。
 
-リポジトリのルートから、**4つの正常なモデルの検査だけ**を実行する:
+リポジトリのルートから、**6つの正常なモデルの検査だけ**を実行する:
 
 ```sh
 bundle exec rake model
@@ -19,6 +19,22 @@ PlusCalは`(* --algorithm`から`end algorithm; *)`まで。変換器が書く`B
 `NotificationHandoff.tla`は、Riddimの通知拡張を同じfactoryで停止・再開したとき、旧コールバックが後続の配送状態を変更しないことを検査する。未処理レポートの保持は、削除・ACK遷移を含まないこのモデル内の構造を確かめるsanity invariantであり、永続化を独立に検証するものではない。選んだコールバックガードの負例も永続化は検査しない。実装側の保持はRubyテストの停止後のscanで確かめる。104個の到達状態で、旧配送の成功・拒否と後続処理の順を入れ替える。実際の`/reload`は拡張ランタイムを置き換えるため、この同じfactoryを使うテストとは区別する。
 
 状態と実装の対応、観測列の照合、外部コピーでの負例、仮定と検証範囲は[NotificationHandoff.md](NotificationHandoff.md)に記録した。Piへの配送受理は、人による処理やACKではない。全実行のrefinement証明や、end-to-endのexactly-onceを主張するモデルではない。
+
+## watcherの修正: AckMarkerRace と HeartbeatWatchdog
+
+`AckMarkerRace.tla`は、ACKのintent公開、receipt公開、intent削除と、watcherの1回の`pending`を交互に動かす。一覧、各マーカーの読み取り、`handled?`の存在確認と読み取りはそれぞれ別の手順で、scan全体を原子的には扱わない。正当なACKでwatcherが失敗しないこと、receiptなしに処理済みと見なさないことを、36個の到達状態で検査する。
+
+`HeartbeatWatchdog.tla`は秒単位の離散時間で、Piの停止（最大6秒を2回まで）、pipeに溜まるframe、遅れたwatchdog tickを扱う。Piが再開したときのframeとtickは両方の順序を調べる。正常なwatcherをPiの停止だけで殺さないこと、停止前の時間を新しいframe後の沈黙に繰り越さないこと、死んだwatcherをいずれ検出することを、128,076個の到達状態で検査する。
+
+どちらも修正前の実装と最初の停止対策を外部コピーで再現すると、TLCが反例を出す。対応する実装、境界、仮定、負例、実プロセスでの再現テストは[WatcherModels.md](WatcherModels.md)に記録した。2026-11-02の障害の原因や、Ruby・JavaScript・OSのrefinementを示すモデルではない。
+
+## 2つ目の検査器との比較: tla-ts 0.0.6
+
+2026-11-03に、[tla-ts](https://github.com/aidenybai/tla-ts) 0.0.6（npmの公開版、upstreamのrelease commit `fd7689c`）を、公式`pcal.trans`で生成した同じ6つの`.tla`と`.cfg`に1 workerで適用し、TLC 2.19（`tla2tools.jar` v1.7.4）と比べた。tla-tsはリポジトリにもCIにも入れていない。正式な判定は引き続きTLCとする。
+
+- 正常な6モデル: 両方ともエラーなし。生成状態数、到達状態数、探索の深さも一致した。
+- `WatcherModels.md`の負例と到達性の確認8件: 7件は違反する性質、状態数、反例のtraceが一致した。`Detected`違反の1件は、どちらも探索途中の定期liveness検査で反例を見つけたため、そこまでの状態数が異なる（TLC 202,324、tla-ts 196,413）。反例はどちらも43状態とstutteringだが、内容は異なる（TLCはwatcherの死亡が先、tla-tsはPiの停止が先）。どちらも死んだwatcherが検出されないまま時間の上限で止まる、という意味が同じことは、ログを人が読んで確かめた。
+- tla-tsは5つの正常なモデルとすべての負例で`The PlusCal algorithm in module <名前> has changed since its last translation.`と警告する。同じファイルを公式`pcal.trans`で生成し直してTLCで検査しても、この警告は出ない。checksumの計算の違いかもしれないが、原因は確かめていない。合格の根拠には使わず、生成されたchecksumも変更しない。
 
 ## 同時に札を取る: ClaimOneName
 

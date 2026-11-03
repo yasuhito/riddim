@@ -18,6 +18,7 @@ const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
 const BEAT_TIMEOUT = 4000;
+const WATCHDOG_INTERVAL = 1000;
 
 type Frame = { type: string; nonce: string; ids?: string[]; home?: string; lock?: string };
 type Batch = { ids: string[]; home: string; lock: string };
@@ -32,6 +33,10 @@ function lockIdentity(): string | null {
   } catch {
     return null;
   }
+}
+
+function seconds(milliseconds: number): string {
+  return `${(milliseconds / 1000).toFixed(1)}s`;
 }
 
 function homeIdentity(): string | null {
@@ -71,12 +76,15 @@ export default function (pi: ExtensionAPI) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryAttempts = 0;
   let recovering = false;
+  // A failed restart is only logged while recovering. Keep its reason for
+  // the one alarm that ends the episode.
+  let restartFailure: string | null = null;
   let recoveryBlocked = false;
 
   function failure(reason: string, epoch = serial): void {
     if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
-    if (recovering) return; // One alarm after the bounded recovery episode.
+    if (recovering) { restartFailure = reason; return; } // One alarm after the bounded recovery episode.
     try {
       notifyFailure?.(`Riddim watcher FAILED: ${reason}. Verify the original home before running riddim notifications scan.`);
     } catch (error) {
@@ -119,9 +127,18 @@ export default function (pi: ExtensionAPI) {
   function recover(reason: string, epoch: number, originalHome: string, originalLock: string | null): void {
     if (!active || serial !== epoch || retryTimer || recovering || recoveryBlocked) return;
     const unchanged = () => originalHome === homeIdentity() && originalLock !== null && originalLock === lockIdentity();
-    if (!unchanged() || retryAttempts >= 3) {
+    if (!unchanged()) {
       recoveryBlocked = true;
-      failure(`${reason}; automatic recovery exhausted or ownership ambiguous`, epoch);
+      failure(`${reason}; automatic recovery refused, ownership ambiguous: home ${originalHome} is now ` +
+        `${homeIdentity() ?? "unavailable"}, watcher lock ${originalLock ?? "unverified"} is now ` +
+        `${lockIdentity() ?? "unavailable"}`, epoch);
+      return;
+    }
+    if (retryAttempts >= 3) {
+      recoveryBlocked = true;
+      // The budget spans the Pi runtime, so earlier recovered episodes count.
+      failure(`${reason}; automatic recovery exhausted: all ${retryAttempts} restarts of this Pi runtime are used` +
+        (restartFailure ? `; last restart failed: ${restartFailure}` : "; earlier restarts recovered"), epoch);
       return;
     }
     retryAttempts += 1;
@@ -149,7 +166,7 @@ export default function (pi: ExtensionAPI) {
       if (!healthy && retiring) await waitForClose(retiring);
       if (!active || serial !== epoch) return;
       recovering = false;
-      if (healthy) return;
+      if (healthy) { restartFailure = null; return; }
       if (child) {
         recoveryBlocked = true;
         failure("automatic recovery could not verify observer retirement", epoch);
@@ -206,13 +223,34 @@ export default function (pi: ExtensionAPI) {
     let pending: Batch | null = null;
     let failureReported = false;
     let recoveryReason: string | null = null;
+    // Swap-in, GC or synchronous work can stall Pi itself while the watcher
+    // keeps beating into the pipe, and Node runs a late timer before reading
+    // those beats. Silence counts only time Pi could observe: the delay of
+    // this watchdog's own ticks since the last frame is not watcher silence.
+    // A fresh frame also restarts that delay measurement: a stall before the
+    // frame was handled must not be credited against silence after it.
+    let lastTick = performance.now();
+    let piStalled = 0;
+    let largestStall = 0;
+    const fresh = () => {
+      verifiedAt = lastTick = performance.now();
+      piStalled = 0;
+    };
     const watchdog = setInterval(() => {
+      const now = performance.now();
+      const stall = Math.max(0, now - lastTick - WATCHDOG_INTERVAL);
+      lastTick = now;
+      piStalled += stall;
+      largestStall = Math.max(largestStall, stall);
+      const silence = now - verifiedAt;
       if (!active || serial !== epoch || !ready || failureReported || child !== proc ||
-        performance.now() - verifiedAt <= BEAT_TIMEOUT) return;
+        silence - piStalled <= BEAT_TIMEOUT) return;
       failureReported = true;
-      recoveryReason = "watcher heartbeat stale; ownership unverified";
+      recoveryReason = "watcher heartbeat stale; ownership unverified " +
+        `(no watcher frame for ${seconds(silence)}, ${seconds(silence - piStalled)} of it while Pi was responsive; ` +
+        `largest Pi event-loop delay ${seconds(largestStall)})`;
       proc.kill("SIGKILL");
-    }, 1000);
+    }, WATCHDOG_INTERVAL);
     let finishReady: (value: boolean) => void = () => {};
     const readiness = new Promise<boolean>((done) => { finishReady = done; });
     const timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
@@ -234,10 +272,10 @@ export default function (pi: ExtensionAPI) {
           ready = true;
           boundLock = frame.lock;
           verifiedLock = frame.lock;
-          verifiedAt = performance.now();
+          fresh();
           finishReady(true);
         } else if (frame.type === "beat" && ready) {
-          verifiedAt = performance.now();
+          fresh();
         } else if ((frame.type === "schedule-error" || frame.type === "schedule-ok") && ready &&
           frame.home === binding && frame.lock === boundLock) {
           const key = `scan:${binding}/${frame.lock}`;
@@ -251,7 +289,7 @@ export default function (pi: ExtensionAPI) {
       }
     });
     proc.on("error", (error) => { stderr += error.message; finishReady(false); });
-    proc.on("close", () => {
+    proc.on("close", (code, signal) => {
       closedChildren.add(proc);
       clearInterval(watchdog);
       finishReady(false);
@@ -262,7 +300,8 @@ export default function (pi: ExtensionAPI) {
         batches.push(pending);
         void deliver(epoch);
       } else if (ready) {
-        recover(recoveryReason || stderr.trim() || "observer stopped without a report", epoch, binding, verifiedLock);
+        recover(recoveryReason || stderr.trim() || `observer stopped without a report (${signal ?? `exit ${code}`})`,
+          epoch, binding, verifiedLock);
       } else if (!failureReported) {
         failure(stderr.trim() || "observer failed before readiness", epoch);
       }
@@ -458,6 +497,7 @@ export default function (pi: ExtensionAPI) {
     retryTimer = null;
     retryAttempts = 0;
     recovering = false;
+    restartFailure = null;
     recoveryBlocked = false;
     notifyFailure = null;
     serial += 1;

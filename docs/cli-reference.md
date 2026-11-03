@@ -850,11 +850,16 @@ observer per home, reconciles actionable reports and stop observations, and send
 and watcher-lock identities, and handling instructions via Pi's
 non-interrupting `followUp` API. The extension checks a fresh successor, the
 selected home's identity, and periodic liveness beacons before claiming
-continuity. An unexpectedly stopped or stale previously verified observer gets
-at most three automatic retries per session, with 250/500/1000 ms backoff. Retries
+continuity. A heartbeat is stale after four seconds without a frame while Pi's
+own event loop was responsive; time Pi itself was stalled does not count. An
+unexpectedly stopped or stale previously verified observer gets at most three
+automatic retries per Pi runtime, counted across recovered episodes, with
+250/500/1000 ms backoff. Retries
 require the original home and lock identities, retire the old child first, and
 verify fresh successor readiness. Successful recovery is quiet; exhausted retries
-or ambiguous ownership alert the supervisor. A contested initial arm or changed
+or ambiguous ownership alert the supervisor. The alert states which one applies,
+the original and current identities or the last failed restart, and for a stale
+heartbeat the silence and Pi's largest event-loop delay. A contested initial arm or changed
 home/lock is never taken over automatically. Pi reload replaces the runtime and retry
 budget. Failed handling-successor startup still alerts with the pending report
 rather than withholding it.
