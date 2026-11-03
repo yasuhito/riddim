@@ -218,6 +218,27 @@ requests. No discarded audit commit needs to be restored.
   report handling still alerts immediately rather than withholding the report;
   extending bounded recovery to that path remains a scoped follow-up.
 
+## Watcher failed while a report was acknowledged - reproduced and fixed
+
+- Supervisor evidence (2026-11-02 11:30 JST): `riddim: watcher FAILED: No such
+  file or directory @ rb_sysopen - ./.notifications/.ack-pending-<id>.json`
+  right after that ID was acknowledged. Original home and lock identities were
+  unchanged; a later original scan was empty and the row was durably handled.
+- Cause: `ack` publishes `.ack-pending`, then `.handled`, then unlinks the
+  intent under the task's name lock, but `Notifications.pending` listed and read
+  markers without that lock. A marker listed before the unlink was read after it.
+- E2E reproduction: the real `watch-notifications` observer excluded 150
+  presented IDs while the real `notifications ack` CLI acknowledged them one by
+  one. On the `/home` filesystem two of three runs failed with the same message.
+  On tmpfs, where fsync barely widens the window, none of three failed.
+- Fix: `pending` lists and reads each task's rows and markers under its name
+  lock. The watcher passes `wait: false` and skips a busy task until its next
+  poll, as `classify` already does. Malformed names and markers still refuse.
+  Regression: `test/notification_ack_race_test.rb` pauses real CLI processes at
+  that interleaving. After the fix the 150-ID reproduction passed five of five.
+- Cost measured on a copy of the original 919-file notification directory: one
+  warm `pending` grew from about 13 ms to 25 ms per watcher poll.
+
 ## Validation follow-up - linked-worktree default-path assertion
 
 - First full validation: unit tests passed; feature validation exceeded the initial
