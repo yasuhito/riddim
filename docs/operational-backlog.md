@@ -239,6 +239,30 @@ requests. No discarded audit commit needs to be restored.
 - Cost measured on a copy of the original 919-file notification directory: one
   warm `pending` grew from about 13 ms to 25 ms per watcher poll.
 
+## Stale heartbeat while Pi itself was stalled - reproduced and fixed; incidents unproven
+
+- Supervisor evidence: `watcher heartbeat stale; ownership unverified; automatic
+  recovery exhausted or ownership ambiguous` on 2026-10-25 (three times) and
+  2026-11-02 13:54 and 14:45 JST, with unchanged original identities, empty
+  original scans and no surviving watcher process or lock owner. The alarm had
+  no timing detail, and successful earlier recoveries leave no trace.
+- E2E reproduction: `SIGSTOP` of only the real Pi process for six seconds,
+  while its real watcher kept beating into the pipe, killed and replaced that
+  healthy watcher after `SIGCONT`. Node runs the late watchdog timer before
+  reading the queued beats. Each replacement silently uses one of the three
+  automatic restarts per Pi runtime, so a fourth stall alarms as exhausted.
+- Plausible but unproven for the incidents: on 2026-11-03 the supervisor Pi had
+  389 MB resident and 284 MB swapped, with zram (62 GB) full and 17 GB on the
+  swap file. Page-in or GC under that pressure can stall Pi for seconds. No
+  event-loop timing was recorded then, so the incidents' cause remains unknown.
+- Fix: the watchdog subtracts its own tick delay (Pi not running) since the last
+  frame from the silence it judges. The four-second grace and one-second tick
+  are unchanged; a watcher silent while Pi is responsive is still killed.
+  Regression: `test_stalled_pi_host_does_not_kill_a_beating_watcher`.
+- The stale reason now records the silence, the part while Pi was responsive and
+  the largest Pi event-loop delay, so a future alarm separates a Pi stall from
+  watcher silence.
+
 ## Validation follow-up - linked-worktree default-path assertion
 
 - First full validation: unit tests passed; feature validation exceeded the initial

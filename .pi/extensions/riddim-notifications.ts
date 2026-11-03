@@ -18,6 +18,7 @@ const WATCHER_READY_TIMEOUT = 5000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
 const BEAT_TIMEOUT = 4000;
+const WATCHDOG_INTERVAL = 1000;
 
 type Frame = { type: string; nonce: string; ids?: string[]; home?: string; lock?: string };
 type Batch = { ids: string[]; home: string; lock: string };
@@ -32,6 +33,10 @@ function lockIdentity(): string | null {
   } catch {
     return null;
   }
+}
+
+function seconds(milliseconds: number): string {
+  return `${(milliseconds / 1000).toFixed(1)}s`;
 }
 
 function homeIdentity(): string | null {
@@ -206,13 +211,28 @@ export default function (pi: ExtensionAPI) {
     let pending: Batch | null = null;
     let failureReported = false;
     let recoveryReason: string | null = null;
+    // Swap-in, GC or synchronous work can stall Pi itself while the watcher
+    // keeps beating into the pipe, and Node runs a late timer before reading
+    // those beats. Silence counts only time Pi could observe: the delay of
+    // this watchdog's own ticks since the last frame is not watcher silence.
+    let lastTick = performance.now();
+    let piStalled = 0;
+    let largestStall = 0;
     const watchdog = setInterval(() => {
+      const now = performance.now();
+      const stall = Math.max(0, now - lastTick - WATCHDOG_INTERVAL);
+      lastTick = now;
+      piStalled += stall;
+      largestStall = Math.max(largestStall, stall);
+      const silence = now - verifiedAt;
       if (!active || serial !== epoch || !ready || failureReported || child !== proc ||
-        performance.now() - verifiedAt <= BEAT_TIMEOUT) return;
+        silence - piStalled <= BEAT_TIMEOUT) return;
       failureReported = true;
-      recoveryReason = "watcher heartbeat stale; ownership unverified";
+      recoveryReason = "watcher heartbeat stale; ownership unverified " +
+        `(no watcher frame for ${seconds(silence)}, ${seconds(silence - piStalled)} of it while Pi was responsive; ` +
+        `largest Pi event-loop delay ${seconds(largestStall)})`;
       proc.kill("SIGKILL");
-    }, 1000);
+    }, WATCHDOG_INTERVAL);
     let finishReady: (value: boolean) => void = () => {};
     const readiness = new Promise<boolean>((done) => { finishReady = done; });
     const timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
@@ -235,9 +255,11 @@ export default function (pi: ExtensionAPI) {
           boundLock = frame.lock;
           verifiedLock = frame.lock;
           verifiedAt = performance.now();
+          piStalled = 0;
           finishReady(true);
         } else if (frame.type === "beat" && ready) {
           verifiedAt = performance.now();
+          piStalled = 0;
         } else if ((frame.type === "schedule-error" || frame.type === "schedule-ok") && ready &&
           frame.home === binding && frame.lock === boundLock) {
           const key = `scan:${binding}/${frame.lock}`;
