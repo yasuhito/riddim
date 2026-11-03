@@ -83,8 +83,28 @@ pi <provider/model> <effort>
 Pi のインストールだけでは使えません。モデルが対応する思考の強度を選んでください。
 
 このプロファイルから、新しいワーカーと `riddim supervise` で起動するスーパーバイザーに
-`--model` と `--thinking` を渡します。`pi` を直接起動する場合は、Pi 自身のモデル設定を
+`--provider`、`--model`、`--thinking` を渡します。`pi` を直接起動する場合は、Pi 自身のモデル設定を
 使います。CLI を使うだけなら Bundler によるインストールは不要です。
+
+Riddim はさらに、Git の管理対象外のモデル許可リストも必要とします。
+この機能より前からあるインストールでも同じで、自動では作成されません。
+ファイルがない場合だけ作成します。
+
+```sh
+if [ ! -e config/allowed-models ] && [ ! -L config/allowed-models ]; then
+  cp config/allowed-models.example config/allowed-models
+fi
+```
+
+`config/allowed-models` を開き、Riddim での起動を承認したモデルを 1 行に 1 つずつ
+`<provider/model>` の形で書きます。プロファイルのモデルも含めてください。
+コピーした直後の例には有効な行がないため、編集するまで Riddim は Pi を起動しません。
+ID は完全一致で比較し、別名やプロバイダーの代替はありません。
+`claude-bridge/claude-opus-5-5` を書いても `openrouter/anthropic/claude-opus-5.5` は
+許可されません。Pi には許可リストに書いたプロバイダーを `--provider` で固定して渡します。
+さらに、`pi --list-models` に完全一致で載っていないモデルは起動しません。Pi が似たモデルに
+置き換えてしまうためです。ID は `pi --list-models` の表示どおりに書いてください。制限するのは Riddim 自身の起動だけで、課金の上限ではありません。
+詳細と制約は [CLI リファレンス](docs/cli-reference.md#model-allowlist) を参照してください。
 
 ## 3. Pi を起動する
 
@@ -104,7 +124,7 @@ Git で管理している拡張が非公開の `state/` ディレクトリを初
 この直接起動は、通常の Riddim チェックアウトのルートに限ります。
 リンクされたワーカー用 worktree や、`RIDDIM_ACTOR` が空でないセッションは
 スーパーバイザーになりません。上記の Ruby、Git、設定済みの Pi のモデルへのアクセス、
-Herdr、ワーカーの起動プロファイルは引き続き必要です。
+Herdr、ワーカーの起動プロファイルとモデル許可リストは引き続き必要です。
 別の監視プロセスがすでに所有している場合は、置き換えずに起動を拒否します。
 
 ### 別のプロジェクトの作業を任せる

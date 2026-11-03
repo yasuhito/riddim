@@ -6,7 +6,7 @@ Given('a fake Pi executable is on PATH for the task launch') do
   bin = File.join(@herdr_directory, 'pi-bin')
   FileUtils.mkdir_p(bin)
   executable = File.join(bin, 'pi')
-  File.write(executable, "#!/bin/sh\nexit 0\n")
+  File.write(executable, "#!/bin/sh\n#{FAKE_PI_CATALOG_SH}exit 0\n")
   File.chmod(0o755, executable)
   @environment['PATH'] = "#{bin}:#{@environment.fetch('PATH')}"
   unless @environment.fetch('PATH').split(File::PATH_SEPARATOR).include?(@herdr_directory)
@@ -19,6 +19,7 @@ Given('Pi inspects its instruction inbox at startup') do
   observation = File.join(@herdr_directory, 'pi-inbox-observation.json')
   File.write(executable, <<~RUBY)
     #!/usr/bin/ruby
+    #{FAKE_PI_CATALOG}
     require 'json'
     state = ENV.fetch('RIDDIM_STATE_DIR')
     inboxes = Dir.glob(File.join(state, 'worker.*.inbox'))

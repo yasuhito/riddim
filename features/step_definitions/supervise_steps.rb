@@ -89,6 +89,25 @@ Then('the supervisor reports the missing profile before invoking Herdr or Pi') d
   refute pi_started?
 end
 
+Then('the supervisor refuses model {string} before invoking Herdr or Pi') do |model|
+  assert_equal [1, true, [], false],
+               [@status.exitstatus, @stderr.start_with?("riddim: model #{model.dump} is not allowed: "),
+                herdr_invocations, pi_started?], @stderr
+end
+
+Then('the supervisor reports model {string} unlisted by Pi before invoking Herdr or Pi') do |model|
+  assert_equal [1, true, [], false],
+               [@status.exitstatus,
+                @stderr.start_with?("riddim: model #{model.dump} is not listed by `pi --list-models`"),
+                herdr_invocations, pi_started?], @stderr
+end
+
+Then('the supervisor reports the missing allowlist before invoking Herdr or Pi') do
+  assert_equal [1, true, [], false],
+               [@status.exitstatus, @stderr.start_with?("riddim: missing model allowlist #{configured_allowlist}: "),
+                herdr_invocations, pi_started?], @stderr
+end
+
 Then('the supervisor reports that Herdr is unreachable and does not launch Pi') do
   assert_equal 1, @status.exitstatus
   assert_equal "riddim: Herdr is not reachable in session default: status failed\n", @stderr
@@ -145,6 +164,7 @@ end
 def fake_pi_script
   <<~RUBY
     #!/usr/bin/ruby
+    #{FAKE_PI_CATALOG}
     require 'json'
     state_dir = ENV.fetch('RIDDIM_STATE_DIR')
     riddim = ENV.fetch('PATH').split(':').map { |dir| File.join(dir, 'riddim') }
@@ -168,7 +188,7 @@ end
 def expected_supervisor_arguments
   root = File.expand_path('..', File.dirname(RiddimWorld::RIDDIM))
   [
-    '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'max',
+    '--provider', 'openrouter', '--model', 'z-ai/glm-5.3-flash', '--thinking', 'max',
     '-e', File.join(root, '.pi/extensions/riddim-notifications.ts'),
     '--append-system-prompt', File.join(root, 'docs/supervisor.md')
   ]

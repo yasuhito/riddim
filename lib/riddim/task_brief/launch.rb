@@ -26,7 +26,7 @@ module Riddim
     end
 
     def launch_source(brief, profile, trace_file: nil, runtime_paths: nil)
-      args = [pi_executable, '--model', profile.model, '--thinking', profile.effort]
+      args = [pi_executable, *profile.pi_arguments]
       args.push('--extension', trace_extension) if trace_file
       command = args.map { |value| Shellwords.escape(value) }.join(' ')
       command = "RIDDIM_PI_TRACE_FILE=#{Shellwords.escape(trace_file)} #{command}" if trace_file

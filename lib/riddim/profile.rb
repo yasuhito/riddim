@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'model_allowlist'
+
 module Riddim
   # The local one-line agent launch profile: "<harness> <model> <effort>".
   class AgentProfile
@@ -18,14 +20,27 @@ module Riddim
       @effort = effort
     end
 
-    # Resolve each axis independently without changing the configured profile.
+    # Resolve each axis independently without changing the configured profile,
+    # then admit only an effective model the local allowlist names exactly.
     def self.resolve(config_dir:, model: nil, effort: nil)
       configured = load(config_dir: config_dir)
       model = configured.model if model.nil?
       effort = configured.effort if effort.nil?
       validate_model(model)
       validate_effort(effort)
+      ModelAllowlist.verify!(model, config_dir: config_dir)
       new(harness: configured.harness, model: model, effort: effort)
+    end
+
+    # Pi's launch arguments. Pi treats a bare "<provider>/<id>" --model as a
+    # hint and can resolve it to another provider whose own catalog ID is that
+    # whole text (OpenRouter's "openai/gpt-5.5"). --provider pins the lookup to
+    # the allowlisted provider; the ID keeps any further slashes.
+    def pi_arguments
+      provider, separator, id = model.partition('/')
+      raise Error, "model #{model.dump} names no provider" if separator.empty? || provider.empty? || id.empty?
+
+      ['--provider', provider, '--model', id, '--thinking', effort]
     end
 
     def self.load(config_dir:)

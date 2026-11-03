@@ -171,6 +171,12 @@ end
 # session-targeted: HERDR_SESSION set in the subprocess environment and an
 # explicit --session argument naming that same session ahead of the
 # subcommand.
+# Beside every fake Herdr, a Pi that only answers the catalog preflight.
+def install_catalog_only_pi(directory)
+  script = "#!/usr/bin/ruby\n#{FAKE_PI_CATALOG}abort \"unexpected Pi launch: \#{ARGV.inspect}\"\n"
+  File.write(File.join(directory, 'pi'), script, perm: 0o755)
+end
+
 def install_fake_herdr(body)
   directory = Dir.mktmpdir
   @temporary_directories << directory
@@ -184,6 +190,7 @@ def install_fake_herdr(body)
     #{body}
   RUBY
   File.chmod(0o755, herdr)
+  install_catalog_only_pi(directory)
   @herdr_directory = directory
   @environment = (@environment || {}).merge('PATH' => "#{directory}:#{ENV.fetch('PATH')}")
 end

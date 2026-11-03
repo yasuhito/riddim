@@ -7,6 +7,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And a Herdr executable that refuses every invocation
 
     Scenario: Reject a missing name
@@ -215,6 +219,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" and starts the agent
       And the Herdr client reports protocol 13
 
@@ -231,6 +239,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" and starts the agent
       And the Herdr client reports version "0.7.5"
@@ -257,6 +269,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" and starts the agent
       And the running Herdr server reports version "0.7.5"
 
@@ -273,6 +289,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" and starts the agent
 
@@ -332,6 +352,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" and starts the agent
 
@@ -411,6 +435,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And a Herdr executable that refuses every invocation
       And an existing endpoint record for "worker" that is not a record
 
@@ -453,6 +481,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" and refuses to start an agent before its record exists
 
     Scenario: Start the agent only after the record is published
@@ -468,6 +500,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" but another writer claims the record during creation
 
@@ -509,6 +545,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" but another writer claims the record during creation and closes panes with status 7
 
     Scenario: Refuse with Riddim's own failure status
@@ -538,6 +578,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
 
     Scenario: Reject malformed JSON
@@ -657,6 +701,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr refuses to create a workspace with status 17 and error "herdr: cannot create workspace"
 
     Scenario: Propagate Herdr's failure status
@@ -693,6 +741,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready"
 
@@ -746,6 +798,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and closes panes with status 7
 
     Scenario: Preserve Herdr's exit status
@@ -790,6 +846,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and leaves the pane present
 
     Scenario: Retain the record while the pane still exists
@@ -813,6 +873,10 @@ Feature: Start a background Pi agent
         """
         pi openrouter/z-ai/glm-5.3-flash max
         """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
+        """
       And Herdr creates workspace "w9" but fails to start the agent with status 19 and error "herdr: agent not ready" and returns an ambiguous pane read
 
     Scenario: Retain the record without proof that the pane is gone
@@ -828,6 +892,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" and then disappears
 
@@ -865,6 +933,10 @@ Feature: Start a background Pi agent
       Given a config directory with agent profile:
         """
         pi openrouter/z-ai/glm-5.3-flash max
+        """
+      And the config directory allows models:
+        """
+        openrouter/z-ai/glm-5.3-flash
         """
       And Herdr creates workspace "w9" and starts the agent
 

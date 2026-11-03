@@ -7,6 +7,16 @@ Feature: Select a Pi model and effort for one worker
       """
       pi openrouter/z-ai/glm-5.3-flash max
       """
+    And the config directory allows models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      provider/model
+      provider/alpha
+      provider/beta
+      provider/モデル
+      provider/a;$(touch${IFS}PWNED)`touch${IFS}PWNED`
+      provider/a'b=c
+      """
     And Herdr starts the agent only in the linked worktree
     And a fake Pi executable is on PATH for the task launch
     And a task file containing:
@@ -30,8 +40,8 @@ Feature: Select a Pi model and effort for one worker
       | --worktree --task-file task.md --mode local-only                                                  | openrouter/z-ai/glm-5.3-flash      | max    |
       | --model provider/model --mode local-only --worktree --task-file task.md                            | provider/model                   | max    |
       | --effort xhigh --worktree --mode local-only --task-file task.md                                    | openrouter/z-ai/glm-5.3-flash      | xhigh  |
-      | --worktree --task-file task.md --model 'provider/a;$(touch PWNED)`touch PWNED`' --effort high   | provider/a;$(touch PWNED)`touch PWNED` | high |
-      | --worktree --task-file task.md --model "provider/a'b = c" --effort low                             | provider/a'b = c                 | low    |
+      | --worktree --task-file task.md --model 'provider/a;$(touch${IFS}PWNED)`touch${IFS}PWNED`' --effort high | provider/a;$(touch${IFS}PWNED)`touch${IFS}PWNED` | high |
+      | --worktree --task-file task.md --model "provider/a'b=c" --effort low                               | provider/a'b=c                   | low    |
 
   Scenario: Coexisting native workers keep independent profiles and leave defaults intact
     Given Herdr records exact native agent arguments for distinct endpoints
@@ -117,6 +127,10 @@ Feature: Select a Pi model and effort for one worker
     And a config directory with agent profile:
       """
       pi provider/モデル max
+      """
+    And the config directory allows models:
+      """
+      provider/モデル
       """
     And Pi records its exact launch arguments and profile
     When I run riddim with:

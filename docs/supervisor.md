@@ -23,6 +23,10 @@ A linked Riddim CLI resolves storage beside that primary installation, not its o
 Use the recorded `project` and `worktree` paths for existing workers, including
 older sibling worktrees. Never move them to match the current default.
 
+Pass `--model` only with the exact provider/model ID the human chose. A
+[model allowlist](cli-reference.md#model-allowlist) refusal is a human decision: report it
+and stop rather than editing `config/allowed-models` or trying another provider's ID.
+
 Keep the task file outside the project checkout. Give the worker a bounded task and tell it
 to report through Riddim. Do not ask a worker to push, open a pull request, or land its work.
 

@@ -81,9 +81,7 @@ module Riddim
     end
 
     def launch(name, profile, workspace, spawn_gen)
-      Riddim::Herdr.start_agent(
-        name: name, pane_id: workspace.root_pane_id, model: profile.model, effort: profile.effort
-      )
+      Riddim::Herdr.start_agent(name: name, pane_id: workspace.root_pane_id, pi_arguments: profile.pi_arguments)
       puts "started #{name} in #{workspace.root_pane_id}"
     rescue Riddim::Herdr::CommandFailed, SystemCallError => e
       cleanup_failed_start(name, Ownership.record_path(name), workspace, spawn_gen, e)

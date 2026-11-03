@@ -2,6 +2,7 @@
 
 require_relative 'herdr'
 require_relative 'ownership'
+require_relative 'pi_catalog'
 require_relative 'runtime_paths'
 
 module Riddim
@@ -15,10 +16,12 @@ module Riddim
 
     module_function
 
+    # The exact executable Pi is exec'd as is the one whose catalog is checked.
     def run(profile)
       validate_resources!
-      verify_herdr!
       executable = resolve_pi_executable
+      PiCatalog.verify!(profile.model, executable: executable)
+      verify_herdr!
       state_dir = File.expand_path(Ownership.state_dir)
       prepare_state_dir!(state_dir)
       environment = launch_environment(state_dir).merge('RIDDIM_SUPERVISE' => RuntimePaths::ROOT)
@@ -99,8 +102,7 @@ module Riddim
 
     def launch_arguments(profile)
       [
-        '--model', profile.model,
-        '--thinking', profile.effort,
+        *profile.pi_arguments,
         '-e', NOTIFICATIONS_EXTENSION,
         '--append-system-prompt', ROLE_CONTRACT
       ]

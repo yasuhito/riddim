@@ -75,6 +75,38 @@ SESSION_GUARD = <<~RUBY
   session_argv = ARGV.shift(2)
 RUBY
 
+# Every fake Pi answers Riddim's `pi --list-models` preflight from the
+# scenario's catalog file, so no scenario reads a real Pi installation. A
+# missing catalog file makes the fake fail, which the preflight refuses.
+FAKE_PI_CATALOG = <<~RUBY
+  if ARGV.include?('--list-models')
+    File.open("\#{ENV.fetch('RIDDIM_TEST_PI_CATALOG')}.log", 'a') { |log| log.puts("list \#{$PROGRAM_NAME}") }
+    print File.read(ENV.fetch('RIDDIM_TEST_PI_CATALOG'))
+    exit 0
+  end
+RUBY
+
+FAKE_PI_CATALOG_SH = <<~SH
+  case " $* " in *" --list-models "*) echo "list $0" >> "$RIDDIM_TEST_PI_CATALOG.log"; exec cat "$RIDDIM_TEST_PI_CATALOG";; esac
+SH
+
+# `pi --list-models` table text for "<provider>/<id>" entries, padded like Pi.
+def pi_catalog_table(models)
+  rows = [%w[provider model context]] + models.map { |model| [*model.split('/', 2), '128K'] }
+  widths = rows.transpose.map { |column| column.map(&:length).max }
+  "#{rows.map { |row| row.zip(widths).map { |cell, width| cell.ljust(width) }.join('  ') }.join("\n")}\n"
+end
+
+# The executables that answered the catalog preflight or were launched, in order.
+def pi_catalog_log
+  log = "#{@environment.fetch('RIDDIM_TEST_PI_CATALOG')}.log"
+  File.file?(log) ? File.readlines(log, chomp: true) : []
+end
+
+def write_pi_catalog(models)
+  File.write(@environment.fetch('RIDDIM_TEST_PI_CATALOG'), pi_catalog_table(models))
+end
+
 World(RiddimWorld)
 
 Before do
@@ -83,7 +115,8 @@ Before do
   # ever reads or writes the repository's own state/ records. The actor
   # marker is cleared the same way, so the harness tests an unmarked
   # operator caller regardless of the process running the suite.
-  @environment = { 'RIDDIM_STATE_DIR' => File.join(new_temporary_directory, 'state'), 'RIDDIM_ACTOR' => nil }
+  @environment = { 'RIDDIM_STATE_DIR' => File.join(new_temporary_directory, 'state'), 'RIDDIM_ACTOR' => nil,
+                   'RIDDIM_TEST_PI_CATALOG' => File.join(new_temporary_directory, 'pi-catalog') }
 end
 
 After do

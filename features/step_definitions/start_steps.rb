@@ -202,14 +202,15 @@ end
 
 # The exact session-targeted invocations of one start, each carrying the
 # explicit --session flag ahead of its subcommand. The agent-start passthrough
-# tail ends at --thinking, so nothing leaks into the Pi agent's own arguments.
+# tail pins the provider and ends at --thinking, so nothing leaks into the Pi
+# agent's own arguments.
 def workspace_create_invocation(session)
   "--session #{session} workspace create --cwd #{Dir.pwd} --label 〰️ worker --no-focus"
 end
 
 def agent_start_invocation(session)
   "--session #{session} agent start worker --kind pi --pane w9:p1 -- " \
-    '--model openrouter/z-ai/glm-5.3-flash --thinking max'
+    '--provider openrouter --model z-ai/glm-5.3-flash --thinking max'
 end
 
 def pane_close_invocation(session, pane)
@@ -247,10 +248,11 @@ end
 
 Then('Herdr starts agent {string} in pane {string} with model {string} ' \
      'and effort {string}') do |name, pane, model, effort|
+  provider, id = model.split('/', 2)
   assert_includes(
     herdr_invocations,
     "--session #{scenario_session} agent start #{name} --kind pi --pane #{pane} -- " \
-    "--model #{model} --thinking #{effort}"
+    "--provider #{provider} --model #{id} --thinking #{effort}"
   )
 end
 
@@ -389,4 +391,52 @@ end
 
 Then('Herdr starts exactly one agent') do
   assert_equal 1, herdr_invocations.grep(/\bagent start\b/).length
+end
+
+# Unless a scenario says otherwise, Pi's fake catalog lists exactly the
+# well-formed allowlisted models.
+Given('the config directory allows models:') do |content|
+  File.write(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'allowed-models'), content)
+  write_pi_catalog(content.lines.map(&:strip).grep(%r{\A[^#\s/][^\s]*/\S+\z}).uniq)
+end
+
+Given("Pi's model list fails") do
+  FileUtils.rm_f(@environment.fetch('RIDDIM_TEST_PI_CATALOG'))
+end
+
+# A Pi reached through a relative PATH entry ahead of every other Pi. Its own
+# catalog lists the given models; a launch is only logged.
+Given('a relative PATH entry first provides a Pi listing models:') do |content|
+  @working_directory ||= File.join(new_temporary_directory, 'cwd').tap { |directory| Dir.mkdir(directory) }
+  directory = File.join(File.dirname(@working_directory), 'relative-bin')
+  Dir.mkdir(directory)
+  File.write(File.join(directory, 'catalog'), pi_catalog_table(content.lines.map(&:strip).reject(&:empty?)))
+  File.write(File.join(directory, 'pi'), <<~RUBY, perm: 0o755)
+    #!/usr/bin/ruby
+    action = ARGV.include?('--list-models') ? 'list' : 'launch'
+    File.open("\#{ENV.fetch('RIDDIM_TEST_PI_CATALOG')}.log", 'a') { |log| log.puts("\#{action} \#{$PROGRAM_NAME}") }
+    print File.read(File.join(__dir__, 'catalog')) if action == 'list'
+  RUBY
+  @relative_pi = File.join(directory, 'pi')
+  @environment['PATH'] = "../relative-bin:#{@environment.fetch('PATH')}"
+end
+
+Then('supervise checks and launches only the relative Pi') do
+  assert_equal [true, ["list #{@relative_pi}", "launch #{@relative_pi}"]], [@status.success?, pi_catalog_log], @stderr
+end
+
+Then('supervise refuses after checking only the relative Pi') do
+  assert_equal [1, true, ["list #{@relative_pi}"], []],
+               [@status.exitstatus, @stderr.include?('is not listed by `pi --list-models`'), pi_catalog_log,
+                herdr_invocations], @stderr
+end
+
+Then('the task launch checks and runs only the absolute Pi it stages') do
+  staged = File.join(@herdr_directory, 'pi-bin', 'pi')
+  assert_equal [true, ["list #{staged}"], true],
+               [@status.success?, pi_catalog_log, File.file?(@pi_observation)], @stderr
+end
+
+Given('Pi lists models:') do |content|
+  write_pi_catalog(content.lines.map(&:strip).reject(&:empty?))
 end

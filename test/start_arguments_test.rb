@@ -40,6 +40,7 @@ class EffectiveAgentProfileTest < Minitest::Test
   def with_profile
     Dir.mktmpdir do |directory|
       File.write(File.join(directory, 'agent-profile'), "pi provider/configured max\n")
+      File.write(File.join(directory, 'allowed-models'), "provider/configured\nprovider/custom\nprovider/モデル\n")
       yield directory
     end
   end

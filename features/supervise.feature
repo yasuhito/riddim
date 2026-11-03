@@ -5,6 +5,10 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       """
       pi openrouter/z-ai/glm-5.3-flash max
       """
+    And the config directory allows models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      """
     And Herdr reports a running supported server
     And a fake supervisor Pi executable
 
@@ -94,6 +98,63 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       supervise
       """
     Then the supervisor reports the missing profile before invoking Herdr or Pi
+
+  Scenario Outline: Refuse an unlisted profile model before checking Herdr or launching Pi
+    Given the config directory allows models:
+      """
+      <allowed>
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then the supervisor refuses model "openrouter/z-ai/glm-5.3-flash" before invoking Herdr or Pi
+
+    Examples:
+      | allowed                       |
+      | claude-bridge/claude-opus-5-5 |
+      | openrouter/z-ai/glm-5.3      |
+
+  Scenario: Refuse a profile model Pi does not list before checking Herdr or launching Pi
+    Given Pi lists models:
+      """
+      openrouter/z-ai/glm-5.3-flash-pro
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then the supervisor reports model "openrouter/z-ai/glm-5.3-flash" unlisted by Pi before invoking Herdr or Pi
+
+  Scenario: Check the same Pi that supervise launches through a relative PATH entry
+    Given a relative PATH entry first provides a Pi listing models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then supervise checks and launches only the relative Pi
+
+  Scenario: Refuse when the Pi that supervise would launch does not list the model
+    Given a relative PATH entry first provides a Pi listing models:
+      """
+      openrouter/z-ai/glm-5.3-flash-pro
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then supervise refuses after checking only the relative Pi
+
+  Scenario: Refuse a missing allowlist before checking Herdr or launching Pi
+    Given the allowlist is missing
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then the supervisor reports the missing allowlist before invoking Herdr or Pi
 
   Scenario: Refuse an unreachable Herdr session without launching Pi
     Given Herdr cannot be reached

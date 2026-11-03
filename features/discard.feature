@@ -7,6 +7,10 @@ Feature: Explicit human-approved discard of abandoned local-only work
       """
       pi openrouter/z-ai/glm-5.3-flash max
       """
+    And the config directory allows models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      """
     And Herdr starts the agent only in the linked worktree
     And a fake Pi executable is on PATH for the task launch
     And a task file containing:

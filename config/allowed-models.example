@@ -1,0 +1,12 @@
+# Example model allowlist for `riddim start` and `riddim supervise`.
+# Copy this file to config/allowed-models (gitignored), then uncomment or add
+# only the models a human approved, including the agent-profile model.
+# One fully qualified <provider>/<model-id> per line, matched exactly: no
+# globs, aliases or provider fallback, so openrouter/... never stands in for
+# another provider's model. Blank lines and lines starting with # are ignored.
+# While this list is missing, unreadable, malformed or empty, Riddim starts no
+# Pi at all. Pi is started with --provider pinned to the listed provider, and a
+# model `pi --list-models` does not list exactly is refused, since Pi would
+# fuzzy-match it to another model; copy IDs exactly as that command shows them.
+# It gates Riddim launches only; it is not a billing cap.
+# openrouter/z-ai/glm-5.3-flash

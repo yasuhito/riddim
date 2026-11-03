@@ -83,3 +83,32 @@ class AgentProfileLoadingTest < Minitest::Test
     end
   end
 end
+
+class AgentProfilePiArgumentsTest < Minitest::Test
+  def pi_arguments(model)
+    Riddim::AgentProfile.new(harness: 'pi', model: model, effort: 'high').pi_arguments
+  end
+
+  def test_pins_the_provider_named_before_the_first_slash
+    assert_equal ['--provider', 'claude-bridge', '--model', 'claude-opus-5-5', '--thinking', 'high'],
+                 pi_arguments('claude-bridge/claude-opus-5-5')
+  end
+
+  def test_keeps_later_slashes_in_the_model_id
+    pairs = ['openrouter/anthropic/claude-opus-5.5', 'openrouter/openrouter/free'].map do |model|
+      pi_arguments(model).values_at(1, 3)
+    end
+
+    assert_equal [%w[openrouter anthropic/claude-opus-5.5], %w[openrouter openrouter/free]], pairs
+  end
+
+  def test_refuses_a_model_without_a_provider_and_id
+    refusals = ['claude-opus-5-5', '/claude-opus-5-5', 'claude-bridge/'].map do |model|
+      pi_arguments(model)
+    rescue Riddim::AgentProfile::Error
+      :refused
+    end
+
+    assert_equal %i[refused refused refused], refusals
+  end
+end

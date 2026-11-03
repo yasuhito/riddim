@@ -6,6 +6,7 @@ Given('Pi records its exact launch arguments and profile') do
   @pi_observation = File.join(@herdr_directory, 'pi-arguments.json')
   File.write(executable, <<~RUBY)
     #!/usr/bin/ruby
+    #{FAKE_PI_CATALOG}
     require 'json'
     record = File.binread(File.join(ENV.fetch('RIDDIM_STATE_DIR'), 'worker.meta'))
     File.write(#{@pi_observation.dump}, JSON.generate(argv: ARGV.map(&:bytes), record: record.bytes))
@@ -19,7 +20,9 @@ Then('Pi and the ownership record select model {string} and effort {string} with
   record = File.read(scenario_record_path('worker')) if File.file?(scenario_record_path('worker'))
   brief = File.read(File.join(scenario_state_dir, 'worker.brief')) if record
   profile = File.binread(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'))
-  assert_equal [true, ['--model', model, '--thinking', effort, brief].map { |value| value&.bytes }, record&.bytes,
+  provider, id = model.b.split('/', 2)
+  pi_argv = ['--provider', provider, '--model', id, '--thinking', effort, brief]
+  assert_equal [true, pi_argv.map { |value| value&.bytes }, record&.bytes,
                 true, true, @configured_profile],
                [@status.success?, observation && observation['argv'], observation && observation['record'],
                 record&.include?("\nmodel=#{model}\n"), record&.include?("\neffort=#{effort}\n"), profile], @stderr
@@ -85,7 +88,8 @@ Then('all three native launches match their independent recorded profiles') do
     argv = JSON.parse(File.read(File.join(@herdr_directory, "#{name}.argv.json")))
     [name, record.fetch('model'), record.fetch('effort'),
      argv == ['agent', 'start', name, '--kind', 'pi', '--pane', record.fetch('herdr_pane_id'), '--',
-              '--model', record.fetch('model'), '--thinking', record.fetch('effort')]]
+              '--provider', *record.fetch('model').split('/', 2).insert(1, '--model'),
+              '--thinking', record.fetch('effort')]]
   end
   profile = File.binread(File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'agent-profile'))
   assert_equal [expected.map { |row| [*row, true] }, [true, true, true], @configured_profile, 3],
@@ -93,4 +97,36 @@ Then('all three native launches match their independent recorded profiles') do
                 expected.map do |name, *_|
                   File.read(scenario_record_path(name))[/^herdr_pane_id=(.+)$/, 1]
                 end.uniq.length], @model_starts.inspect
+end
+
+ALLOWLIST_STATES = {
+  'empty' => '', 'comments only' => "# nothing approved yet\n\n",
+  'a pasted profile line' => "# approved\nopenai-codex/gpt-6.1-sol high\n",
+  'an unqualified entry' => "gpt-6.1-sol\n", 'invalid UTF-8' => "openai-codex/gpt-6.1-sol\n\xff\n".b
+}.freeze
+
+def configured_allowlist
+  File.join(@environment.fetch('RIDDIM_CONFIG_DIR'), 'allowed-models')
+end
+
+Given('the allowlist is {}') do |state|
+  path = configured_allowlist
+  FileUtils.rm_f(path)
+  case state
+  when 'missing' then nil
+  when 'a directory' then Dir.mkdir(path)
+  else File.binwrite(path, ALLOWLIST_STATES.fetch(state))
+  end
+end
+
+Then('the refusal names provider {string} and model {string} as unlisted') do |provider, model|
+  assert_equal [1, "riddim: model \"#{provider}/#{model}\" is not allowed: provider \"#{provider}\" " \
+                   "model \"#{model}\" is not listed in #{configured_allowlist}; " \
+                   "add its exact provider/model ID only if a human approved it\n", []],
+               [@status.exitstatus, @stderr, herdr_invocations]
+end
+
+Then('the refusal reports {string} for the configured allowlist') do |problem|
+  expected = "riddim: #{problem.sub('model allowlist', "model allowlist #{configured_allowlist}")}"
+  assert_equal [1, true, []], [@status.exitstatus, @stderr.start_with?(expected), herdr_invocations], @stderr
 end

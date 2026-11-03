@@ -30,6 +30,7 @@ class PiNativeStartupTest < Minitest::Test
     @config = File.join(@root, 'config')
     Dir.mkdir(@config)
     File.write(File.join(@config, 'agent-profile'), "pi stall-lab/test low\n")
+    File.write(File.join(@config, 'allowed-models'), "stall-lab/test\n")
     @processes = []
     @streams = {}
     @events = []
@@ -352,6 +353,8 @@ class PiNativeStartupTest < Minitest::Test
     end
     File.write(File.join(shim, 'pi'), <<~SH)
       #!/bin/sh
+      # Riddim's catalog preflight is a plain listing, not the RPC session.
+      [ "$*" = --list-models ] && exec "#{@real_pi}" --list-models
       exec "#{@real_pi}" "$@" --approve --mode rpc --no-tools --no-skills --no-prompt-templates --no-context-files --model stall-lab/test --thinking off
     SH
     @herdr_status = File.join(@root, 'herdr-status')

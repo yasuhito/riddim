@@ -1,4 +1,5 @@
 config/agent-profile
+config/allowed-models
 state/
 spec/*.old
 test/support/node_modules/
