@@ -76,12 +76,15 @@ export default function (pi: ExtensionAPI) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryAttempts = 0;
   let recovering = false;
+  // A failed restart is only logged while recovering. Keep its reason for
+  // the one alarm that ends the episode.
+  let restartFailure: string | null = null;
   let recoveryBlocked = false;
 
   function failure(reason: string, epoch = serial): void {
     if (!active || serial !== epoch) return;
     console.error(`riddim watcher FAILED: ${reason}`);
-    if (recovering) return; // One alarm after the bounded recovery episode.
+    if (recovering) { restartFailure = reason; return; } // One alarm after the bounded recovery episode.
     try {
       notifyFailure?.(`Riddim watcher FAILED: ${reason}. Verify the original home before running riddim notifications scan.`);
     } catch (error) {
@@ -124,9 +127,18 @@ export default function (pi: ExtensionAPI) {
   function recover(reason: string, epoch: number, originalHome: string, originalLock: string | null): void {
     if (!active || serial !== epoch || retryTimer || recovering || recoveryBlocked) return;
     const unchanged = () => originalHome === homeIdentity() && originalLock !== null && originalLock === lockIdentity();
-    if (!unchanged() || retryAttempts >= 3) {
+    if (!unchanged()) {
       recoveryBlocked = true;
-      failure(`${reason}; automatic recovery exhausted or ownership ambiguous`, epoch);
+      failure(`${reason}; automatic recovery refused, ownership ambiguous: home ${originalHome} is now ` +
+        `${homeIdentity() ?? "unavailable"}, watcher lock ${originalLock ?? "unverified"} is now ` +
+        `${lockIdentity() ?? "unavailable"}`, epoch);
+      return;
+    }
+    if (retryAttempts >= 3) {
+      recoveryBlocked = true;
+      // The budget spans the Pi runtime, so earlier recovered episodes count.
+      failure(`${reason}; automatic recovery exhausted: all ${retryAttempts} restarts of this Pi runtime are used` +
+        (restartFailure ? `; last restart failed: ${restartFailure}` : "; earlier restarts recovered"), epoch);
       return;
     }
     retryAttempts += 1;
@@ -154,7 +166,7 @@ export default function (pi: ExtensionAPI) {
       if (!healthy && retiring) await waitForClose(retiring);
       if (!active || serial !== epoch) return;
       recovering = false;
-      if (healthy) return;
+      if (healthy) { restartFailure = null; return; }
       if (child) {
         recoveryBlocked = true;
         failure("automatic recovery could not verify observer retirement", epoch);
@@ -273,7 +285,7 @@ export default function (pi: ExtensionAPI) {
       }
     });
     proc.on("error", (error) => { stderr += error.message; finishReady(false); });
-    proc.on("close", () => {
+    proc.on("close", (code, signal) => {
       closedChildren.add(proc);
       clearInterval(watchdog);
       finishReady(false);
@@ -284,7 +296,8 @@ export default function (pi: ExtensionAPI) {
         batches.push(pending);
         void deliver(epoch);
       } else if (ready) {
-        recover(recoveryReason || stderr.trim() || "observer stopped without a report", epoch, binding, verifiedLock);
+        recover(recoveryReason || stderr.trim() || `observer stopped without a report (${signal ?? `exit ${code}`})`,
+          epoch, binding, verifiedLock);
       } else if (!failureReported) {
         failure(stderr.trim() || "observer failed before readiness", epoch);
       }
@@ -480,6 +493,7 @@ export default function (pi: ExtensionAPI) {
     retryTimer = null;
     retryAttempts = 0;
     recovering = false;
+    restartFailure = null;
     recoveryBlocked = false;
     notifyFailure = null;
     serial += 1;

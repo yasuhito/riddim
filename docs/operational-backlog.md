@@ -262,6 +262,15 @@ requests. No discarded audit commit needs to be restored.
 - The stale reason now records the silence, the part while Pi was responsive and
   the largest Pi event-loop delay, so a future alarm separates a Pi stall from
   watcher silence.
+- The old alarm `automatic recovery exhausted or ownership ambiguous` could not
+  say which applied, and a failed restart's stderr was only logged. The alarm now
+  says either that all three restarts of the Pi runtime are used, with the last
+  restart failure or that earlier restarts recovered, or that ownership is
+  ambiguous, with original and current home/lock identities. An observer that
+  stops without stderr is reported with its exit code or signal.
+- The 2026-11-02 11:30 ACK-race alarm already said exhausted or ambiguous on its
+  first failure while identities were unchanged. Earlier restarts in that runtime
+  had most likely used the budget without notice; this is not proven.
 
 ## Validation follow-up - linked-worktree default-path assertion
 

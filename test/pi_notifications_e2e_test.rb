@@ -337,13 +337,32 @@ class PiNotificationsE2ETest < Minitest::Test
       item['type'] == 'extension_ui_request' && item['method'] == 'notify'
     end
 
-    assert_includes alarm['message'], 'automatic recovery exhausted'
+    assert_includes alarm['message'], 'observer stopped without a report (SIGTERM)'
+    assert_includes alarm['message'], 'automatic recovery exhausted: all 3 restarts of this Pi runtime are used'
+    assert_includes alarm['message'], 'last restart failed: injected watcher rearm failure'
     assert_equal 'error', alarm['notifyType']
     # Every refusal is counted separately from a successful initial spawn.
     assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
     sleep 1
 
     assert_equal 3, File.readlines(File.join(@root, 'watcher-refusals')).size
+  end
+
+  # A watcher silent while Pi is responsive is still stale, and the alarm
+  # separates that silence from any Pi event-loop delay.
+  # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
+  def test_stale_heartbeat_alarm_records_watcher_silence_and_pi_delay
+    arm_watcher
+    File.write(File.join(@root, 'deny-watcher-rearm'), '')
+    @paused_watcher = Integer(File.read("/proc/#{@wait.pid}/task/#{@wait.pid}/children").split.first)
+    Process.kill('STOP', @paused_watcher)
+    alarm = until_event do |item|
+      item['type'] == 'extension_ui_request' && item['method'] == 'notify'
+    end
+
+    assert_match(/watcher heartbeat stale; ownership unverified \(no watcher frame for \d+\.\ds, /, alarm['message'])
+    assert_match(/\d+\.\ds of it while Pi was responsive; largest Pi event-loop delay 0\.\ds\)/, alarm['message'])
+    assert_includes alarm['message'], 'automatic recovery exhausted'
   end
 
   # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
@@ -373,6 +392,7 @@ class PiNotificationsE2ETest < Minitest::Test
     end
 
     assert_includes alarm['message'], 'ownership ambiguous'
+    assert_match(/watcher lock \d+:\d+ is now \d+:\d+/, alarm['message'])
     assert_equal 1, File.readlines(File.join(@root, 'watcher-spawns')).size
   end
 
