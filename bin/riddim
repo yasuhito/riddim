@@ -43,7 +43,6 @@ if ARGV.first == 'supervise'
 
   begin
     profile = Riddim::AgentProfile.resolve(config_dir: config_dir)
-    Riddim::PiCatalog.verify!(profile.model)
     Riddim::Supervise.run(profile)
   rescue Riddim::AgentProfile::Error, Riddim::ModelAllowlist::Error, Riddim::PiCatalog::Error,
          Riddim::Supervise::Error => e
@@ -512,8 +511,11 @@ if ARGV.first == 'start'
 
   begin
     profile = Riddim::AgentProfile.resolve(config_dir: config_dir, model: flags['--model'], effort: flags['--effort'])
-    Riddim::PiCatalog.verify!(profile.model)
-  rescue Riddim::AgentProfile::Error, Riddim::ModelAllowlist::Error, Riddim::PiCatalog::Error => e
+    # The task launch stages this same executable; a native Herdr start
+    # resolves `pi` in its pane, which this cannot inspect.
+    Riddim::PiCatalog.verify!(profile.model, executable: Riddim::TaskBrief.pi_executable)
+  rescue Riddim::AgentProfile::Error, Riddim::ModelAllowlist::Error, Riddim::PiCatalog::Error,
+         Riddim::TaskBrief::Error => e
     warn "riddim: #{e.message}"
     exit 1
   end

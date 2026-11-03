@@ -126,6 +126,28 @@ Feature: Start a Riddim supervisor in the current Herdr pane
       """
     Then the supervisor reports model "openrouter/z-ai/glm-5.3-flash" unlisted by Pi before invoking Herdr or Pi
 
+  Scenario: Check the same Pi that supervise launches through a relative PATH entry
+    Given a relative PATH entry first provides a Pi listing models:
+      """
+      openrouter/z-ai/glm-5.3-flash
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then supervise checks and launches only the relative Pi
+
+  Scenario: Refuse when the Pi that supervise would launch does not list the model
+    Given a relative PATH entry first provides a Pi listing models:
+      """
+      openrouter/z-ai/glm-5.3-flash-pro
+      """
+    When I run riddim with:
+      """
+      supervise
+      """
+    Then supervise refuses after checking only the relative Pi
+
   Scenario: Refuse a missing allowlist before checking Herdr or launching Pi
     Given the allowlist is missing
     When I run riddim with:

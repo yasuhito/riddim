@@ -47,6 +47,18 @@ Feature: Start only models the local allowlist names exactly
       """
     Then Pi and the ownership record select model "openrouter/openai/gpt-5.5" and effort "high" without changing config
 
+  Scenario: Check the absolute Pi the task launch stages, not a relative PATH entry
+    Given a relative PATH entry first provides a Pi listing models:
+      """
+      claude-bridge/claude-opus-5-5
+      """
+    And Pi records its exact launch arguments and profile
+    When I run riddim with:
+      """
+      start worker --worktree --task-file task.md --mode local-only --model claude-bridge/claude-opus-5-5
+      """
+    Then the task launch checks and runs only the absolute Pi it stages
+
   Scenario: Pin the provider for a native start
     Given Herdr creates workspace "w9" and starts the agent
     When I run riddim with:

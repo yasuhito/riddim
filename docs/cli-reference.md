@@ -571,9 +571,15 @@ otherwise nothing starts. A Pi that fails, hangs, prints an unexpected table or
 does not list the provider (for example without credentials) refuses the start.
 List IDs exactly as `pi --list-models` reports them.
 
-The preflight reads the catalog of the `pi` on Riddim's own `PATH` and
-environment; a Herdr pane running a different Pi installation or agent
-directory is not checked separately.
+The listing comes from the same absolute executable the launch uses:
+`supervise` checks the `pi` it then runs, and `start` checks the absolute-`PATH`
+`pi` a task launch stages. A native `start` hands `pi` to Herdr, which resolves
+it in the new pane; a pane whose `PATH`, Pi installation or agent directory
+differs from Riddim's own environment is not checked separately. The empty
+working directory also means project extensions are not loaded: a trusted
+project extension in the launch directory that registers or replaces a
+provider or model can change what Pi selects there without being checked.
+This is a launch-time check, not a runtime sandbox.
 
 The list controls which models Riddim itself starts. It is not a security
 sandbox or a billing cap: it does not restrict Pi started directly, model

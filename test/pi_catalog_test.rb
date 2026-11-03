@@ -30,15 +30,11 @@ class PiCatalogTest < Minitest::Test
     fake_pi("[ \"$*\" = --list-models ] || exit 9\ncat #{File.join(@bin, 'table')}")
   end
 
-  def verdict(model, timeout: 30)
-    old_path = ENV.fetch('PATH')
-    ENV['PATH'] = "#{@bin}:#{old_path}"
-    Riddim::PiCatalog.verify!(model, timeout: timeout)
+  def verdict(model, timeout: 30, executable: File.join(@bin, 'pi'))
+    Riddim::PiCatalog.verify!(model, executable: executable, timeout: timeout)
     :listed
   rescue Riddim::PiCatalog::Error => e
     e.message
-  ensure
-    ENV['PATH'] = old_path
   end
 
   def test_admits_an_exactly_listed_model
@@ -97,17 +93,27 @@ class PiCatalogTest < Minitest::Test
   def test_refuses_when_pi_fails
     fake_pi("echo 'catalog broke' >&2\nexit 3")
 
-    assert_includes verdict('openai/gpt-5.5'), '`pi --list-models` failed: "catalog broke"'
+    assert_includes verdict('openai/gpt-5.5'), "`pi --list-models` failed (#{File.join(@bin, 'pi')}): \"catalog broke\""
   end
 
   def test_refuses_when_pi_is_missing
-    old_path = ENV.fetch('PATH')
-    ENV['PATH'] = @bin
-    message = verdict('openai/gpt-5.5')
+    missing = File.join(@bin, 'missing-pi')
 
-    assert_includes message, 'could not run `pi --list-models`'
+    assert_includes verdict('openai/gpt-5.5', executable: missing), "could not run `pi --list-models` (#{missing})"
+  end
+
+  # The listing comes from the given executable, never a PATH lookup.
+  def test_lists_with_the_given_executable_not_the_first_pi_on_path
+    listing('openai/gpt-5.5')
+    other = Dir.mktmpdir('riddim-other-pi-')
+    File.write(File.join(other, 'pi'), "#!/bin/sh\necho 'provider  model  context'\n", perm: 0o700)
+    old_path = ENV.fetch('PATH')
+    ENV['PATH'] = "#{other}:#{old_path}"
+
+    assert_equal :listed, verdict('openai/gpt-5.5')
   ensure
     ENV['PATH'] = old_path
+    FileUtils.remove_entry(other) if other
   end
 
   def test_stops_a_hanging_pi_and_its_children_within_the_bound

@@ -9,7 +9,8 @@ module Riddim
   # provider's catalog is fuzzy-matched to another of its models or sent as a
   # custom ID. Refusing any model `pi --list-models` does not list exactly
   # leaves Pi's lookup only its exact branch, so the allowlisted model is the
-  # one that starts.
+  # one that starts. Callers pass the absolute executable their launch will
+  # run, so the listing comes from that same Pi.
   module PiCatalog
     TIMEOUT = 30
     HEADER = /\Aprovider +(model) +(context)\b/
@@ -18,10 +19,10 @@ module Riddim
 
     module_function
 
-    def verify!(model, timeout: TIMEOUT)
+    def verify!(model, executable:, timeout: TIMEOUT)
       model = model.dup.force_encoding(Encoding::UTF_8)
       provider, _, id = model.partition('/')
-      matches = listed(list(timeout), provider, id)
+      matches = listed(list(executable, timeout), provider, id)
       return if matches == [[provider, id]]
 
       raise Error, refusal(model, provider, matches)
@@ -49,8 +50,8 @@ module Riddim
       end
     end
 
-    def list(timeout)
-      stdout = Dir.mktmpdir('riddim-pi-catalog-') { |directory| run_list_models(directory, timeout) }
+    def list(executable, timeout)
+      stdout = Dir.mktmpdir('riddim-pi-catalog-') { |directory| run_list_models(executable, directory, timeout) }
       parse(stdout.force_encoding(Encoding::UTF_8))
     end
 
@@ -65,17 +66,17 @@ module Riddim
       rows.map { |row| [row[0...model_at].rstrip, row[model_at...context_at].to_s.rstrip] }
     end
 
-    def run_list_models(directory, timeout)
-      stdout, stderr, status = capture_list_models(directory, timeout)
+    def run_list_models(executable, directory, timeout)
+      stdout, stderr, status = capture_list_models(executable, directory, timeout)
       return stdout if status.success?
 
-      raise Error, "`pi --list-models` failed: #{stderr.lines.last.to_s.strip.dump}"
+      raise Error, "`pi --list-models` failed (#{executable}): #{stderr.lines.last.to_s.strip.dump}"
     rescue SystemCallError => e
-      raise Error, "could not run `pi --list-models`: #{e.message}"
+      raise Error, "could not run `pi --list-models` (#{executable}): #{e.message}"
     end
 
-    def capture_list_models(directory, timeout)
-      Open3.popen3('pi', '--list-models', chdir: directory, pgroup: true) do |input, output, error, waiter|
+    def capture_list_models(executable, directory, timeout)
+      Open3.popen3(executable, '--list-models', chdir: directory, pgroup: true) do |input, output, error, waiter|
         input.close
         readers = [output, error].map { |stream| Thread.new { stream.read } }
         stop(waiter, timeout) unless waiter.join(timeout)
