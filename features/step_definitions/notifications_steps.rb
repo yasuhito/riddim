@@ -156,9 +156,9 @@ Given('ownership changes during status classification') do
     require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Result
       class << self
-        alias_method :original_parse_events, :parse_events
-        def parse_events(bytes)
-          status = original_parse_events(bytes)
+        alias_method :original_parse_stream, :parse_stream
+        def parse_stream(handle, &block)
+          status = original_parse_stream(handle, &block)
           path = Riddim::Ownership.record_path('worker')
           File.write(path, File.read(path).sub(/^spawn_gen=.+$/, 'spawn_gen=s9999.9999.9999'))
           status

@@ -256,7 +256,7 @@ export default function (pi: ExtensionAPI) {
     }, WATCHDOG_INTERVAL);
     let finishReady: (value: boolean) => void = () => {};
     const readiness = new Promise<boolean>((done) => { finishReady = done; });
-    const timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
+    let timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
     proc.stderr?.on("data", (part: Buffer) => { stderr += part.toString(); });
     proc.stdout?.on("data", (part: Buffer) => {
       if (!active || serial !== epoch || child !== proc) return;
@@ -270,7 +270,13 @@ export default function (pi: ExtensionAPI) {
         let frame: Frame;
         try { frame = JSON.parse(line) as Frame; } catch { proc.kill(); return; }
         if (frame.nonce !== nonce) { proc.kill(); return; }
-        if (frame.type === "ready" && !ready && typeof frame.lock === "string" &&
+        if (frame.type === "progress" && !ready && frame.home === binding &&
+          typeof frame.lock === "string" && frame.lock === lockIdentity() && binding === homeIdentity()) {
+          // Startup is still unready. Only completed, ownership-verified scan
+          // work extends its deadline; a live PID or an independent timer cannot.
+          clearTimeout(timeout);
+          timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
+        } else if (frame.type === "ready" && !ready && typeof frame.lock === "string" &&
           /^\d+:\d+$/.test(frame.lock)) {
           ready = true;
           boundLock = frame.lock;

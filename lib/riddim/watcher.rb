@@ -8,6 +8,7 @@ module Riddim
   # One observer per selected home. The lock spans every scan and wait; no
   # Worker command or Herdr input is involved. A new process must acquire the
   # lock and complete a scan before it can announce readiness.
+  # rubocop:disable-next Metrics/ModuleLength
   module Watcher
     IDENTITY = /\A(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9})\z/
 
@@ -56,6 +57,17 @@ module Riddim
       next_observation = last_beat
       observation_after = nil
       schedule_status = nil
+      # Checkpoints run only after a real scan unit completes, on this thread.
+      # A stuck read/probe or failed validation cannot manufacture liveness.
+      progress = lambda do
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        next if now - last_beat < 1
+
+        verify_owner!(directory, lock, selected_home)
+        announce(ready ? 'beat' : 'progress', nonce,
+                 home: Schedules::Store.identity(directory.stat), lock: Schedules::Store.identity(lock.stat))
+        last_beat = now
+      end
       # rubocop:disable-next Metrics/BlockLength
       loop do
         verify_owner!(directory, lock, selected_home)
@@ -63,7 +75,8 @@ module Riddim
         observe_activity = now >= next_observation
         next_observation = now + Notifications::Idle::SAMPLE_SECONDS if observe_activity
         budget = observe_activity ? Notifications::ProbeBudget.new(after: observation_after) : nil
-        entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget)
+        entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget,
+                                     progress: progress)
         observation_after = budget.last_name if budget
         scheduled_ids, status = scheduled_pending(session)
         ids = entries.map(&:id) + scheduled_ids

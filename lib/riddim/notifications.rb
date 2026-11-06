@@ -32,7 +32,7 @@ module Riddim
     end
 
     # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
-    def scan(observe_activity: true, wait: true, budget: nil)
+    def scan(observe_activity: true, wait: true, budget: nil, progress: nil)
       Ownership.verify_state_dir(Ownership.state_dir)
       ensure_directory
       budget = observe_activity ? budget || ProbeBudget.new : nil
@@ -42,16 +42,17 @@ module Riddim
         Ownership.with_lock(name, wait: wait) do
           # Teardown may retire the record between listing and locking.
           path = Ownership.record_path(name)
-          classify(name, budget: budget) if File.exist?(path) || File.symlink?(path)
+          classify(name, budget: budget, progress: progress) if File.exist?(path) || File.symlink?(path)
         end
       end
-      present(pending(wait: wait), wait: wait)
+      present(pending(wait: wait, progress: progress), wait: wait, progress: progress)
     end
 
-    def present(entries, wait: true)
+    def present(entries, wait: true, progress: nil)
       entries.filter_map do |entry|
         Ownership.with_lock(entry.task, wait: wait) do
           publish(marker_path('presented', entry.id), "#{JSON.generate(entry.to_h)}\n")
+          progress&.call
           entry
         end
       end
@@ -61,20 +62,28 @@ module Riddim
     # Each task's rows and markers are listed and read under that same lock,
     # so a listed marker cannot vanish before it is verified. A background
     # observer skips a busy task until its next poll.
-    def pending(wait: true)
+    def pending(wait: true, progress: nil)
       return [] unless notification_directory_present?
 
       verify_directory
       tasks = Dir.children(directory).filter_map { |filename| queue_task(filename) }.uniq.sort
-      tasks.flat_map { |task| Ownership.with_lock(task, wait: wait) { pending_for(task) } || [] }.sort_by(&:id)
+      tasks.flat_map do |task|
+        Ownership.with_lock(task, wait: wait) { pending_for(task, progress: progress) } || []
+      end.sort_by(&:id)
     end
 
-    def pending_for(task)
+    # rubocop:disable-next Metrics/MethodLength
+    def pending_for(task, progress: nil)
       files = task_files(task)
-      files.grep(MARKER).each { |filename| verify_marker_queue(filename, files) }
+      files.grep(MARKER).each do |filename|
+        verify_marker_queue(filename, files)
+        progress&.call
+      end
       files.grep(QUEUE).sort.filter_map do |filename|
         entry = read_entry(File.join(directory, filename), filename)
-        entry unless handled?(entry)
+        handled = handled?(entry)
+        progress&.call
+        entry unless handled
       end
     end
 
@@ -169,7 +178,7 @@ module Riddim
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-    def classify(name, budget: nil)
+    def classify(name, budget: nil, progress: nil)
       snapshot = Ownership::Endpoint.resolve_snapshot(name)
       bytes = Ownership::Endpoint.read_bytes(Ownership.record_path(name))
       fields = Ownership.parse(bytes)
@@ -181,17 +190,11 @@ module Riddim
 
       generation = snapshot.last
       path = Result.path(name, generation)
-      text, events = File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
-        Result.verify_private_file!(file)
-        content = file.read(Result::MAX_BYTES + 1) || ''
-        [content, Result.parse_events(content).events]
-      end
       cursor_path = File.join(directory, ".cursor-#{name}-#{generation}")
       cursor = read_cursor(cursor_path)
       offset = cursor.fetch('offset', 0)
-      prefix = text.byteslice(0, offset)
-      raise Error, "status changed before classified position for #{name}" if
-        prefix.nil? || (cursor['digest'] && cursor['digest'] != Digest::SHA256.hexdigest(prefix))
+      status, digest, size = status_evidence(path, cursor, progress)
+      events = status.events
 
       observation = budget&.observe(name) { activity_observation(name, snapshot, bytes, events) }
       if observation == :timed_out
@@ -220,15 +223,39 @@ module Riddim
         end
 
         publish(queue_path, "#{JSON.generate(entry.to_h)}\n")
+        progress&.call
       end
-      return if text.bytesize == offset
+      return if size == offset
 
       # The cursor is only an optimization. The queue is durable first; on a
       # crash before this replacement, replay sees the same event identities.
-      replace(cursor_path, "#{JSON.generate(offset: text.bytesize, digest: Digest::SHA256.hexdigest(text))}\n")
+      replace(cursor_path, "#{JSON.generate(offset: size, digest: digest)}\n")
     end
 
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    # Stream the history while verifying the exact previously classified prefix.
+    # A cursor inside a record or beyond EOF is not a valid append-only prefix.
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    def status_evidence(path, cursor, progress)
+      offset = cursor.fetch('offset', 0)
+      digest = Digest::SHA256.new
+      prefix = digest.hexdigest if offset.zero?
+      size = 0
+      status = File.open(path, File::RDONLY | File::NOFOLLOW) do |file|
+        Result.verify_private_file!(file)
+        Result.parse_stream(file) do |event, line|
+          digest << line
+          size = event.end_offset
+          prefix = digest.hexdigest if size == offset
+          progress&.call
+        end
+      end
+      raise Error, 'status changed before classified position' if
+        prefix.nil? || (cursor['digest'] && cursor['digest'] != prefix)
+
+      [status, digest.hexdigest, size]
+    end
 
     # One attention observation per generation, shared by stable live-idle and
     # endpoint-stop detection. Actual Worker reports keep independent IDs.
