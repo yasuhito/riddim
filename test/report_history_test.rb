@@ -53,14 +53,16 @@ class ReportHistoryTest < Minitest::Test
   end
 
   # Even a malformed suffix beyond the old whole-file cap must fail closed.
-  # rubocop:disable-next Minitest/MultipleAssertions
+  # rubocop:disable-next Metrics/AbcSize, Minitest/MultipleAssertions
   def test_malformed_history_is_rejected_without_appending_or_presenting
     ['done [at=2]: no newline', "bogus\n", "done [at=2]: bad\xFF\n".b,
      "done [at=2]: #{'x' * 65_536}\n"].each do |suffix|
       bytes = long_history + suffix
       File.binwrite(@path, bytes)
       rejected('report', 'worker', '--generation', GEN, 'done [at=3]: refused')
-      rejected('notifications', 'scan')
+
+      assert_includes rejected('notifications', 'scan'), File.basename(@path)
+      assert_includes rejected('result', 'worker'), File.basename(@path)
 
       assert_equal bytes, File.binread(@path)
       assert_empty Dir[File.join(@root, '.notifications', '*.json')]

@@ -5,6 +5,21 @@ require_relative '../../lib/riddim/notifications'
 # Controlled per-record I/O cost in an owned subprocess only. Phase records
 # contain timings, never Worker content. A single hung read must still fail.
 module NotificationHistoryBackend
+  def scan(**options)
+    return super unless ENV['RIDDIM_HISTORY_MODE'] == 'forever'
+
+    # Real record validation keeps advancing, but this injected scan never
+    # returns. Progress alone must not grant unlimited startup time or ready.
+    filename = Dir.children(directory).find { |name| name.start_with?('worker.') }
+    loop do
+      Riddim::Ownership.with_lock('worker', wait: false) do
+        read_entry(File.join(directory, filename), filename)
+        options[:progress]&.call
+      end
+      sleep 0.05
+    end
+  end
+
   def classify(...)
     timed_phase('classify') { super }
   end

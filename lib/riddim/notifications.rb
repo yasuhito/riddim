@@ -236,7 +236,7 @@ module Riddim
 
     # Stream the history while verifying the exact previously classified prefix.
     # A cursor inside a record or beyond EOF is not a valid append-only prefix.
-    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
     def status_evidence(path, cursor, progress)
       offset = cursor.fetch('offset', 0)
       digest = Digest::SHA256.new
@@ -251,10 +251,12 @@ module Riddim
           progress&.call
         end
       end
-      raise Error, 'status changed before classified position' if
+      raise Error, "status changed before classified position at #{path}" if
         prefix.nil? || (cursor['digest'] && cursor['digest'] != prefix)
 
       [status, digest.hexdigest, size]
+    rescue Result::Error => e
+      raise Error, "status evidence at #{path}: #{e.message}"
     end
 
     # One attention observation per generation, shared by stable live-idle and

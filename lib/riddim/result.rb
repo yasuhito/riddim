@@ -72,6 +72,8 @@ module Riddim
         verify_private_file!(handle)
         parse_stream(handle)
       end
+    rescue Error => e
+      raise Error, "status evidence at #{file}: #{e.message}"
     end
 
     def verify_private_file!(handle)

@@ -65,14 +65,21 @@ model. The real-Pi tests cover recovery and identity.
 The long-history repair adds same-thread checkpoints after completed status,
 queue and marker records. Post-ready checkpoints emit the existing beat frame,
 so the watchdog arithmetic above is unchanged. Before readiness, a separate
-ownership-verified progress frame only renews the startup deadline; a complete
-scan is still required for ready. These scan checkpoints and startup progress
+ownership-verified progress frame only renews the inactivity deadline; a complete
+scan is still required within the sixty-second absolute startup ceiling for ready.
+Checkpoint writes are atomic/nonblocking and dropped on pipe congestion, so
+progress under a Worker lock cannot wait for the reader. Readiness and pending
+writes remain outside Worker locks. These scan checkpoints and startup progress
 are outside this model, not newly proved by it. `WatcherHistoryTest` runs the
 real extension and native observer with 1,200 retained files and controlled
 per-record I/O cost. It checks slow startup and post-ready scans, a hung read
 that must still trip the watchdog and recover, a processing error after progress,
-and replacement-lock refusal. `ReportHistoryTest` separately checks streamed
-history, exact IDs, replay, keyed gates, failure history and malformed records.
+and replacement-lock refusal. It also checks an advancing scan that never
+completes reaches the real absolute startup deadline without readiness.
+`WatcherBackpressureTest` fills an unread native observer pipe and requires a
+Worker report to finish despite checkpoint backpressure. `ReportHistoryTest`
+separately checks streamed history, exact IDs, replay, keyed gates, failure history
+and malformed records.
 
 ## Negative controls and their real reproductions
 

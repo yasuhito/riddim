@@ -65,7 +65,8 @@ module Riddim
 
         verify_owner!(directory, lock, selected_home)
         announce(ready ? 'beat' : 'progress', nonce,
-                 home: Schedules::Store.identity(directory.stat), lock: Schedules::Store.identity(lock.stat))
+                 nonblock: true, home: Schedules::Store.identity(directory.stat),
+                 lock: Schedules::Store.identity(lock.stat))
         last_beat = now
       end
       # rubocop:disable-next Metrics/BlockLength
@@ -139,9 +140,24 @@ module Riddim
       raise Notifications::Error, 'watcher ownership changed during observation'
     end
 
-    def announce(type, nonce, **extra)
-      puts JSON.generate({ type: type, nonce: nonce }.merge(extra))
+    def announce(type, nonce, nonblock: false, **extra)
+      frame = "#{JSON.generate({ type: type, nonce: nonce }.merge(extra))}\n"
+      return checkpoint(frame) if nonblock
+
+      $stdout.write(frame)
       $stdout.flush
+    end
+
+    # Checkpoints can run under a Worker lock. Drop a congested checkpoint
+    # rather than wait for Pi or queue stale liveness. Bound to POSIX's minimum
+    # PIPE_BUF so a pipe write is atomic or returns wait_writable.
+    def checkpoint(frame)
+      raise Notifications::Error, 'watcher checkpoint is oversized' if frame.bytesize > 512
+
+      written = $stdout.write_nonblock(frame, exception: false)
+      return if written == :wait_writable || written == frame.bytesize
+
+      raise Notifications::Error, 'partial watcher checkpoint'
     end
   end
 end

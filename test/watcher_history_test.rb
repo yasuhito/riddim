@@ -28,13 +28,17 @@ class WatcherHistoryTest < Minitest::Test
     run_history('error')
   end
 
+  def test_progress_without_a_complete_scan_has_an_absolute_startup_deadline
+    run_history('forever')
+  end
+
   def test_changed_lock_during_progress_is_not_rebound
     run_history('lock')
   end
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def run_history(mode)
-    Dir.mktmpdir('riddim-watch-history-') do |root|
+    Dir.mktmpdir('riddim-watch-history-') do |root| # rubocop:disable Metrics/BlockLength
       state = File.join(root, 'state')
       Dir.mkdir(state, 0o700)
       write_notification_worker(state, GEN)
@@ -53,7 +57,13 @@ class WatcherHistoryTest < Minitest::Test
               'RIDDIM_EXTENSION' => File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__),
               'RUBYOPT' => "-r#{File.expand_path('support/notification_history_backend', __dir__)}" }
       out, err, status = Bundler.with_unbundled_env do
-        script = %w[slow post-ready].include?(mode) ? 'notification_history.mts' : 'notification_history_failure.mts'
+        script = if mode == 'forever'
+                   'notification_startup_deadline.mts'
+                 elsif %w[slow post-ready].include?(mode)
+                   'notification_history.mts'
+                 else
+                   'notification_history_failure.mts'
+                 end
         Open3.capture3(env, 'node', File.expand_path("support/#{script}", __dir__))
       end
 

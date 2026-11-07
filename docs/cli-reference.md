@@ -861,11 +861,16 @@ own event loop was responsive; time Pi itself was stalled does not count.
 During a long report/notification scan, checkpoints after completed records verify
 the same held home and watcher lock before emitting liveness. Before readiness,
 these progress frames extend the five-second startup deadline but do not claim
-readiness: the first complete scan must still succeed. After readiness, they
-maintain the heartbeat while scanning retained history. There is no independent
-heartbeat thread: a blocked operation stops progress, and a validation failure
-still stops the observer. An unexpectedly stopped or stale previously verified
-observer gets at most three
+readiness: the first complete scan must still succeed within an absolute sixty
+seconds per arm. That ceiling allows twelve inactivity windows and roughly six
+times the measured slow-history fixture's startup scan, but cannot be renewed by
+progress. After readiness, checkpoints maintain the heartbeat while scanning
+retained history. Checkpoints are small atomic nonblocking pipe writes: if Pi
+is not draining stdout, they are dropped, not queued or allowed to hold a Worker
+name lock. Ready/pending frames still publish outside Worker locks. There is no
+independent heartbeat thread: a blocked operation stops progress, and a
+validation failure still stops the observer. An unexpectedly stopped or stale
+previously verified observer gets at most three
 automatic retries per Pi runtime, counted across recovered episodes, with
 250/500/1000 ms backoff. Retries
 require the original home and lock identities, retire the old child first, and
