@@ -6,9 +6,9 @@ changed `56:<inode>` to `54:<same-inode>`. Exact comparisons correctly refused,
 but the device number was the wrong durable filesystem identifier.
 
 New records use `fsid:<f_fsid word 0 as 8 hex digits><word 1 as 8 hex digits>:<inode>`.
-Ruby's `File::Stat` has no fsid API. Ruby's bundled Fiddle calls libc `fstatfs`
-on pinned descriptors, without subprocesses, root, pathname resolution or a new
-runtime dependency. The structure follows Linux's 64-bit generic statfs ABI
+Ruby's `File::Stat` has no fsid API. The explicitly declared Fiddle gem (bundled
+with the pinned Ruby 3.4) calls libc `fstatfs` on pinned descriptors, without
+subprocesses, root, pathname resolution or a new native library dependency. The structure follows Linux's 64-bit generic statfs ABI
 (`include/uapi/asm-generic/statfs.h`); other architectures and non-Linux platforms refuse.
 The supported deployment is x86_64/aarch64 Linux with normal persistent-filesystem
 FSIDs; unusual filesystem/ABI configurations need separate verification.

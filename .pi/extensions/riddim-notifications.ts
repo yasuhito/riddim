@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  function scheduleFailure(key: string, reason: string, epoch: number): void {
+  function scheduleFailure(key: string, reason: string, epoch: number, batchParts?: string[]): void {
     if (!active || serial !== epoch || scheduleAlerts.has(key)) return;
     scheduleAlerts.add(key);
     const message = `Riddim scheduled prompts FAILED: ${reason}. Scheduled content is withheld, not handled. ` +
@@ -114,6 +114,9 @@ export default function (pi: ExtensionAPI) {
       "for same-session /reload while idle to replay withheld occurrences. No scheduled task was ACKed.";
     console.error(message);
     try { notifyFailure?.(message); } catch { /* No observer recovery for a schedule diagnostic. */ }
+    // A mixed batch must use one follow-up so an idle Pi cannot consume the
+    // diagnostic first and lose the immediately following Worker report.
+    if (batchParts) { batchParts.push(message); return; }
     try {
       void Promise.resolve(pi.sendUserMessage(message, { deliverAs: "followUp" })).catch(() => {
         console.error("riddim scheduled failure follow-up rejected; inspect scheduled state manually");
@@ -411,7 +414,7 @@ export default function (pi: ExtensionAPI) {
         accepted.get(source)?.delete(id);
         if (!withheld.has(source)) withheld.set(source, new Set());
         withheld.get(source)!.add(id);
-        scheduleFailure(`offer:${source}/${id}`, `occurrence ${id} could not be offered with verified readiness`, epoch);
+        scheduleFailure(`offer:${source}/${id}`, `occurrence ${id} could not be offered with verified readiness`, epoch, parts);
         continue; // Never discard already accumulated ordinary Worker report text.
       }
       scheduleAlerts.delete(`offer:${source}/${id}`);

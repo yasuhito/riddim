@@ -119,6 +119,48 @@ class SchedulesTest < Minitest::Test
     assert_equal 'identities migrated', S::CLI.run(['migrate-identities', *args])[:status]
   end
 
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def test_migration_refuses_running_watcher_without_writing
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    path = File.join(@root, S::Store::FILE)
+    before = File.binread(path)
+    File.open(File.join(@root, S::Store::WATCHER)) do |watcher|
+      watcher.flock(File::LOCK_EX | File::LOCK_NB)
+      error = assert_raises(S::Error) { S::Store.transaction(migrate: approval) { nil } }
+
+      assert_match(/watcher.*running|watcher.*held/, error.message)
+      assert_equal before, File.binread(path)
+      refute_path_exists File.join(@root, S::IdentityMigration::AUDIT)
+    end
+  end
+
+  def test_migration_accepts_padded_and_unpadded_filesystem
+    %w[00000018000000ab 18000000AB].each do |filesystem|
+      bindings = S::IdentityMigration::KEYS.to_h { |key| [key, 'fsid:00000018000000ab:123'] }
+      old = S::IdentityMigration::KEYS.to_h { |key| [key, '999999:123'] }
+      document = old.dup
+      S::IdentityMigration.convert!(document, bindings, {}, old.merge('filesystem' => filesystem))
+
+      assert_equal bindings, document
+    end
+  end
+
+  # rubocop:disable-next Metrics/MethodLength
+  def test_migration_rejects_invalid_filesystem_without_writing
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    path = File.join(@root, S::Store::FILE)
+    before = File.binread(path)
+    ['', 'g', '0x123', '12345678901234567', ' 123', "123\n"].each do |filesystem|
+      assert_raises(S::SourceChanged) do
+        S::Store.transaction(migrate: approval.merge('filesystem' => filesystem)) { nil }
+      end
+      assert_equal before, File.binread(path)
+    end
+    refute_path_exists File.join(@root, S::IdentityMigration::AUDIT)
+  end
+
   def test_migration_refuses_hardlinked_lock
     old = legacy_document(device: 999_999)
     approval = migration_approval(old)

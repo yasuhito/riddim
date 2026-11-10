@@ -27,6 +27,7 @@ module PiStallLab
     end
 
     def accept_http_request(server)
+      socket = nil
       loop do
         socket = Timeout.timeout(20) { server.accept }
         line = Timeout.timeout(10) { socket.gets }

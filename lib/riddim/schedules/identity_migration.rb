@@ -10,8 +10,24 @@ module Riddim
 
       module_function
 
+      def verify_watcher!(watcher, migrate:)
+        Store.verify_lock!(watcher)
+        return unless migrate
+        return if watcher.flock(File::LOCK_EX | File::LOCK_NB)
+
+        raise Error, 'cannot migrate identities while the watcher lock is held; stop the running watcher first'
+      end
+
+      def normalize_filesystem(value)
+        raise SourceChanged, '--filesystem must contain 1..16 hexadecimal digits' unless
+          value.is_a?(String) && value.match?(/\A[0-9a-fA-F]{1,16}\z/)
+
+        value.downcase.rjust(16, '0')
+      end
+
       # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def convert!(document, bindings, legacy, approval)
+        filesystem = normalize_filesystem(approval['filesystem']) if approval
         old = document.slice(*KEYS)
         return if !approval && old.values.none? { |value| value.is_a?(String) && value.match?(/\A\d+:\d+\z/) }
 
@@ -19,7 +35,7 @@ module Riddim
         valid &&= if approval
                     approval.slice(*KEYS) == old && KEYS.all? do |key|
                       old[key].split(':').last == bindings.fetch(key).split(':').last &&
-                        bindings.fetch(key).split(':')[1] == approval['filesystem']
+                        bindings.fetch(key).split(':')[1] == filesystem
                     end
                   else
                     old == legacy

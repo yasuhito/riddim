@@ -53,7 +53,7 @@ module Riddim
 
           base = "/proc/self/fd/#{directory.fileno}"
           File.open(File.join(base, WATCHER), File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |watcher|
-            verify_lock!(watcher)
+            IdentityMigration.verify_watcher!(watcher, migrate: migrate)
             with_lock(base, create: create) do |lock|
               Result.verify_private_file!(lock)
               raise Error, 'scheduled prompt lock must not be hard-linked' unless lock.stat.nlink == 1

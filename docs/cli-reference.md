@@ -997,7 +997,10 @@ RIDDIM_STATE_DIR=<verified-original-home> bin/riddim schedule migrate-identities
   --watcher-lock <saved-dev:inode> --store-lock <saved-dev:inode>
 ```
 
-This command requires exact saved identities, matching live inodes and the
+The `--filesystem` value accepts 1–16 hexadecimal digits (case-insensitive),
+including the unpadded output of `stat -f -c %i`; it is normalized to 16 lowercase
+digits. The command holds the watcher lock exclusively and refuses if a watcher
+is running. It requires exact saved identities, matching live inodes and the
 supplied stable filesystem identity for all three descriptors. It retains the
 normal ownership, privacy, symlink and hardlink refusals and validates all work
 before writing. It durably records old/new identities in the private
