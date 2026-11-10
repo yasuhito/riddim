@@ -37,8 +37,12 @@ class PiNotificationsReloadTest < Minitest::Test
     File.write(@status, '', perm: 0o600)
     @held = Queue.new
     @release = Queue.new
+    @requests = Queue.new
     @model = Thread.new do
       loop do
+        # Spend the existing request deadline only in an expected API phase,
+        # not while the interactive Pi is idle between test actions.
+        @requests.pop
         socket = PiStallLab::LabServer.accept_http_request(@server)
         PiStallLab::LabServer.read_body(socket)
         if @hold_response
@@ -76,7 +80,8 @@ class PiNotificationsReloadTest < Minitest::Test
     @reader&.join(2)
     @model&.kill
     @model&.join
-    [@input, @output, @server].compact.each(&:close)
+  ensure
+    [@input, @output, @server].compact.each { |io| io.close unless io.closed? }
     preserve_evidence
   end
 
@@ -154,6 +159,7 @@ class PiNotificationsReloadTest < Minitest::Test
 
   def wait_for_user(text, boundary: 0)
     wait_until { rows.drop(boundary).any? { |row| row['type'] == 'user' && row.to_s.include?(text) } }
+    @requests << true
   end
 
   def wait_for_settled
@@ -197,6 +203,7 @@ class PiNotificationsReloadTest < Minitest::Test
 
   def test_actual_reload_is_refused_while_streaming_without_replacing_the_watcher
     @hold_response = true
+    @requests << true
     @input.write("Keep streaming\r")
     Timeout.timeout(20) { @held.pop }
     before = children
@@ -210,6 +217,17 @@ class PiNotificationsReloadTest < Minitest::Test
     refute(rows.any? { |row| row['type'] == 'shutdown' })
     @release << true
     wait_for_settled
+  end
+
+  def test_idle_model_responder_accepts_a_later_expected_request
+    # This is longer than the request accept deadline, not an API request.
+    # The loopback service must not spend that deadline while Pi is idle.
+    sleep 21
+    @input.write("A request after an idle interval\r")
+    wait_for_user('A request after an idle interval')
+    wait_for_settled
+
+    assert_predicate @model, :alive?
   end
 
   def test_exhausted_recovery_then_actual_reload_preserves_identity_and_explicit_ack

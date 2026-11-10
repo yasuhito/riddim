@@ -38,19 +38,13 @@ class WatcherHistoryTest < Minitest::Test
 
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def run_history(mode)
-    Dir.mktmpdir('riddim-watch-history-') do |root| # rubocop:disable Metrics/BlockLength
+    Dir.mktmpdir('riddim-watch-history-') do |root|
       state = File.join(root, 'state')
       Dir.mkdir(state, 0o700)
       write_notification_worker(state, GEN)
       status_path = File.join(state, "worker.#{GEN}.status")
       File.write(status_path, "done [at=1]: retained report #{'x' * 120}\n" * 400, perm: 0o600)
-      previous = ENV.fetch('RIDDIM_STATE_DIR', nil)
-      begin
-        ENV['RIDDIM_STATE_DIR'] = state
-        Riddim::Notifications.scan(observe_activity: false).each { |entry| Riddim::Notifications.acknowledge(entry.id) }
-      ensure
-        ENV['RIDDIM_STATE_DIR'] = previous
-      end
+      write_handled_notification_history(state, GEN, count: 400)
       File.write(File.join(state, 'slow-read'), '') if mode == 'slow'
       env = { 'RIDDIM_HISTORY_MODE' => mode, 'RIDDIM_STATE_DIR' => state, 'RIDDIM_ACTOR' => nil,
               'RIDDIM_STATUS_PATH' => status_path, 'RIDDIM_PHASE_TRACE' => File.join(root, 'phases'),

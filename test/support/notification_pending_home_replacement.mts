@@ -26,7 +26,9 @@ extension({
   sendUserMessage(text) { messages.push(text); },
 });
 const ctx: FixtureContext = { ui: { notify(text) { notices.push(text); } } };
-required(events.get("session_start"), "session_start handler")({}, ctx);
+// Replace the home at the report observer's close, after initial readiness.
+// Publishing before the async startup began mixed two independent boundaries.
+await required(events.get("session_start"), "session_start handler")({}, ctx);
 appendFileSync(env("RIDDIM_STATUS_PATH"), "blocked [at=1]: old-home claim\n");
 for (let attempt = 0; attempt < 200; attempt++) {
   if (replaced && notices.some((text) => text.includes("report remains in its original home"))) break;

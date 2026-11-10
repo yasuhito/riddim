@@ -19,6 +19,7 @@ class ScheduledPromptsE2ETest < Minitest::Test
 
   CLI = File.expand_path('../bin/riddim', __dir__)
   EXT = File.expand_path('../.pi/extensions/riddim-notifications.ts', __dir__)
+  PROBE = File.expand_path('support/notification_reload_probe.ts', __dir__)
 
   def setup
     skip 'Pi executable unavailable on PATH' unless ENV.fetch('PATH', '').split(File::PATH_SEPARATOR).any? do |dir|
@@ -38,9 +39,11 @@ class ScheduledPromptsE2ETest < Minitest::Test
 
   def start_pi(session_file = nil)
     env = { 'PI_CODING_AGENT_DIR' => @root, 'PI_OFFLINE' => '1', 'PI_TELEMETRY' => '0',
-            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => "#{fault_shim}:#{ENV.fetch('PATH')}" }
+            'RIDDIM_STATE_DIR' => @state, 'RIDDIM_ACTOR' => nil, 'PATH' => "#{fault_shim}:#{ENV.fetch('PATH')}",
+            'RIDDIM_RELOAD_TRACE' => File.join(@root, 'startup-trace.jsonl') }
     args = ['pi', '--mode', 'rpc', '--no-tools', '--no-extensions', '--no-skills',
-            '--no-prompt-templates', '--no-context-files', '-e', EXT, '--session-dir', File.join(@root, 'pi-sessions'),
+            '--no-prompt-templates', '--no-context-files', '-e', EXT, '-e', PROBE,
+            '--session-dir', File.join(@root, 'pi-sessions'),
             '--model', 'stall-lab/test', '--thinking', 'off']
     args += ['--session', session_file] if session_file
     @input, @output, @error, @wait = Bundler.with_unbundled_env { Open3.popen3(env, *args, chdir: @root) }
@@ -132,7 +135,11 @@ class ScheduledPromptsE2ETest < Minitest::Test
     Timeout.timeout(5) do
       loop do
         lock = File.join(@state, '.notification-watcher.lock')
-        break if File.exist?(lock) && File.open(lock) { |file| !file.flock(File::LOCK_EX | File::LOCK_NB) }
+        trace = File.join(@root, 'startup-trace.jsonl')
+        # The probe's later session_start handler follows the extension's
+        # awaited arm. A held flock alone can precede observer readiness.
+        break if File.exist?(trace) && File.read(trace).include?('"type":"start"') &&
+                 File.exist?(lock) && File.open(lock) { |file| !file.flock(File::LOCK_EX | File::LOCK_NB) }
 
         sleep 0.01
       end
@@ -362,7 +369,7 @@ class ScheduledPromptsE2ETest < Minitest::Test
     text = worker_delivered(id)
 
     assert_includes text, 'successor readiness/liveness unverified'
-    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    assert_includes text, 'Riddim scheduled prompts FAILED'
     refute_includes @events.to_s, '$(not-a-shell-command)'
     row = cli('list').find { |entry| entry.fetch('id') == schedule.fetch('id') }
 
@@ -378,8 +385,10 @@ class ScheduledPromptsE2ETest < Minitest::Test
     respond_automatically
     schedule, id = mixed_batch('deny-offer')
 
-    assert_includes worker_delivered(id), id
-    assert_includes @events.to_s, 'Riddim scheduled prompts FAILED'
+    text = worker_delivered(id)
+
+    assert_includes text, id
+    assert_includes text, 'Riddim scheduled prompts FAILED'
     refute_includes @events.to_s, '$(not-a-shell-command)'
     row = cli('list').find { |entry| entry.fetch('id') == schedule.fetch('id') }
 

@@ -19,17 +19,14 @@ class WatcherBackpressureTest < Minitest::Test
   # lock. A Worker report must still complete, not wait for Pi to read stdout.
   # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity, Minitest/MultipleAssertions
   def test_unread_observer_pipe_does_not_hold_worker_report_lock
-    Dir.mktmpdir('riddim-backpressure-') do |state| # rubocop:disable Metrics/BlockLength
+    # Keep the report's fsync off a contended persistent filesystem: the
+    # three-second assertion measures pipe/lock progress, not disk throughput.
+    # Only private data lives here; all executables stay in the checkout.
+    Dir.mktmpdir('riddim-backpressure-', '/dev/shm') do |state| # rubocop:disable Metrics/BlockLength
       File.chmod(0o700, state)
       write_notification_worker(state, GEN)
       File.write(File.join(state, "worker.#{GEN}.status"), "done [at=1]: retained\n" * 400, perm: 0o600)
-      previous = ENV.fetch('RIDDIM_STATE_DIR', nil)
-      begin
-        ENV['RIDDIM_STATE_DIR'] = state
-        Riddim::Notifications.scan(observe_activity: false).each { |row| Riddim::Notifications.acknowledge(row.id) }
-      ensure
-        ENV['RIDDIM_STATE_DIR'] = previous
-      end
+      write_handled_notification_history(state, GEN, count: 400)
       reader, writer = IO.pipe
       loop { break if writer.write_nonblock('x' * 4096, exception: false) == :wait_writable }
       File.write(File.join(state, 'slow-read'), '')
