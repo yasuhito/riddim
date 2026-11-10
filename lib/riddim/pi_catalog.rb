@@ -81,6 +81,10 @@ module Riddim
         readers = [output, error].map { |stream| Thread.new { stream.read } }
         stop(waiter, timeout) unless waiter.join(timeout)
         [*readers.map(&:value), waiter.value]
+      ensure
+        # Open3 closes streams on block exit. Cancel readers first on timeout
+        # so a delayed read cannot race that close or outlive this preflight.
+        readers&.each { |reader| reader.kill.join }
       end
     end
 

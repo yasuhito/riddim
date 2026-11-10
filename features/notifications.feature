@@ -47,6 +47,7 @@ Feature: Inspect durable actionable reports from the selected local-only home
     Then the successor reports the report written during downtime
 
   Scenario: A watcher publishes, wakes, and a successor stays live for later reports
+    Given the watcher emits checkpoints before readiness and notifications
     When a notification watcher is armed
     And the worker reports "done [at=1]: first claim"
     And the watcher reports a pending notification without changing the worker

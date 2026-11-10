@@ -28,7 +28,9 @@ extension({
   },
 });
 const ctx: FixtureContext = { ui: { notify() {} } };
-required(events.get("session_start"), "session_start handler")({}, ctx);
+// This scenario replaces the source at delivery acceptance, not during initial
+// arming. Await readiness so the follow-up budget does not include startup.
+await required(events.get("session_start"), "session_start handler")({}, ctx);
 appendFileSync(env("RIDDIM_STATUS_PATH"), "blocked [at=1]: delivery-boundary claim\n");
 for (let attempt = 0; attempt < 200 && !replaced; attempt++) await delay(50);
 assert.equal(replaced, true, "replacement must occur at follow-up acceptance");

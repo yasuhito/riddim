@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'io/wait'
 require 'securerandom'
 require 'timeout'
+require_relative '../../test/support/watcher_frame_reader'
 
 After do
   next unless @watchers
@@ -19,26 +19,33 @@ After do
   end
 end
 
+Given('the watcher emits checkpoints before readiness and notifications') do
+  fixture = File.expand_path('../../test/support/notification_checkpoint_backend', __dir__)
+  @environment['RUBYOPT'] = "-r#{fixture}"
+end
+
 When('a notification watcher is armed') do
   @watchers = []
   start_notification_watcher([])
 end
 
-def watcher_frame(stdout)
-  Timeout.timeout(5) { JSON.parse(stdout.gets || raise('watcher exited before frame')) }
+def watcher_frame(stdout, expected: 'pending', timeout: 5)
+  WatcherFrameReader.read(stdout, nonce: @watcher_nonces.fetch(stdout), expected: expected, timeout: timeout)
 end
 
-# rubocop:disable-next Metrics/MethodLength
+# rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
 def start_notification_watcher(excluded)
   env = { 'HERDR_SESSION' => nil }.merge(@environment.compact)
+  nonce = SecureRandom.hex(16)
   stdin, stdout, stderr, wait = Bundler.with_unbundled_env do
-    Open3.popen3(env, riddim_cli, 'watch-notifications', '--nonce',
-                 SecureRandom.hex(16), '--exclude-stdin')
+    Open3.popen3(env, riddim_cli, 'watch-notifications', '--nonce', nonce, '--exclude-stdin')
   end
   @watchers << [stdin, stdout, stderr, wait]
+  @watcher_nonces ||= {}
+  @watcher_nonces[stdout] = nonce
   stdin.write(JSON.generate(excluded))
   stdin.close
-  frame = watcher_frame(stdout)
+  frame = watcher_frame(stdout, expected: 'ready')
   assert_equal 'ready', frame.fetch('type')
   assert wait.alive?, 'watcher failed after readiness'
   @watcher_output = stdout
@@ -74,7 +81,9 @@ end
 
 Then('a watcher can arm only in the new empty home') do
   start_notification_watcher([])
-  assert_nil @watcher_output.wait_readable(0.2), 'replacement watcher published a stale pending ID'
+  assert_raises(Timeout::Error, 'replacement watcher published a stale pending ID') do
+    watcher_frame(@watcher_output, timeout: 0.2)
+  end
 end
 
 When('the old watcher loses its binding') do
@@ -156,9 +165,9 @@ Given('ownership changes during status classification') do
     require #{File.expand_path('../lib/riddim/notifications', File.dirname(riddim_cli)).dump}
     module Riddim::Result
       class << self
-        alias_method :original_parse_events, :parse_events
-        def parse_events(bytes)
-          status = original_parse_events(bytes)
+        alias_method :original_parse_stream, :parse_stream
+        def parse_stream(handle, &block)
+          status = original_parse_stream(handle, &block)
           path = Riddim::Ownership.record_path('worker')
           File.write(path, File.read(path).sub(/^spawn_gen=.+$/, 'spawn_gen=s9999.9999.9999'))
           status

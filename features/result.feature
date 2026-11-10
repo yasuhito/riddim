@@ -237,9 +237,19 @@ Feature: A local-only task reports a claim, not inferred completion
       """
     Then the local-only result is "ready: done [at=18]: tests passed"
 
-  Scenario: A durable answer whose close cannot fit stays visible and must not be resent
+  Scenario: A durable answer closes its key past the old whole-history size cap
     Given a local-only task was started
     And the worker status is nearly full with an open decision
+    When I run riddim with:
+      """
+      send worker --resolve-key default Choose A
+      """
+    Then the answer is stored and closes its key without changing prior history
+
+  Scenario: A durable answer whose status append fails stays visible and must not be resent
+    Given a local-only task was started
+    And the worker status is nearly full with an open decision
+    And the answer status append fails after storage
     When I run riddim with:
       """
       send worker --resolve-key default Choose A

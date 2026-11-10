@@ -47,10 +47,12 @@ class SchedulesTest < Minitest::Test
     create
     original = S::Store.method(:identity)
     changed_device = ->(stat) { original.call(stat).sub(/\A\d+:/, '999999:') }
+    S::Store.singleton_class.send(:remove_method, :identity)
     S::Store.define_singleton_method(:identity, changed_device)
 
     assert_equal 1, S.list.size
   ensure
+    S::Store.singleton_class.send(:remove_method, :identity)
     S::Store.define_singleton_method(:identity, original)
   end
 

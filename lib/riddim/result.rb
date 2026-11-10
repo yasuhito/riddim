@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'stringio'
 require_relative 'ownership'
 require_relative 'worktree'
 
@@ -69,8 +70,10 @@ module Riddim
     def read_status(file)
       File.open(file, File::RDONLY | File::NOFOLLOW) do |handle|
         verify_private_file!(handle)
-        parse_events(handle.read(MAX_BYTES + 1) || '')
+        parse_stream(handle)
       end
+    rescue Error => e
+      raise Error, "status evidence at #{file}: #{e.message}"
     end
 
     def verify_private_file!(handle)
@@ -81,11 +84,20 @@ module Riddim
     end
 
     def parse_events(bytes)
-      lines = valid_status_text(bytes).lines
-      events = validated_events(lines)
+      parse_stream(StringIO.new(bytes))
+    end
+
+    def parse_stream(handle)
+      last = nil
+      events = []
+      each_event(handle) do |event, content, line|
+        last = content
+        events << event
+        yield(event, line) if block_given?
+      end
       open = open_decisions(events)
       gate = !open.empty? || events.any? { |event| event.kind == 'failed' }
-      Status.new(last: lines.last&.delete_suffix("\n"), open_gate: gate, events: events, open_keys: open)
+      Status.new(last: last, open_gate: gate, events: events, open_keys: open)
     end
 
     def open_decisions(events)
@@ -97,21 +109,26 @@ module Riddim
       end
     end
 
-    def validated_events(lines)
+    # Bound each read and record, not the lifetime of an append-only history.
+    # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+    def each_event(handle)
       position = 0
-      lines.map.with_index(1) do |line, sequence|
+      sequence = 0
+      while (line = handle.gets("\n", MAX_BYTES + 1))
+        line = valid_status_text(line)
         position += line.bytesize
+        sequence += 1
         content = line.delete_suffix("\n")
         raise Error, 'status file contains an invalid event' unless content.match?(EVENT) || content.match?(RESOLUTION)
 
         kind = content.split(' ', 2).first
         key = content.split(': ', 2).first[/\[key=([A-Za-z0-9._-]+)\]/, 1] || 'default'
-        Event.new(sequence: sequence, kind: kind, key: key, end_offset: position)
+        yield Event.new(sequence: sequence, kind: kind, key: key, end_offset: position), content, line
       end
     end
 
     def valid_status_text(bytes)
-      raise Error, 'status file is oversized' if bytes.bytesize > MAX_BYTES
+      raise Error, 'status event is oversized' if bytes.bytesize > MAX_BYTES
 
       text = bytes.dup.force_encoding(Encoding::UTF_8)
       raise Error, 'status file is not UTF-8' unless text.valid_encoding?

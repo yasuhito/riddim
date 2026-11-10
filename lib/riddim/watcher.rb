@@ -8,6 +8,7 @@ module Riddim
   # One observer per selected home. The lock spans every scan and wait; no
   # Worker command or Herdr input is involved. A new process must acquire the
   # lock and complete a scan before it can announce readiness.
+  # rubocop:disable-next Metrics/ModuleLength
   module Watcher
     IDENTITY = /\A(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9})\z/
 
@@ -56,6 +57,18 @@ module Riddim
       next_observation = last_beat
       observation_after = nil
       schedule_status = nil
+      # Checkpoints run only after a real scan unit completes, on this thread.
+      # A stuck read/probe or failed validation cannot manufacture liveness.
+      progress = lambda do
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        next if now - last_beat < 1
+
+        verify_owner!(directory, lock, selected_home)
+        announce(ready ? 'beat' : 'progress', nonce,
+                 nonblock: true, home: Schedules::Store.identity(directory.stat),
+                 lock: Schedules::Store.identity(lock.stat))
+        last_beat = now
+      end
       # rubocop:disable-next Metrics/BlockLength
       loop do
         verify_owner!(directory, lock, selected_home)
@@ -63,7 +76,8 @@ module Riddim
         observe_activity = now >= next_observation
         next_observation = now + Notifications::Idle::SAMPLE_SECONDS if observe_activity
         budget = observe_activity ? Notifications::ProbeBudget.new(after: observation_after) : nil
-        entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget)
+        entries = Notifications.scan(observe_activity: observe_activity, wait: false, budget: budget,
+                                     progress: progress)
         observation_after = budget.last_name if budget
         scheduled_ids, status = scheduled_pending(session)
         ids = entries.map(&:id) + scheduled_ids
@@ -126,9 +140,24 @@ module Riddim
       raise Notifications::Error, 'watcher ownership changed during observation'
     end
 
-    def announce(type, nonce, **extra)
-      puts JSON.generate({ type: type, nonce: nonce }.merge(extra))
+    def announce(type, nonce, nonblock: false, **extra)
+      frame = "#{JSON.generate({ type: type, nonce: nonce }.merge(extra))}\n"
+      return checkpoint(frame) if nonblock
+
+      $stdout.write(frame)
       $stdout.flush
+    end
+
+    # Checkpoints can run under a Worker lock. Drop a congested checkpoint
+    # rather than wait for Pi or queue stale liveness. Bound to POSIX's minimum
+    # PIPE_BUF so a pipe write is atomic or returns wait_writable.
+    def checkpoint(frame)
+      raise Notifications::Error, 'watcher checkpoint is oversized' if frame.bytesize > 512
+
+      written = $stdout.write_nonblock(frame, exception: false)
+      return if written == :wait_writable || written == frame.bytesize
+
+      raise Notifications::Error, 'partial watcher checkpoint'
     end
   end
 end

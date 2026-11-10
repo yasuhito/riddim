@@ -37,9 +37,8 @@ module Riddim
     def append_event!(file, name, snapshot, bytes, event)
       Result.verify_private_file!(file)
       file.rewind
-      contents = file.read(Result::MAX_BYTES + 1) || ''
-      Result.parse_events(contents)
-      raise Refused, 'status file is oversized' if contents.bytesize + event.bytesize + 1 > Result::MAX_BYTES
+      Result.parse_stream(file)
+      Result.parse_events("#{event}\n")
 
       verify_owner!(name, snapshot, bytes)
       file.write("#{event}\n")

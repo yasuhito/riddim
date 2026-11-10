@@ -755,6 +755,12 @@ explain the refusal, not write the file directly. Work launched before the
 locked reporting protocol remains readable by `result` but is not eligible
 for `merge-local` and needs a separately approved manual landing.
 
+Status history is append-only with no whole-history size cap. Each UTF-8 event,
+including its final newline, is limited to 64 KiB. Readers validate every record
+with bounded reads; existing history, decision gates and notification sequence IDs
+are retained as the file grows. Oversized or malformed individual records fail
+closed, including records beyond the first 64 KiB of history.
+
 `result` requires the exact current ownership record. `unreported` means its
 status file is empty; `reported` is the worker's last event, not proof of
 current activity. A `done` event becomes `ready` **only** if the recorded
@@ -851,8 +857,20 @@ and watcher-lock identities, and handling instructions via Pi's
 non-interrupting `followUp` API. The extension checks a fresh successor, the
 selected home's identity, and periodic liveness beacons before claiming
 continuity. A heartbeat is stale after four seconds without a frame while Pi's
-own event loop was responsive; time Pi itself was stalled does not count. An
-unexpectedly stopped or stale previously verified observer gets at most three
+own event loop was responsive; time Pi itself was stalled does not count.
+During a long report/notification scan, checkpoints after completed records verify
+the same held home and watcher lock before emitting liveness. Before readiness,
+these progress frames extend the five-second startup deadline but do not claim
+readiness: the first complete scan must still succeed within an absolute sixty
+seconds per arm. That ceiling allows twelve inactivity windows and roughly six
+times the measured slow-history fixture's startup scan, but cannot be renewed by
+progress. After readiness, checkpoints maintain the heartbeat while scanning
+retained history. Checkpoints are small atomic nonblocking pipe writes: if Pi
+is not draining stdout, they are dropped, not queued or allowed to hold a Worker
+name lock. Ready/pending frames still publish outside Worker locks. There is no
+independent heartbeat thread: a blocked operation stops progress, and a
+validation failure still stops the observer. An unexpectedly stopped or stale
+previously verified observer gets at most three
 automatic retries per Pi runtime, counted across recovered episodes, with
 250/500/1000 ms backoff. Retries
 require the original home and lock identities, retire the old child first, and

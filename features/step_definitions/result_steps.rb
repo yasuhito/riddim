@@ -29,7 +29,26 @@ end
 Given('the worker status is nearly full with an open decision') do
   decision = "needs-decision [at=16]: choose A\n"
   filler = "working [at=1]: #{'x' * (Riddim::Result::MAX_BYTES - decision.bytesize - 17)}\n"
-  File.write(@result_path, filler + decision)
+  @status_before_answer = filler + decision
+  File.write(@result_path, @status_before_answer)
+end
+
+Given('the answer status append fails after storage') do
+  fixture = File.join(new_temporary_directory, 'answer_disk_full.rb')
+  File.write(fixture, <<~RUBY)
+    require #{File.expand_path('../lib/riddim/report', File.dirname(riddim_cli)).dump}
+    module Riddim::Report
+      class << self
+        alias_method :original_append_event!, :append_event!
+        def append_event!(file, name, snapshot, bytes, event)
+          raise Errno::ENOSPC, 'injected answer append failure' if event.start_with?('resolved ')
+
+          original_append_event!(file, name, snapshot, bytes, event)
+        end
+      end
+    end
+  RUBY
+  @environment['RUBYOPT'] = "-r#{fixture}"
 end
 
 Given('the worker status contains a malformed event') do
@@ -197,6 +216,16 @@ end
 Then('the wrong key is refused without storing an answer') do
   assert_equal [1, true, []], [@status.exitstatus, @stderr.include?('not open'),
                                Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg'))]
+end
+
+Then('the answer is stored and closes its key without changing prior history') do
+  records = Dir.glob(File.join(scenario_state_dir, '*.inbox', '*.msg'))
+  bytes = File.binread(@result_path)
+  status = Riddim::Result.read_status(@result_path)
+  assert_equal [true, true, @status_before_answer, true, {}, 'resolved'],
+               [@status.success?, records.length == 1 && File.read(records.first).include?('Choose A'),
+                bytes.byteslice(0, @status_before_answer.bytesize), bytes.bytesize > Riddim::Result::MAX_BYTES,
+                status.open_keys, status.events.last.kind]
 end
 
 Then('the answer is stored but its decision remains open for repair') do

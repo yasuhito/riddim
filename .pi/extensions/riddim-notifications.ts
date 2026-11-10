@@ -15,6 +15,9 @@ const identity = /^(?:[a-z][a-z0-9_-]{0,31}\.s\d+\.\d+\.\d+\.(?:0|[1-9]\d*)|sche
 const scheduledIdentity = /^scheduled\.[0-9a-f]{32}\.[1-9]\d{0,9}$/;
 const sessionIdentity = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const WATCHER_READY_TIMEOUT = 5000;
+// Twelve inactivity windows, about six times the measured slow fixture scan.
+// Advancing work gets room to finish, but progress can never renew startup forever.
+const WATCHER_STARTUP_TIMEOUT = 60_000;
 const FOLLOW_UP_TIMEOUT = 5000;
 const SHUTDOWN_TIMEOUT = 5000;
 const BEAT_TIMEOUT = 4000;
@@ -256,7 +259,12 @@ export default function (pi: ExtensionAPI) {
     }, WATCHDOG_INTERVAL);
     let finishReady: (value: boolean) => void = () => {};
     const readiness = new Promise<boolean>((done) => { finishReady = done; });
-    const timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
+    let startupExpired = false;
+    const absoluteTimeout = setTimeout(() => {
+      startupExpired = true;
+      finishReady(false);
+    }, WATCHER_STARTUP_TIMEOUT);
+    let timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
     proc.stderr?.on("data", (part: Buffer) => { stderr += part.toString(); });
     proc.stdout?.on("data", (part: Buffer) => {
       if (!active || serial !== epoch || child !== proc) return;
@@ -270,7 +278,13 @@ export default function (pi: ExtensionAPI) {
         let frame: Frame;
         try { frame = JSON.parse(line) as Frame; } catch { proc.kill(); return; }
         if (frame.nonce !== nonce) { proc.kill(); return; }
-        if (frame.type === "ready" && !ready && typeof frame.lock === "string" &&
+        if (frame.type === "progress" && !ready && frame.home === binding &&
+          typeof frame.lock === "string" && frame.lock === lockIdentity() && binding === homeIdentity()) {
+          // Startup is still unready. Only completed, ownership-verified scan
+          // work extends its deadline; a live PID or an independent timer cannot.
+          clearTimeout(timeout);
+          timeout = setTimeout(() => finishReady(false), WATCHER_READY_TIMEOUT);
+        } else if (frame.type === "ready" && !ready && typeof frame.lock === "string" &&
           /^\d+:\d+$/.test(frame.lock)) {
           ready = true;
           boundLock = frame.lock;
@@ -311,6 +325,7 @@ export default function (pi: ExtensionAPI) {
     });
     const signaled = await readiness;
     clearTimeout(timeout);
+    clearTimeout(absoluteTimeout);
     // A printed ready frame by itself is not evidence of a live watcher.
     await new Promise<void>((done) => setImmediate(done));
     if (!active || serial !== epoch) return false;
@@ -318,7 +333,8 @@ export default function (pi: ExtensionAPI) {
       Boolean(proc.pid) && binding === homeIdentity() && boundLock !== null && boundLock === lockIdentity();
     if (!healthy && child === proc) {
       failureReported = true;
-      failure(stderr.trim() || "readiness or liveness unverified", epoch);
+      failure(stderr.trim() || (startupExpired ? "observer startup exceeded 60-second absolute deadline" :
+        "readiness or liveness unverified"), epoch);
       proc.kill();
     }
     if (healthy) readyChild = proc;
