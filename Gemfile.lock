@@ -34,6 +34,7 @@ GEM
     drb (2.2.3)
     ffi (1.17.4)
     ffi (1.17.4-x86_64-linux-gnu)
+    fiddle (1.1.6)
     json (3.0.2)
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
@@ -88,6 +89,7 @@ PLATFORMS
 
 DEPENDENCIES
   cucumber (~> 11.1)
+  fiddle (~> 1.1)
   minitest (~> 6.0)
   rake (~> 13.4)
   rubocop (~> 1.82)
@@ -111,6 +113,7 @@ CHECKSUMS
   drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
   ffi (1.17.4) sha256=bcd1642e06f0d16fc9e09ac6d49c3a7298b9789bcb58127302f934e437d60acf
   ffi (1.17.4-x86_64-linux-gnu) sha256=9d3db14c2eae074b382fa9c083fe95aec6e0a1451da249eab096c34002bc752d
+  fiddle (1.1.6) sha256=79e8d909e602d979434cf9fccfa6e729cb16432bb00e39c7596abe6bee1249ab
   json (3.0.2) sha256=8e6d7e7b11384c21230430cef90b71f14849a34a1f4452796670f7c981bd19df
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87

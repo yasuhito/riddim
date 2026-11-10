@@ -43,6 +43,159 @@ class SchedulesTest < Minitest::Test
     File.write(File.join(@root, S::Store::FILE), JSON.generate(value))
   end
 
+  def test_persisted_identity_survives_device_number_change
+    create
+    original = S::Store.method(:identity)
+    changed_device = ->(stat) { original.call(stat).sub(/\A\d+:/, '999999:') }
+    S::Store.define_singleton_method(:identity, changed_device)
+
+    assert_equal 1, S.list.size
+  ensure
+    S::Store.define_singleton_method(:identity, original)
+  end
+
+  def legacy_document(device: nil)
+    create
+    old = { 'home' => @root, 'watcher_lock' => File.join(@root, S::Store::WATCHER),
+            'store_lock' => File.join(@root, S::Store::LOCK) }.transform_values do |path|
+      stat = File.stat(path)
+      "#{device || stat.dev}:#{stat.ino}"
+    end
+    corrupt { |value| value.merge!(old) }
+    old
+  end
+
+  def migration_approval(old)
+    File.open(@root) { |file| old.merge('filesystem' => S::FilesystemIdentity.filesystem(file)) }
+  end
+
+  def test_same_boot_legacy_is_upgraded_without_changing_work
+    legacy_document
+    rows = stored['schedules']
+    S.list
+
+    assert_equal rows, stored['schedules']
+    assert_match(/\Afsid:/, stored['home'])
+  end
+
+  # rubocop:disable-next Metrics/AbcSize
+  def test_legacy_reboot_requires_explicit_attestation_and_records_old_and_new
+    old = legacy_document(device: 999_999)
+
+    assert_raises(S::SourceChanged) { S.list }
+    approval = migration_approval(old)
+    S::Store.transaction(migrate: approval) { nil }
+    audit = JSON.parse(File.read(File.join(@root, S::IdentityMigration::AUDIT)))
+
+    assert_equal old, audit['old']
+    assert_equal stored.slice(*S::IdentityMigration::KEYS), audit['new']
+    assert_equal 1, S.list.size
+  end
+
+  # rubocop:disable-next Metrics/AbcSize
+  def test_migration_refuses_wrong_filesystem_or_inode_without_writing
+    old = legacy_document(device: 999_999)
+    before = stored
+    approval = migration_approval(old)
+
+    assert_raises(S::SourceChanged) { S::Store.transaction(migrate: approval.merge('filesystem' => 'wrong')) { nil } }
+    corrupt { |value| value['store_lock'] = '999999:1' }
+    approval['store_lock'] = '999999:1'
+
+    assert_raises(S::SourceChanged) { S::Store.transaction(migrate: approval) { nil } }
+    assert_equal before['home'], stored['home']
+    refute_path_exists File.join(@root, S::IdentityMigration::AUDIT)
+  end
+
+  def test_migration_cli_requires_exact_old_bindings_and_operator
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    args = approval.flat_map { |key, value| ["--#{key.tr('_', '-')}", value] }
+    ENV['RIDDIM_ACTOR'] = 'branch'
+
+    assert_raises(S::Error) { S::CLI.run(['migrate-identities', *args]) }
+    ENV.delete('RIDDIM_ACTOR')
+
+    assert_equal 'identities migrated', S::CLI.run(['migrate-identities', *args])[:status]
+  end
+
+  # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+  def test_migration_refuses_running_watcher_without_writing
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    path = File.join(@root, S::Store::FILE)
+    before = File.binread(path)
+    File.open(File.join(@root, S::Store::WATCHER)) do |watcher|
+      watcher.flock(File::LOCK_EX | File::LOCK_NB)
+      error = assert_raises(S::Error) { S::Store.transaction(migrate: approval) { nil } }
+
+      assert_match(/watcher.*running|watcher.*held/, error.message)
+      assert_equal before, File.binread(path)
+      refute_path_exists File.join(@root, S::IdentityMigration::AUDIT)
+    end
+  end
+
+  def test_migration_accepts_padded_and_unpadded_filesystem
+    %w[00000018000000ab 18000000AB].each do |filesystem|
+      bindings = S::IdentityMigration::KEYS.to_h { |key| [key, 'fsid:00000018000000ab:123'] }
+      old = S::IdentityMigration::KEYS.to_h { |key| [key, '999999:123'] }
+      document = old.dup
+      S::IdentityMigration.convert!(document, bindings, {}, old.merge('filesystem' => filesystem))
+
+      assert_equal bindings, document
+    end
+  end
+
+  # rubocop:disable-next Metrics/MethodLength
+  def test_migration_rejects_invalid_filesystem_without_writing
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    path = File.join(@root, S::Store::FILE)
+    before = File.binread(path)
+    ['', 'g', '0x123', '12345678901234567', ' 123', "123\n"].each do |filesystem|
+      assert_raises(S::SourceChanged) do
+        S::Store.transaction(migrate: approval.merge('filesystem' => filesystem)) { nil }
+      end
+      assert_equal before, File.binread(path)
+    end
+    refute_path_exists File.join(@root, S::IdentityMigration::AUDIT)
+  end
+
+  def test_migration_refuses_hardlinked_lock
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    File.link(File.join(@root, S::Store::WATCHER), File.join(@root, 'alias'))
+
+    assert_raises(S::Error) { S::Store.transaction(migrate: approval) { nil } }
+    assert_equal old['home'], stored['home']
+  end
+
+  def test_migration_refuses_symlink_and_nonprivate_lock
+    old = legacy_document(device: 999_999)
+    approval = migration_approval(old)
+    path = File.join(@root, S::Store::LOCK)
+    File.chmod(0o644, path)
+
+    assert_raises(Riddim::Result::Error) { S::Store.transaction(migrate: approval) { nil } }
+    File.chmod(0o600, path)
+    File.rename(path, "#{path}.saved")
+    File.symlink("#{path}.saved", path)
+
+    assert_raises(Errno::ELOOP) { S::Store.transaction(migrate: approval) { nil } }
+    assert_equal old['home'], stored['home']
+  end
+
+  def test_stable_identity_distinguishes_a_copy
+    create
+    copy = Dir.mktmpdir('riddim-copy-')
+    FileUtils.cp_r("#{@root}/.", copy)
+    ENV['RIDDIM_STATE_DIR'] = copy
+
+    assert_raises(S::SourceChanged) { S.list }
+  ensure
+    FileUtils.remove_entry(copy) if copy
+  end
+
   # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
   def test_one_shot_has_durable_pending_before_completion_and_no_implicit_ack
     row = create

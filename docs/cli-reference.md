@@ -977,6 +977,40 @@ document, refuses instead of silently discarding work. Never delete, truncate or
 replace a marker to recover an established source. The shared watcher-lock marker
 remains empty and retains its original lifetime-ownership contract.
 
+Durable source identities are `fsid:<16-hex-digit Linux f_fsid>:<inode>`;
+mount-time `st_dev` is not reboot-stable on btrfs. Descriptor/path pinning,
+watcher frames and the extension's in-memory original-source checks deliberately
+remain `dev:ino`: they never survive a boot or extension reload. See
+[identity implementation notes](scheduled-identity.md) for the ABI and limits.
+An exact legacy `dev:ino` match upgrades atomically on the next operation without
+changing work. A legacy device mismatch **never** upgrades automatically.
+
+For that legacy-only reboot case, stop and obtain explicit human approval after
+independently verifying the original home and all three inodes, filesystem UUID
+and btrfs subvolume (not just the current pathname). With no watcher running,
+inspect `stat -f -c %i <original-home>`, `stat`, `/proc/self/mountinfo` and original
+source evidence. Then the human may explicitly attest the current filesystem:
+
+```sh
+RIDDIM_STATE_DIR=<verified-original-home> bin/riddim schedule migrate-identities \
+  --filesystem <fsid-from-stat-f> --home <saved-dev:inode> \
+  --watcher-lock <saved-dev:inode> --store-lock <saved-dev:inode>
+```
+
+The `--filesystem` value accepts 1–16 hexadecimal digits (case-insensitive),
+including the unpadded output of `stat -f -c %i`; it is normalized to 16 lowercase
+digits. The command holds the watcher lock exclusively and refuses if a watcher
+is running. It requires exact saved identities, matching live inodes and the
+supplied stable filesystem identity for all three descriptors. It retains the
+normal ownership, privacy, symlink and hardlink refusals and validates all work
+before writing. It durably records old/new identities in the private
+`.scheduled-prompts.identity-migration.json` before atomic conversion. Identical
+interrupted audit writes can be retried; conflicting/incomplete audit evidence
+refuses and needs investigation, never deletion to silence it. This is an explicit
+human attestation where legacy evidence cannot prove filesystem continuity; it
+is **not** a relocation, copy, replacement or inode-only recovery API. Verify fresh
+watcher readiness afterwards; the command neither starts a watcher nor reloads Pi.
+
 Invalid/unavailable scheduled state withholds scheduled content only. A bounded
 `Riddim scheduled prompts FAILED` diagnostic does not stop ordinary Worker report
 watching, suppress the native supervisor role or spend observer recovery attempts.

@@ -98,6 +98,13 @@ class PiStallHeadersOnlyTest < Minitest::Test
     end
   end
 
+  def test_server_preserves_accept_error
+    server = TCPServer.new('127.0.0.1', 0)
+    server.close
+
+    assert_raises(IOError) { PiStallLab::LabServer.accept_http_request(server) }
+  end
+
   def test_server_sends_no_body_after_headers
     server = TCPServer.new('127.0.0.1', 0)
     client = TCPSocket.new('127.0.0.1', server.addr[1])

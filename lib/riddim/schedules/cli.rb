@@ -10,13 +10,14 @@ module Riddim
 
       module_function
 
-      # rubocop:disable-next Metrics/MethodLength
+      # rubocop:disable-next Metrics/MethodLength, Metrics/CyclomaticComplexity
       def run(arguments)
         Schedules.operator!
         verb, *args = arguments
         case verb
         when 'create' then create(args)
         when 'list' then list(args)
+        when 'migrate-identities' then migrate_identities(args)
         when 'cancel' then cancel(args)
         when 'scan' then Schedules.scan(session: options(args, %w[session], %w[session]).fetch('session'))
         when 'ack' then occurrence(args, acknowledge: true)
@@ -25,10 +26,17 @@ module Riddim
         end
       end
 
+      def migrate_identities(args)
+        keys = %w[filesystem home watcher-lock store-lock]
+        approval = options(args, keys, keys).transform_keys { |key| key.tr('-', '_') }
+        Store.transaction(migrate: approval) { { status: 'identities migrated', audit: IdentityMigration::AUDIT } }
+      end
+
       def usage
         'Usage: riddim schedule create --session <Pi-ID> --prompt-file <path> [--at <offset-datetime>] ' \
           '[--every <Ns|Nm|Nh|Nd>] | list | cancel <schedule-id> | scan --session <Pi-ID> | ' \
-          'ack <presented-occurrence-id> --session <Pi-ID>'
+          'ack <presented-occurrence-id> --session <Pi-ID> | migrate-identities ' \
+          '--filesystem <fsid> --home <old-dev:ino> --watcher-lock <old-dev:ino> --store-lock <old-dev:ino>'
       end
 
       # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
