@@ -4,6 +4,8 @@ require 'json'
 require 'fileutils'
 require 'securerandom'
 require_relative '../result'
+require_relative 'filesystem_identity'
+require_relative 'identity_migration'
 
 module Riddim
   module Schedules
@@ -28,6 +30,8 @@ module Riddim
 
       module_function
 
+      # Same-boot descriptor/path pinning and watcher protocol only. Never save
+      # this mount-time device number in a new durable document.
       def identity(stat)
         "#{stat.dev}:#{stat.ino}"
       end
@@ -39,8 +43,8 @@ module Riddim
         raise(shared ? SourceChanged : Error, "scheduled prompt ownership changed: #{path}")
       end
 
-      # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
-      def transaction(expected: nil, create: false, &)
+      # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity
+      def transaction(expected: nil, create: false, migrate: nil, &)
         home = File.expand_path(Ownership.state_dir)
         File.open(home, File::RDONLY | File::NOFOLLOW) do |directory|
           stat = directory.stat
@@ -62,11 +66,12 @@ module Riddim
                 verify_lock!(watcher)
                 store_phase(lock)
               end
-              bindings = { 'home' => identity(directory.stat), 'watcher_lock' => identity(watcher.stat),
-                           'store_lock' => identity(lock.stat) }
+              files = { 'home' => directory, 'watcher_lock' => watcher, 'store_lock' => lock }
+              legacy = files.transform_values { |file| identity(file.stat) }
+              bindings = files.transform_values { |file| FilesystemIdentity.identity(file) }
               verify.call
-              check_expected!(expected, bindings)
-              transact(base, bindings, verify, lock, &)
+              check_expected!(expected, legacy)
+              transact(base, bindings, verify, lock, legacy, migrate, &)
             end
           end
         end
@@ -111,6 +116,8 @@ module Riddim
 
       def verify_lock!(file)
         Result.verify_private_file!(file)
+        raise Error, 'scheduled prompt watcher lock must not be hard-linked' unless file.stat.nlink == 1
+
         # File handles have size, not empty?.
         # rubocop:disable-next Style/ZeroLengthPredicate
         raise Error, 'scheduled prompt lock marker is corrupt' unless file.size.zero?
@@ -123,9 +130,10 @@ module Riddim
         raise Error, 'scheduled prompt source does not match the original home/watcher lock'
       end
 
-      def transact(base, bindings, verify, lock)
+      # rubocop:disable-next Metrics/ParameterLists
+      def transact(base, bindings, verify, lock, legacy, migrate)
         path = File.join(base, FILE)
-        document = initialize_document(path, bindings, base, verify, lock)
+        document = initialize_document(path, bindings, base, verify, lock, legacy, migrate)
         before = JSON.generate(document)
         result = yield document.fetch('schedules')
         content = JSON.generate(document)
@@ -136,13 +144,22 @@ module Riddim
         result
       end
 
-      def initialize_document(path, bindings, base, verify, lock)
+      # rubocop:disable-next Metrics/ParameterLists, Metrics/MethodLength, Metrics/AbcSize
+      def initialize_document(path, bindings, base, verify, lock, legacy, migrate)
         initializing = store_phase(lock).empty?
         document = load_document(path, bindings, initializing: initializing)
-        if initializing
-          raise Error, 'uninitialized scheduled prompt store contains work; recover the original source' unless
-            document.fetch('schedules').empty?
+        Validation.keys!(document, %w[schema home watcher_lock store_lock schedules])
+        audit = IdentityMigration.convert!(document, bindings, legacy, migrate)
+        Validation.document!(document, bindings)
+        raise Error, 'uninitialized scheduled prompt store contains work; recover the original source' if
+          initializing && !document.fetch('schedules').empty?
 
+        if audit
+          verify.call
+          IdentityMigration.record!(base, audit) if migrate
+          replace(path, JSON.generate(document), base, verify)
+        end
+        if initializing
           replace(path, JSON.generate(document), base, verify)
           mark_ready(lock)
         end
@@ -150,7 +167,7 @@ module Riddim
         document
       end
 
-      # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+      # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity
       def load_document(path, bindings, initializing:)
         unless File.exist?(path) || File.symlink?(path)
           raise Error, 'scheduled prompt store is missing; recover the original source, never initialize over it' unless
@@ -159,15 +176,15 @@ module Riddim
           return { 'schema' => SCHEMA, **bindings, 'schedules' => [] }
         end
 
-        document = File.open(path, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |file|
+        File.open(path, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |file|
           Result.verify_private_file!(file)
+          raise Error, 'scheduled prompt store must not be hard-linked' unless file.stat.nlink == 1
+
           bytes = file.read(MAX_BYTES + 1) || ''
           raise Error, 'scheduled prompt store is oversized' if bytes.bytesize > MAX_BYTES
 
           plain(JSON.parse(bytes, object_class: UniqueKeys))
         end
-        Validation.document!(document, bindings)
-        document
       rescue JSON::ParserError => e
         raise Error, "corrupt scheduled prompt store: #{e.message}"
       end

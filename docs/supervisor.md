@@ -129,6 +129,13 @@ This includes mismatches with the durably recorded original identities at fresh
 startup or reload. A copied home must refuse; copying is not a migration/rebinding
 API and cannot authorize scanning a replacement as the original.
 
+New durable identities use filesystem ID plus inode, not btrfs's reboot-unstable
+device number. Legacy device mismatches still refuse. Only an explicitly approved
+human attestation using [`schedule migrate-identities`](cli-reference.md#scheduled-supervisor-prompts)
+can convert the original legacy source after independent filesystem/subvolume and
+inode verification. Never run it automatically or use it to bless a replacement.
+Watcher/extension same-boot original-source checks are unchanged.
+
 This adds no general default schedules, always-on monitoring or automatic skill
 changes. The human-approved exception is [Riddim PR one-shot CI follow-through](repository-development.md#one-shot-ci-follow-through);
 follow that procedure after publication and on each CI reminder. Periodic fleet/liveness
